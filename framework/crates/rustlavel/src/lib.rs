@@ -32,6 +32,8 @@ pub use rustlavel_db as db;
 pub use rustlavel_i18n as i18n;
 #[cfg(feature = "mcp")]
 pub use rustlavel_mcp as mcp;
+#[cfg(feature = "openapi")]
+pub use rustlavel_openapi as openapi;
 #[cfg(feature = "storage")]
 pub use rustlavel_storage as storage;
 #[cfg(feature = "telescope")]

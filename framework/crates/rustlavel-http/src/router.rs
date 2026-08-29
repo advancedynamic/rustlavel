@@ -38,9 +38,35 @@ pub struct Route {
     /// The pattern as written, used for `route:list` and metrics labels.
     pub pattern: String,
     pub name: Option<String>,
+    /// What this route does, in one line. Feeds generated API documentation.
+    pub summary: Option<String>,
+    /// A grouping label, so generated docs are not one flat list.
+    pub tag: Option<String>,
+    /// Documented responses: status, and what it means.
+    pub responses: Vec<(u16, String)>,
+    /// Documented parameters: name, and what it is.
+    pub parameters: Vec<(String, String)>,
+    pub deprecated: bool,
     segments: Vec<Segment>,
     handler: Arc<dyn Handler>,
     middleware: Arc<Vec<Arc<dyn Middleware>>>,
+}
+
+impl Route {
+    /// The parameter names this route captures, in order.
+    ///
+    /// Generated documentation needs these even when the author documented
+    /// none, because a path parameter is required whether or not it is
+    /// described.
+    pub fn parameter_names(&self) -> Vec<String> {
+        self.segments
+            .iter()
+            .filter_map(|segment| match segment {
+                Segment::Param(name) | Segment::Wildcard(name) => Some(name.clone()),
+                Segment::Static(_) => None,
+            })
+            .collect()
+    }
 }
 
 impl Route {
@@ -158,6 +184,11 @@ impl Router {
             segments: parse_pattern(&full),
             pattern: full,
             name: None,
+            summary: None,
+            tag: None,
+            responses: Vec::new(),
+            parameters: Vec::new(),
+            deprecated: false,
             handler: Arc::new(handler),
             middleware: Arc::new(self.scope_middleware.clone()),
         });
@@ -328,6 +359,42 @@ impl RouteHandle<'_> {
     /// Name the route for `url_for` and `route:list`.
     pub fn name(self, name: &str) -> Self {
         self.router.routes[self.index].name = Some(name.to_string());
+        self
+    }
+
+    /// Say what this route does, in one line.
+    ///
+    /// Documentation is attached here rather than kept in a separate file, so
+    /// it cannot drift away from the route it describes.
+    pub fn describe(self, summary: &str) -> Self {
+        self.router.routes[self.index].summary = Some(summary.to_string());
+        self
+    }
+
+    /// Group this route under a heading in generated documentation.
+    pub fn tag(self, tag: &str) -> Self {
+        self.router.routes[self.index].tag = Some(tag.to_string());
+        self
+    }
+
+    /// Document a response this route can return.
+    pub fn responds(self, status: u16, description: &str) -> Self {
+        self.router.routes[self.index].responses.push((status, description.to_string()));
+        self
+    }
+
+    /// Describe a parameter. Undescribed path parameters are still documented,
+    /// just without prose.
+    pub fn param(self, name: &str, description: &str) -> Self {
+        self.router.routes[self.index]
+            .parameters
+            .push((name.to_string(), description.to_string()));
+        self
+    }
+
+    /// Mark the route as deprecated in generated documentation.
+    pub fn deprecated(self) -> Self {
+        self.router.routes[self.index].deprecated = true;
         self
     }
 }
@@ -548,6 +615,39 @@ mod tests {
 
         let response = router.dispatch(Request::new(Method::Get, "/anything")).await;
         assert_eq!(response.body_string(), "custom miss");
+    }
+
+    #[test]
+    fn documentation_rides_along_with_the_route() {
+        let router = router_with(|r| {
+            r.get("/users/{id}", ok)
+                .name("users.show")
+                .describe("Fetch one user")
+                .tag("Users")
+                .param("id", "The user's id")
+                .responds(200, "The user")
+                .responds(404, "No such user");
+        });
+
+        let route = &router.routes()[0];
+        assert_eq!(route.summary.as_deref(), Some("Fetch one user"));
+        assert_eq!(route.tag.as_deref(), Some("Users"));
+        assert_eq!(route.responses.len(), 2);
+        assert_eq!(route.parameter_names(), vec!["id"]);
+        assert!(!route.deprecated);
+    }
+
+    #[test]
+    fn path_parameters_are_known_even_when_undocumented() {
+        let router = router_with(|r| {
+            r.get("/teams/{team}/members/{member}", ok);
+            r.get("/files/{path:*}", ok);
+        });
+
+        let names: Vec<Vec<String>> =
+            router.routes().iter().map(Route::parameter_names).collect();
+        assert!(names.contains(&vec!["team".to_string(), "member".to_string()]));
+        assert!(names.contains(&vec!["path".to_string()]));
     }
 
     #[test]

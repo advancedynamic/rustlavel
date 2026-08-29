@@ -187,3 +187,39 @@ mod telescope {
         client.get("/telescope").await.assert_not_found();
     }
 }
+
+/// API documentation generated from the routes, with nothing repeated.
+#[cfg(feature = "openapi")]
+mod openapi {
+    use super::*;
+    use rustlavel::openapi::Info;
+
+    #[tokio::test]
+    async fn documents_the_api_routes_and_serves_a_page() {
+        let client = App::bare()
+            .routes(|r| {
+                r.get("/", |_req: Request| async { "home" });
+                r.get("/api/orders/{id}", |_req: Request| async { "order" })
+                    .name("orders.show")
+                    .describe("Fetch one order")
+                    .tag("Orders")
+                    .param("id", "The order's id")
+                    .responds(200, "The order")
+                    .responds(404, "No such order");
+            })
+            .openapi(Info { title: "Orders API".into(), version: "1.0".into(), ..Info::default() })
+            .test_client();
+
+        let document = client.get("/openapi.json").await.assert_ok();
+
+        document
+            .assert_json("info.title", "Orders API")
+            .assert_json("paths./api/orders/{id}.get.summary", "Fetch one order")
+            .assert_json("paths./api/orders/{id}.get.operationId", "orders.show")
+            .assert_json("paths./api/orders/{id}.get.responses.404.description", "No such order")
+            // The browser page is not an API and stays out of the document.
+            .assert_json_missing("paths./");
+
+        client.get("/openapi").await.assert_ok().assert_see("Orders API");
+    }
+}

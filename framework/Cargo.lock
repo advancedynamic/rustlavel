@@ -460,6 +460,7 @@ dependencies = [
  "rustlavel-http",
  "rustlavel-i18n",
  "rustlavel-mcp",
+ "rustlavel-openapi",
  "rustlavel-storage",
  "rustlavel-telescope",
  "rustlavel-validation",
@@ -571,6 +572,15 @@ name = "rustlavel-mcp"
 version = "0.1.0"
 dependencies = [
  "rustlavel-client",
+ "rustlavel-core",
+ "rustlavel-http",
+ "tokio",
+]
+
+[[package]]
+name = "rustlavel-openapi"
+version = "0.1.0"
+dependencies = [
  "rustlavel-core",
  "rustlavel-http",
  "tokio",

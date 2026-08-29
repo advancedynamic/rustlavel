@@ -20,6 +20,9 @@ pub struct App {
     context: Option<ContextBuilder>,
     root: PathBuf,
     public: Option<PathBuf>,
+    /// Where the generated API document is served, when it is enabled.
+    #[cfg(feature = "openapi")]
+    openapi: Option<(rustlavel_openapi::Info, String)>,
 }
 
 impl App {
@@ -40,6 +43,8 @@ impl App {
             config,
             public: public.is_dir().then_some(public),
             root,
+            #[cfg(feature = "openapi")]
+            openapi: None,
         })
     }
 
@@ -52,6 +57,8 @@ impl App {
             config,
             root: PathBuf::from("."),
             public: None,
+            #[cfg(feature = "openapi")]
+            openapi: None,
         }
     }
 
@@ -97,6 +104,17 @@ impl App {
         self.state(engine)
     }
 
+    /// Serve a generated OpenAPI document, and a page that reads it.
+    ///
+    /// The document is built after every route is registered, which is why
+    /// this records the intent rather than mounting immediately: a document
+    /// generated now would describe an empty API.
+    #[cfg(feature = "openapi")]
+    pub fn openapi(mut self, info: rustlavel_openapi::Info) -> Self {
+        self.openapi = Some((info, "/openapi.json".to_string()));
+        self
+    }
+
     /// Replace the default 404 handler.
     pub fn fallback(mut self, handler: impl Handler) -> Self {
         self.router.fallback(handler);
@@ -117,6 +135,13 @@ impl App {
             self.router.get("/up", |_req: Request| async {
                 Response::json(rustlavel_core::Json::object([("status", "ok".into())]))
             });
+        }
+
+        // Generated last but one, so the document sees the application's
+        // routes and the health endpoint, but not the static-file fallback.
+        #[cfg(feature = "openapi")]
+        if let Some((info, path)) = self.openapi.take() {
+            rustlavel_openapi::mount(&mut self.router, &info, &path);
         }
 
         // Static files answer only what no route claimed.
