@@ -12,6 +12,7 @@ repository = "https://github.com/advancedynamic/rustlavel"
 [workspace.dependencies]
 rustlavel-core = { path = "crates/rustlavel-core", version = "0.1.0" }
 rustlavel-http = { path = "crates/rustlavel-http", version = "0.1.0" }
+rustlavel-i18n = { path = "crates/rustlavel-i18n", version = "0.1.0" }
 rustlavel-client = { path = "crates/rustlavel-client", version = "0.1.0" }
 rustlavel-cache = { path = "crates/rustlavel-cache", version = "0.1.0" }
 rustlavel-db = { path = "crates/rustlavel-db", version = "0.1.0" }
@@ -19,4 +20,6 @@ rustlavel-macros = { path = "crates/rustlavel-macros", version = "0.1.0" }
 rustlavel-view = { path = "crates/rustlavel-view", version = "0.1.0" }
 rustlavel-validation = { path = "crates/rustlavel-validation", version = "0.1.0" }
 rustlavel-telescope = { path = "crates/rustlavel-telescope", version = "0.1.0" }
+rustlavel-ai = { path = "crates/rustlavel-ai", version = "0.1.0" }
+rustlavel-queue = { path = "crates/rustlavel-queue", version = "0.1.0" }
 tokio = { version = "1", features = ["full"] }
