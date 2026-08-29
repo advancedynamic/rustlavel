@@ -56,6 +56,8 @@ pub use rustlavel_telescope::Telescope;
 pub use rustlavel_validation as validation;
 #[cfg(feature = "view")]
 pub use rustlavel_view as views;
+#[cfg(feature = "ws")]
+pub use rustlavel_ws as ws;
 #[cfg(feature = "view")]
 pub use view::{Views, engine_from_config};
 
@@ -97,6 +99,8 @@ pub mod prelude {
     pub use crate::Views;
     #[cfg(feature = "view")]
     pub use rustlavel_view::{Context as ViewContext, Engine};
+    #[cfg(feature = "ws")]
+    pub use rustlavel_ws::{Broadcaster, Message as WsMessage, WebSocket, websocket};
 }
 
 /// Helpers for writing application tests.

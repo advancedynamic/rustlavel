@@ -92,6 +92,7 @@ App::new()?
 | `rustlavel-telescope` | The debugging dashboard |
 | `rustlavel-metrics` | Prometheus metrics from the events already being emitted |
 | `rustlavel-openapi` | API documentation generated from the routes |
+| `rustlavel-ws` | WebSocket and broadcasting — private and presence channels |
 | `rustlavel-i18n` | Translations, plurals, locale detection |
 | `rustlavel-macros` | `#[derive(Model)]` |
 
@@ -173,8 +174,9 @@ tests — over 1,100 of them, including integration tests against a real
 PostgreSQL server and a real Redis. See [ROADMAP.md](ROADMAP.md) for what has
 landed and what has not.
 
-Not there yet: passkeys and an auth starter kit, a Livewire-style component
-layer, and a documentation site.
+Not there yet: passkeys and an auth starter kit, re-rendering an HTML form with
+its validation errors, a Livewire-style component layer, and a documentation
+site.
 
 ```bash
 cd framework

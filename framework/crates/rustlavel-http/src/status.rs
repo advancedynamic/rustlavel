@@ -3,6 +3,8 @@
 pub struct Status(pub u16);
 
 impl Status {
+    /// The handshake that hands a connection to another protocol.
+    pub const SWITCHING_PROTOCOLS: Status = Status(101);
     pub const OK: Status = Status(200);
     pub const CREATED: Status = Status(201);
     pub const NO_CONTENT: Status = Status(204);
@@ -46,6 +48,8 @@ impl Status {
 
     pub fn reason(self) -> &'static str {
         match self.0 {
+            100 => "Continue",
+            101 => "Switching Protocols",
             200 => "OK",
             201 => "Created",
             202 => "Accepted",
@@ -87,5 +91,45 @@ impl From<u16> for Status {
 impl std::fmt::Display for Status {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {}", self.0, self.reason())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_status_the_framework_sends_has_a_reason_phrase() {
+        // A missing arm renders as "101 Unknown" on the wire, which is what a
+        // WebSocket handshake looked like before this was noticed.
+        for status in [
+            Status::SWITCHING_PROTOCOLS,
+            Status::OK,
+            Status::CREATED,
+            Status::NO_CONTENT,
+            Status::FOUND,
+            Status::SEE_OTHER,
+            Status::NOT_MODIFIED,
+            Status::BAD_REQUEST,
+            Status::UNAUTHORIZED,
+            Status::FORBIDDEN,
+            Status::NOT_FOUND,
+            Status::METHOD_NOT_ALLOWED,
+            Status::PAYLOAD_TOO_LARGE,
+            Status::PAGE_EXPIRED,
+            Status::UNPROCESSABLE,
+            Status::TOO_MANY_REQUESTS,
+            Status::INTERNAL_ERROR,
+            Status::SERVICE_UNAVAILABLE,
+        ] {
+            assert_ne!(status.reason(), "Unknown", "{} has no reason phrase", status.code());
+        }
+    }
+
+    #[test]
+    fn an_informational_status_carries_no_body() {
+        assert!(Status::SWITCHING_PROTOCOLS.is_bodyless());
+        assert!(Status::NO_CONTENT.is_bodyless());
+        assert!(!Status::OK.is_bodyless());
     }
 }

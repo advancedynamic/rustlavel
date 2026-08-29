@@ -468,6 +468,7 @@ dependencies = [
  "rustlavel-telescope",
  "rustlavel-validation",
  "rustlavel-view",
+ "rustlavel-ws",
  "tokio",
 ]
 

@@ -115,7 +115,7 @@ Model publish: satu repo banyak crate (seperti `laravel/framework` berisi `illum
 - [x] OpenAPI di-generate dari route: `.describe()/.tag()/.param()/.responds()` + halaman docs
 - [x] Generator: `make:job`, `make:mail`, `make:notification`, `make:mcp-tool`
 - [x] Perintah aplikasi: `migrate`, `migrate:rollback/fresh/status`, `db:seed`, `queue:work`, `queue:failed`, `schedule:run`
-- [ ] Broadcasting/WebSocket ala Echo+Reverb — sedang dikerjakan
+- [x] `rustlavel-ws`: WebSocket (RFC 6455) from scratch + broadcasting; channel private & presence, backpressure membuang subscriber yang tertinggal
 - [ ] Feature flags ala Pennant — belum
 - [ ] `make:crud`, `tinker` — belum
 

@@ -1,0 +1,23 @@
+[package]
+name = "rustlavel-ws"
+description = "Rustlavel WebSockets: RFC 6455 handshake and framing, plus channel broadcasting"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-http.workspace = true
+tokio.workspace = true
+# The RFC 6455 handshake fingerprint (`Sec-WebSocket-Accept`) is SHA-1, and
+# SHA-1 is the one thing in this crate that is not written from scratch:
+# hand-rolling a hash primitive is a security risk, not an achievement. The
+# framing, the base64, and the channel protocol are all ours.
+sha1 = "0.10"
+
+[dev-dependencies]
+# `test-util` is not part of tokio's `full`, and the idle-timeout tests need a
+# paused clock so a sixty-second timer costs no wall time.
+tokio = { workspace = true, features = ["test-util"] }

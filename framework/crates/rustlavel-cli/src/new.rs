@@ -26,6 +26,7 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("telescope", &[]),
     ("validation", &[]),
     ("view", &["resources/views"]),
+    ("ws", &[]),
 ];
 
 pub fn run(args: &[String]) -> Result<(), String> {

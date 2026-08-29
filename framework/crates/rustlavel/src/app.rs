@@ -301,6 +301,12 @@ impl App {
         Server::new(router, context).listen(format!("{host}:{port}")).await
     }
 
+    /// The finished router and context, for serving on a listener of the
+    /// caller's own. Tests that need a real socket use this.
+    pub fn take_parts(self) -> (Router, Context) {
+        self.finish()
+    }
+
     /// A test client for this application, without binding a port.
     pub fn test_client(self) -> TestClient {
         let (router, context) = self.finish();

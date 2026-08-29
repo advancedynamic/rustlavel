@@ -44,7 +44,11 @@ impl Response {
         self.upgrade.is_some()
     }
 
-    pub(crate) fn take_upgrade(&mut self) -> Option<crate::upgrade::Upgrader> {
+    /// Take the upgrade out of a dispatched response.
+    ///
+    /// Public so a test can drive an upgrade through the router rather than
+    /// only over a real socket.
+    pub fn take_upgrade(&mut self) -> Option<crate::upgrade::Upgrader> {
         self.upgrade.take()
     }
 

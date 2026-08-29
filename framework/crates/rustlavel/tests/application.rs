@@ -223,3 +223,69 @@ mod openapi {
         client.get("/openapi").await.assert_ok().assert_see("Orders API");
     }
 }
+
+/// WebSocket over a real socket, which is the only way to exercise the server's
+/// upgrade path — the test client dispatches without one.
+#[cfg(feature = "ws")]
+mod websocket {
+    use super::*;
+    use rustlavel::server::Server;
+    use rustlavel::ws::{Message as WsMessage, WebSocket, websocket};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    async fn echo_server() -> std::net::SocketAddr {
+        let app = App::bare().routes(|r| {
+            r.get(
+                "/ws",
+                websocket(|mut socket: WebSocket, _req: Request| async move {
+                    while let Some(message) = socket.recv().await {
+                        if let WsMessage::Text(text) = message {
+                            let _ = socket.send(WsMessage::Text(format!("echo: {text}"))).await;
+                        }
+                    }
+                }),
+            );
+        });
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+
+        let (router, context) = app.take_parts();
+        tokio::spawn(async move {
+            let _ = Server::new(router, context).listen(address.to_string()).await;
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        address
+    }
+
+    #[tokio::test]
+    async fn a_client_can_handshake_and_exchange_a_message() {
+        let address = echo_server().await;
+        let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+
+        // The key is the RFC's own example, so the expected accept value is a
+        // published constant rather than something we computed ourselves.
+        let request = format!(
+            "GET /ws HTTP/1.1\r\nHost: {address}\r\nUpgrade: websocket\r\n\
+             Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\
+             Sec-WebSocket-Version: 13\r\n\r\n"
+        );
+        stream.write_all(request.as_bytes()).await.unwrap();
+
+        let mut buffer = [0u8; 1024];
+        let read = stream.read(&mut buffer).await.unwrap();
+        let response = String::from_utf8_lossy(&buffer[..read]).to_string();
+
+        assert!(response.starts_with("HTTP/1.1 101 Switching Protocols"), "{response}");
+        assert!(response.contains("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="), "{response}");
+
+        // A masked text frame saying "hi".
+        let frame = [0x81, 0x82, 0x00, 0x00, 0x00, 0x00, b'h', b'i'];
+        stream.write_all(&frame).await.unwrap();
+
+        let read = stream.read(&mut buffer).await.unwrap();
+        let echoed = String::from_utf8_lossy(&buffer[..read]).to_string();
+        assert!(echoed.contains("echo: hi"), "{echoed:?}");
+    }
+}
