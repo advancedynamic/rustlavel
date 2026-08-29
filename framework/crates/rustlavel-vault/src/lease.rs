@@ -42,6 +42,27 @@ impl Lease {
         Lease { id: id.into(), duration, renewable, issued: Instant::now() }
     }
 
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn duration(&self) -> Duration {
+        self.duration
+    }
+
+    pub fn renewable(&self) -> bool {
+        self.renewable
+    }
+
+    /// Whether there is no deadline at all — a root token, or a static secret.
+    ///
+    /// A zero duration means "does not expire", not "expired". Reading it the
+    /// other way round is how a renewal loop ends up spinning against something
+    /// that never needed renewing.
+    pub fn never_expires(&self) -> bool {
+        self.duration.is_zero()
+    }
+
     /// Whether there is a lease at all.
     pub fn exists(&self) -> bool {
         !self.id.is_empty() || !self.duration.is_zero()

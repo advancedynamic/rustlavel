@@ -12,15 +12,22 @@
 //!
 //! Written from scratch on the published HTTP API, over `rustlavel-client`.
 
+pub mod auth;
 pub mod client;
+pub mod database;
 pub mod error;
 pub mod fake;
+pub mod kv;
 pub mod lease;
+pub mod leases;
 pub mod plugin;
 pub mod renew;
 pub mod resolve;
 
+pub use auth::{AppRole, Kubernetes, Login, Token, UserPass};
 pub use client::{VaultClient, VaultResponse};
+pub use database::{DatabaseCredentials, DatabaseSecrets};
+pub use kv::{Kv, Secret as KvSecret, SecretMetadata};
 pub use error::VaultError;
 pub use fake::{Fake, FakeVault};
 pub use lease::Lease;

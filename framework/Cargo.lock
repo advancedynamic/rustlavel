@@ -469,6 +469,7 @@ dependencies = [
  "rustlavel-storage",
  "rustlavel-telescope",
  "rustlavel-validation",
+ "rustlavel-vault",
  "rustlavel-view",
  "rustlavel-ws",
  "tokio",
@@ -674,6 +675,7 @@ version = "0.1.0"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
+ "rustlavel-db",
  "rustlavel-http",
  "tokio",
 ]

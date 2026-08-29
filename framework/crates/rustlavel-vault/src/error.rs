@@ -35,6 +35,14 @@ pub enum VaultError {
     Unexpected { status: u16, message: String },
     /// The request never reached the server.
     Transport(String),
+    /// The store answered successfully, with something this driver cannot read.
+    ///
+    /// Distinct from every variant above, which are the store saying no. This
+    /// one is the store saying yes and handing over a shape we did not expect —
+    /// a KV version 1 mount read as version 2, or credentials with no password
+    /// in them. Retrying cannot help, and treating it as a plain failure would
+    /// hide the one detail that explains it: which path, and what was wrong.
+    Malformed { path: String, message: String },
 }
 
 impl VaultError {
@@ -135,6 +143,9 @@ impl std::fmt::Display for VaultError {
             }
             VaultError::Transport(message) => {
                 write!(f, "could not reach the secret store: {message}")
+            }
+            VaultError::Malformed { path, message } => {
+                write!(f, "the reply from `{path}` was not what this driver expected: {message}")
             }
         }
     }

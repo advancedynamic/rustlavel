@@ -38,6 +38,7 @@ rustlavel/
         ├── rustlavel-mcp/        # MCP server + client
         ├── rustlavel-oauth/      # OAuth 2.1 vocabulary + the client half (social login)
         ├── rustlavel-oauth-provider/ # being an OAuth 2.1 authorization server
+        ├── rustlavel-vault/      # secrets from OpenBao / HashiCorp Vault
         ├── rustlavel-telescope/  # the debugging dashboard
         ├── rustlavel-metrics/    # Prometheus, from the event bus
         ├── rustlavel-openapi/    # API docs generated from the routes
@@ -197,6 +198,38 @@ One thing this unlocked: MySQL's `caching_sha2_password` full path sends the pas
 itself, and the driver refused it outright because there was no private channel. There is
 now, so it works — which matters because that is MySQL 8's default plugin, and the old error
 told people to downgrade their account to `mysql_native_password` instead.
+
+## Phase 1.1 — Secrets ✅ done
+
+A database password in `.env` is a password in a file that gets copied into a backup, a
+container image, a screenshot and eventually a repository. `rustlavel-vault` takes it out.
+
+- [x] One package for **OpenBao and HashiCorp Vault** — OpenBao is a fork of Vault from
+      before the licence changed to BUSL, and the HTTP API is the same one. Nothing compiles
+      against either project, so neither licence reaches the binary
+- [x] Authentication: token, AppRole, Kubernetes, userpass — every mount path overridable
+- [x] KV v2: read, versions, patch, soft delete, undelete, destroy, list, metadata
+- [x] **Dynamic database credentials** — the store creates a database account for this
+      process and deletes it when the lease ends. Verified end to end against a real
+      PostgreSQL: issue, connect, revoke, and the account is gone
+- [x] Leases renewed at two thirds, in a background task that survives a failed renewal
+- [x] `DATABASE_URL=vault:secret/data/myapp#database_url` resolved at boot, each path
+      fetched once however many fields come from it
+- [x] `Vault::fake()`, so an application's tests never need a running store
+- [x] 11 integration tests against a live OpenBao 2.6.2 beside the unit tests
+
+Decisions worth recording:
+
+- **An unresolvable reference is a hard error at boot**, not an empty string. An empty
+  password does not fail where it was configured; it fails minutes later inside a connection
+  pool, with a message that names neither the secret nor the key.
+- **No fallback syntax.** `vault:path#field|default` is refused, because the syntax cannot
+  tell a harmless default from a password, and a default standing in for a secret means
+  booting on the wrong credential.
+- **The token never enters a `Lease`.** Vault's only id-shaped field on a login reply is the
+  token itself, and `Lease` derives `Debug` — that is one `{:?}` from a log file.
+- **A sealed store is not retried.** Retrying cannot unseal it; it only buries the log line
+  that explains the outage.
 
 ## Phase 1.0+ — Ecosystem (partly)
 

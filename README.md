@@ -91,6 +91,7 @@ App::new()?
 | `rustlavel-mcp` | Model Context Protocol, server and client |
 | `rustlavel-oauth` | Sign in through Google, GitHub and the rest — OAuth 2.1 with mandatory PKCE |
 | `rustlavel-oauth-provider` | Be the provider: authorization code, refresh rotation, revocation, introspection |
+| `rustlavel-vault` | Secrets from OpenBao or HashiCorp Vault, including dynamic database credentials |
 | `rustlavel-telescope` | The debugging dashboard |
 | `rustlavel-metrics` | Prometheus metrics from the events already being emitted |
 | `rustlavel-openapi` | API documentation generated from the routes |

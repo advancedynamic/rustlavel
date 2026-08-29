@@ -15,3 +15,6 @@ tokio.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true }
+# Only to prove a dynamic credential really opens a database connection, and
+# really stops working once its lease is revoked. Never a real dependency.
+rustlavel-db.workspace = true

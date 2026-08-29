@@ -32,6 +32,8 @@ pub use rustlavel_client as client;
 pub use rustlavel_db as db;
 #[cfg(feature = "i18n")]
 pub use rustlavel_i18n as i18n;
+#[cfg(feature = "vault")]
+pub use rustlavel_vault as vault;
 #[cfg(feature = "oauth")]
 pub use rustlavel_oauth as oauth;
 #[cfg(feature = "oauth-provider")]

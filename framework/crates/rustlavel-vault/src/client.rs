@@ -16,12 +16,16 @@ use std::time::Duration;
 pub const TOKEN_HEADER: &str = "X-Vault-Token";
 /// Namespaces are an Enterprise feature in Vault and present in OpenBao.
 pub const NAMESPACE_HEADER: &str = "X-Vault-Namespace";
+/// What a KV v2 patch must declare, or Vault answers 415.
+pub const MERGE_PATCH_CONTENT_TYPE: &str = "application/merge-patch+json";
 
 /// What the store answered, unwrapped from the envelope every reply shares.
 #[derive(Debug, Clone)]
 pub struct VaultResponse {
     /// The `data` object — the part callers actually want.
     pub data: Json,
+    /// The reply as it arrived, kept for fields the envelope does not name.
+    raw: Json,
     /// The `auth` object, present on a login.
     pub auth: Json,
     pub lease: Lease,
@@ -40,25 +44,31 @@ impl VaultResponse {
         let duration = json.get("lease_duration").and_then(Json::as_i64).unwrap_or(0);
         let renewable = json.get("renewable").and_then(Json::as_bool).unwrap_or(false);
 
-        // A login puts the lease on the auth object rather than at the top
+        // A login puts its timing on the auth object rather than at the top
         // level, and reads the other way round. Taking whichever is present
         // avoids every caller having to know which shape it asked for.
+        //
+        // The *id* is deliberately not taken from the auth object. Vault's
+        // nearest equivalent there is `client_token`, and that is the
+        // credential itself — putting it in a field of a `Debug` type is how a
+        // token reaches a log. A token needs no id to be renewed anyway:
+        // `auth/token/renew-self` identifies it by the header it is sent with.
         let auth = json.get("auth").cloned().unwrap_or(Json::Null);
-        let (lease_id, duration, renewable) = if lease_id.is_empty() && !auth.is_null() {
+        let (duration, renewable) = if lease_id.is_empty() && !auth.is_null() {
             (
-                auth.get("client_token").and_then(Json::as_str).unwrap_or("").to_string(),
                 auth.get("lease_duration").and_then(Json::as_i64).unwrap_or(0),
                 auth.get("renewable").and_then(Json::as_bool).unwrap_or(false),
             )
         } else {
-            (lease_id.to_string(), duration, renewable)
+            (duration, renewable)
         };
 
         Ok(VaultResponse {
             data: json.get("data").cloned().unwrap_or(Json::Null),
+            raw: json.clone(),
             auth,
             lease: Lease::new(
-                lease_id,
+                lease_id.to_string(),
                 Duration::from_secs(duration.max(0) as u64),
                 renewable,
             ),
@@ -68,6 +78,12 @@ impl VaultResponse {
                 .map(|items| items.iter().filter_map(Json::as_str).map(str::to_string).collect())
                 .unwrap_or_default(),
         })
+    }
+
+    /// The whole reply, for the rare caller that needs a field the envelope
+    /// does not name.
+    pub fn json(&self) -> &Json {
+        &self.raw
     }
 
     /// A string field out of `data`, by dotted path.
@@ -170,6 +186,12 @@ impl VaultClient {
         self.token.read().map(|token| token.clone()).unwrap_or_default()
     }
 
+    /// Forget the token — after revoking it, so a later call fails as
+    /// "no token" rather than silently reusing a dead one.
+    pub fn clear_token(&self) {
+        self.set_token("");
+    }
+
     pub fn has_token(&self) -> bool {
         !self.token().is_empty()
     }
@@ -193,6 +215,15 @@ impl VaultClient {
 
     pub async fn delete(&self, path: &str) -> Result<VaultResponse> {
         self.send(Method::Delete, path, None).await
+    }
+
+    /// A PATCH, which KV v2 uses to change some fields and leave the rest.
+    ///
+    /// Sent as `application/merge-patch+json`, which is not a detail: Vault
+    /// answers a PATCH declaring plain `application/json` with a 415, and the
+    /// error says nothing about content types.
+    pub async fn patch(&self, path: &str, body: Json) -> Result<VaultResponse> {
+        self.send(Method::Patch, path, Some(body)).await
     }
 
     /// A LIST, which Vault spells as a query parameter rather than a method,
@@ -248,6 +279,10 @@ impl VaultClient {
         }
         if let Some(body) = body {
             request = request.json(body);
+            if method == Method::Patch {
+                // After `json`, which sets `application/json` — see `patch`.
+                request = request.header("content-type", MERGE_PATCH_CONTENT_TYPE);
+            }
         }
 
         let response = request.send().await.map_err(|e| VaultError::Transport(e.to_string()))?;
@@ -266,6 +301,7 @@ impl VaultClient {
         if text.trim().is_empty() {
             return Ok(VaultResponse {
                 data: Json::Null,
+                raw: Json::Null,
                 auth: Json::Null,
                 lease: Lease::none(),
                 warnings: Vec::new(),
@@ -362,7 +398,7 @@ mod tests {
     }
 
     #[test]
-    fn takes_the_lease_off_the_auth_object_on_a_login() {
+    fn takes_the_timing_off_the_auth_object_on_a_login() {
         // A login puts it there instead of at the top level, and a renewer that
         // looked only at the top level would never renew a token.
         let response = VaultResponse::parse(
@@ -374,6 +410,25 @@ mod tests {
         assert_eq!(response.lease.duration, Duration::from_secs(3600));
         assert!(response.lease.renewable);
         assert_eq!(response.auth.get("client_token").and_then(Json::as_str), Some("s.abc"));
+    }
+
+    #[test]
+    fn a_login_never_puts_the_token_into_the_lease() {
+        // `Lease` derives `Debug`, so anything stored in it is one `{:?}` away
+        // from a log file. Vault's only id-shaped field on an auth reply is the
+        // token itself, which is exactly what must not go there.
+        let response = VaultResponse::parse(
+            r#"{"lease_id":"","lease_duration":3600,"data":null,
+                "auth":{"client_token":"s.verysecrettoken","lease_duration":3600,
+                        "renewable":true}}"#,
+        )
+        .unwrap();
+
+        assert!(response.lease.id.is_empty(), "the token became a lease id");
+        assert!(
+            !format!("{:?}", response.lease).contains("verysecrettoken"),
+            "the token reached a Debug output"
+        );
     }
 
     #[test]

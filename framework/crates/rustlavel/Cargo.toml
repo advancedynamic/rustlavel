@@ -27,6 +27,7 @@ rustlavel-queue = { workspace = true, optional = true }
 rustlavel-storage = { workspace = true, optional = true }
 rustlavel-telescope = { workspace = true, optional = true }
 rustlavel-validation = { workspace = true, optional = true }
+rustlavel-vault = { workspace = true, optional = true }
 rustlavel-view = { workspace = true, optional = true }
 rustlavel-ws = { workspace = true, optional = true }
 
@@ -55,6 +56,8 @@ queue = ["dep:rustlavel-queue", "db"]
 storage = ["dep:rustlavel-storage"]
 telescope = ["dep:rustlavel-telescope"]
 validation = ["dep:rustlavel-validation"]
+# Secrets from OpenBao or HashiCorp Vault. Needs the outbound HTTP client.
+vault = ["dep:rustlavel-vault", "client"]
 view = ["dep:rustlavel-view"]
 ws = ["dep:rustlavel-ws"]
 # Everything the framework currently ships, for trying it out.
@@ -75,6 +78,7 @@ full = [
     "storage",
     "telescope",
     "validation",
+    "vault",
     "view",
     "ws",
 ]

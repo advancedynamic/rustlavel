@@ -27,6 +27,7 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("storage", &["storage/app"]),
     ("telescope", &[]),
     ("validation", &[]),
+    ("vault", &[]),
     ("view", &["resources/views"]),
     ("ws", &[]),
 ];
