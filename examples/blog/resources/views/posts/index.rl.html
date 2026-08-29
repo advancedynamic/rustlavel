@@ -1,0 +1,18 @@
+@extends("layout")
+
+@section("title", "Posts")
+
+@section("content")
+  <h1>Posts</h1>
+
+  @if(posts)
+    @foreach(posts as post)
+      <article>
+        <h2><a href="/posts/{{ post.id }}">{{ post.title }}</a></h2>
+        <p class="muted">Post {{ loop.iteration }} of {{ loop.count }}</p>
+      </article>
+    @endforeach
+  @else
+    <p class="muted">Nothing published yet. <a href="/posts/new">Write the first one.</a></p>
+  @endif
+@endsection

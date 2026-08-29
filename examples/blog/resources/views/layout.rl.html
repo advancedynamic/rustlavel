@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>@yield("title", "Blog")</title>
+<style>
+  :root { color-scheme: light dark; --bg:#faf9f7; --fg:#1c1b1a; --muted:#6b6864;
+          --line:#e5e2dd; --accent:#b4483c; --panel:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#181716; --fg:#eceae7; --muted:#9a958e; --line:#2e2c29;
+            --accent:#e0796c; --panel:#201f1d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:16px/1.65 ui-serif,Georgia,serif; }
+  main { max-width: 680px; margin: 0 auto; padding: 56px 24px 96px; }
+  nav { font-family: ui-sans-serif,-apple-system,sans-serif; font-size:14px;
+        display:flex; gap:20px; padding-bottom:20px; border-bottom:1px solid var(--line); }
+  nav a { color:var(--muted); text-decoration:none; }
+  nav a:hover { color:var(--accent); }
+  h1 { font-size:30px; margin:32px 0 8px; line-height:1.2; }
+  h2 { font-size:22px; margin:0 0 4px; }
+  h2 a { color:var(--fg); text-decoration:none; }
+  h2 a:hover { color:var(--accent); }
+  article { padding:24px 0; border-bottom:1px solid var(--line); }
+  .muted { color:var(--muted); font-size:14px;
+           font-family: ui-sans-serif,-apple-system,sans-serif; }
+  form { display:grid; gap:14px; max-width:520px; margin-top:24px; }
+  label { font-family: ui-sans-serif,-apple-system,sans-serif; font-size:13px;
+          color:var(--muted); display:grid; gap:5px; }
+  input, textarea { font:inherit; padding:9px 11px; border:1px solid var(--line);
+                    border-radius:6px; background:var(--panel); color:var(--fg); }
+  textarea { min-height:180px; resize:vertical; font-size:15px; }
+  button { font-family: ui-sans-serif,-apple-system,sans-serif; font-size:14px;
+           font-weight:600; padding:9px 18px; border:0; border-radius:6px;
+           background:var(--accent); color:#fff; cursor:pointer; justify-self:start; }
+</style>
+</head>
+<body>
+<main>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/posts">Posts</a>
+    <a href="/posts/new">Write</a>
+  </nav>
+  @yield("content")
+</main>
+</body>
+</html>

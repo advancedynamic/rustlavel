@@ -5,7 +5,8 @@ Rustlavel adalah framework web Rust full-stack terinspirasi **Laravel 13**, diba
 ## Struktur repo
 
 - `ROADMAP.md` — visi, prinsip desain, fase pengerjaan, keputusan yang sudah diambil.
-- `framework/` — **semua kode** (Cargo workspace). Jangan menaruh kode di luar folder ini.
+- `framework/` — **kode framework** (Cargo workspace). Semua crate framework ada di sini.
+- `examples/blog/` — aplikasi contoh; workspace-nya sendiri, bergantung ke framework lewat path. Bukan member workspace framework.
 - File AI/dokumentasi proses (seperti file ini) tinggal di root, di luar `framework/`.
 
 ## Workspace (`framework/crates/`)

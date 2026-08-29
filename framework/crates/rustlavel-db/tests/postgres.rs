@@ -255,7 +255,7 @@ async fn migrations_apply_are_idempotent_and_roll_back() {
 // --- The ORM ---
 
 #[derive(Model, Default, Debug, Clone, PartialEq)]
-#[model(table = "orm_authors")]
+#[model(table = "orm_authors", crate = "rustlavel_db")]
 struct Author {
     #[model(primary_key, generated)]
     id: i64,
@@ -300,7 +300,7 @@ async fn a_derived_model_can_be_created_read_updated_and_deleted() {
 /// A second pair of tables, so the relation test never races the CRUD test for
 /// the same schema objects while both run concurrently.
 #[derive(Model, Default, Debug, Clone)]
-#[model(table = "rel_authors")]
+#[model(table = "rel_authors", crate = "rustlavel_db")]
 struct RelAuthor {
     #[model(primary_key, generated)]
     id: i64,
@@ -308,7 +308,7 @@ struct RelAuthor {
 }
 
 #[derive(Model, Default, Debug, Clone)]
-#[model(table = "rel_books")]
+#[model(table = "rel_books", crate = "rustlavel_db")]
 struct RelBook {
     #[model(primary_key, generated)]
     id: i64,

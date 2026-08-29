@@ -24,6 +24,8 @@ pub struct Attributes {
     pub column: Option<String>,
     pub primary_key: bool,
     pub skip: bool,
+    /// The path the generated code reaches the database package through.
+    pub krate: Option<String>,
     /// Managed by the database; excluded from inserts and updates.
     pub generated: bool,
 }
@@ -188,6 +190,7 @@ fn merge_attributes(into: &mut Attributes, stream: TokenStream) -> Result<(), St
 
         match (key.as_str(), value) {
             ("table", Some(value)) => into.table = Some(value),
+            ("crate", Some(value)) => into.krate = Some(value),
             ("column", Some(value)) => into.column = Some(value),
             ("primary_key", _) => into.primary_key = true,
             ("skip", _) => into.skip = true,
@@ -195,7 +198,7 @@ fn merge_attributes(into: &mut Attributes, stream: TokenStream) -> Result<(), St
             (other, _) => {
                 return Err(format!(
                     "unknown `#[model]` option `{other}`. Known options: table, column, \
-                     primary_key, skip, generated"
+                     primary_key, skip, generated, crate"
                 ));
             }
         }

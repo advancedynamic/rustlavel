@@ -26,6 +26,10 @@ use proc_macro::TokenStream;
 ///
 /// Defaults follow Laravel's conventions: the table is the pluralised,
 /// snake_cased struct name, and a field called `id` is the primary key.
+///
+/// The generated code reaches the database package through `::rustlavel::db`,
+/// since that is the dependency an application declares. A crate depending on
+/// `rustlavel-db` directly overrides it with `#[model(crate = "rustlavel_db")]`.
 #[proc_macro_derive(Model, attributes(model))]
 pub fn derive_model(input: TokenStream) -> TokenStream {
     match parse::parse_struct(input).and_then(expand) {
@@ -45,6 +49,11 @@ fn expand(parsed: Struct) -> Result<TokenStream, String> {
     }
 
     let table = attributes.table.clone().unwrap_or_else(|| pluralize(&snake_case(&name)));
+
+    // Applications depend on the meta-crate, not on the database package
+    // directly, so that is the path the generated code takes. A crate using
+    // rustlavel-db on its own says so with `#[model(crate = "rustlavel_db")]`.
+    let db = attributes.krate.clone().unwrap_or_else(|| "::rustlavel::db".to_string());
 
     let primary = stored
         .iter()
@@ -97,7 +106,7 @@ fn expand(parsed: Struct) -> Result<TokenStream, String> {
         .iter()
         .map(|field| {
             format!(
-                "            ({:?}, ::rustlavel_db::Value::from(self.{}.clone())),",
+                "            ({:?}, {db}::Value::from(self.{}.clone())),",
                 column_of(field),
                 field.name
             )
@@ -107,14 +116,14 @@ fn expand(parsed: Struct) -> Result<TokenStream, String> {
 
     let generated = format!(
         r#"
-impl ::rustlavel_db::model::Model for {name} {{
+impl {db}::model::Model for {name} {{
     type Key = {primary_type};
 
     const TABLE: &'static str = {table:?};
     const PRIMARY_KEY: &'static str = {primary_column:?};
     const COLUMNS: &'static str = {column_list:?};
 
-    fn from_row(row: &::rustlavel_db::Row) -> ::rustlavel_db::Result<Self> {{
+    fn from_row(row: &{db}::Row) -> {db}::Result<Self> {{
         Ok({name} {{
 {from_row}
 {rest}        }})
@@ -128,7 +137,7 @@ impl ::rustlavel_db::model::Model for {name} {{
         self.{primary_field} = key;
     }}
 
-    fn values(&self) -> ::std::vec::Vec<(&'static str, ::rustlavel_db::Value)> {{
+    fn values(&self) -> ::std::vec::Vec<(&'static str, {db}::Value)> {{
         ::std::vec![
 {to_values}
         ]

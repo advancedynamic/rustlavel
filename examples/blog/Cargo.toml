@@ -1,0 +1,19 @@
+[workspace]
+
+[package]
+name = "blog"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "blog"
+path = "src/lib.rs"
+
+[[bin]]
+name = "blog"
+path = "src/main.rs"
+
+[dependencies]
+rustlavel = { path = "../../framework/crates/rustlavel", features = ["db", "view", "validation"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

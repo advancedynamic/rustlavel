@@ -1,0 +1,19 @@
+@extends("layout")
+
+@section("title", "Write a post")
+
+@section("content")
+  <h1>Write a post</h1>
+
+  <form method="post" action="/posts">
+    <label>
+      Title
+      <input name="title" maxlength="120" required>
+    </label>
+    <label>
+      Body
+      <textarea name="body" required></textarea>
+    </label>
+    <button type="submit">Publish</button>
+  </form>
+@endsection

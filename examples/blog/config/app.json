@@ -1,0 +1,7 @@
+{
+  "name": "${APP_NAME:Blog}",
+  "env": "${APP_ENV:local}",
+  "url": "${APP_URL:http://localhost:8000}",
+  "timezone": "UTC",
+  "locale": "en"
+}
