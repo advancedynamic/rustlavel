@@ -8,6 +8,7 @@
 pub mod base64;
 pub mod builder;
 pub mod config;
+pub mod credentials;
 pub mod dialect;
 pub mod driver;
 pub mod migration;

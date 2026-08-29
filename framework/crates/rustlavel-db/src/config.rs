@@ -25,6 +25,10 @@ pub struct DatabaseConfig {
     /// A PEM file of trust anchors, for `verify-ca` and `verify-full` against a
     /// private CA. `None` uses the public roots.
     pub tls_root_certificate: Option<String>,
+    /// Credentials that may be replaced while the process runs, for a dynamic
+    /// account issued by a secret store. `None` means `user` and `password`
+    /// above are the whole story and never change.
+    pub credentials: Option<crate::credentials::Credentials>,
 }
 
 impl Default for DatabaseConfig {
@@ -42,6 +46,7 @@ impl Default for DatabaseConfig {
             query_timeout: Duration::from_secs(30),
             tls_mode: crate::tls::TlsMode::default(),
             tls_root_certificate: None,
+            credentials: None,
         }
     }
 }
@@ -155,6 +160,27 @@ impl DatabaseConfig {
         }
 
         Ok(config)
+    }
+
+    /// This configuration with the credentials that are current *now*.
+    ///
+    /// Every driver calls this on the way into a connect rather than reading
+    /// `user` and `password` directly, which is the single point where a
+    /// rotation takes effect. Without it a rotated credential would sit in the
+    /// config being ignored.
+    pub fn resolved(&self) -> DatabaseConfig {
+        let Some(credentials) = &self.credentials else { return self.clone() };
+
+        let (user, password) = credentials.current();
+        DatabaseConfig { user, password, ..self.clone() }
+    }
+
+    /// Which generation of credentials a connection opened now belongs to.
+    ///
+    /// Zero when nothing rotates, so a pool holding static credentials never
+    /// retires anything.
+    pub fn generation(&self) -> u64 {
+        self.credentials.as_ref().map_or(0, |credentials| credentials.generation())
     }
 
     /// The dialect this configuration implies.

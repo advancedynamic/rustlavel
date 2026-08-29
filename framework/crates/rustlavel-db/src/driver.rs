@@ -76,6 +76,15 @@ pub trait Driver: Send + Sync + 'static {
     fn max_connections(&self) -> usize {
         10
     }
+
+    /// Which generation of credentials a connection opened now would belong to.
+    ///
+    /// Zero when the driver's credentials never change, which is the common
+    /// case and the one that costs nothing: the pool compares the number it
+    /// stored against this, and zero always equals zero.
+    fn generation(&self) -> u64 {
+        0
+    }
 }
 
 #[cfg(test)]

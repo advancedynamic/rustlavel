@@ -733,13 +733,17 @@ impl MySqlDriver {
 }
 
 impl Driver for MySqlDriver {
+    fn generation(&self) -> u64 {
+        self.config.generation()
+    }
+
     fn dialect(&self) -> Arc<dyn crate::dialect::Dialect> {
         Arc::clone(&self.dialect)
     }
 
     fn connect(&self) -> BoxFuture<'_, Result<Box<dyn DriverConnection>>> {
         Box::pin(async move {
-            let connection = MySqlConnection::connect(&self.config).await?;
+            let connection = MySqlConnection::connect(&self.config.resolved()).await?;
             Ok(Box::new(connection) as Box<dyn DriverConnection>)
         })
     }

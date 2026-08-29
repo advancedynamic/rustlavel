@@ -394,13 +394,17 @@ impl SqlServerDriver {
 }
 
 impl Driver for SqlServerDriver {
+    fn generation(&self) -> u64 {
+        self.config.generation()
+    }
+
     fn dialect(&self) -> Arc<dyn Dialect> {
         Arc::clone(&self.dialect)
     }
 
     fn connect(&self) -> BoxFuture<'_, Result<Box<dyn DriverConnection>>> {
         Box::pin(async move {
-            let connection = SqlServerConnection::connect_with(&self.config, self.options).await?;
+            let connection = SqlServerConnection::connect_with(&self.config.resolved(), self.options).await?;
             Ok(Box::new(connection) as Box<dyn DriverConnection>)
         })
     }

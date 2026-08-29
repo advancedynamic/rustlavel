@@ -231,6 +231,42 @@ Decisions worth recording:
 - **A sealed store is not retried.** Retrying cannot unseal it; it only buries the log line
   that explains the outage.
 
+## Phase 1.2 — Rotating database credentials ✅ done
+
+A dynamic credential has a `max_ttl`, not just a `ttl`. It cannot be renewed forever — that
+is the point of it — so a long-lived process eventually has to move onto a *new* account
+without restarting. Spring Boot has the same problem and solves it the same way
+(`HikariConfigMXBean` plus `softEvictConnections`); PHP never had it, because a process that
+dies after every request re-reads its credentials for free.
+
+The design was settled by measurement rather than assumption, and the measurement is now a
+test (`crates/rustlavel-db/tests/rotation.rs`):
+
+- A connection that is **already open** keeps working after its account is dropped.
+  PostgreSQL authenticates once, at connect time, and does not check again per query. No
+  query fails mid-flight and no transaction is torn in half.
+- A **new** connection with the old credentials is refused (`28P01`).
+
+So rotation interrupts nothing. The pool only has to stop *reusing* superseded connections:
+
+- [x] `Credentials` — a shared username and password with a generation counter, replaced by
+      whoever fetched the new one
+- [x] `DatabaseConfig::resolved()`, called by all three drivers on the way into a connect, so
+      a rotation takes effect at exactly one point
+- [x] The pool stores each idle connection beside the generation it was opened under; a stale
+      one is closed rather than handed out, and a borrowed one is closed when it comes back
+- [x] `Pool::retire_superseded()` to close idle stale connections eagerly, for a quiet pool
+- [x] Four integration tests against a real PostgreSQL 16 and OpenBao, including revoking the
+      first lease after a rotation and showing the process carries on serving
+
+Retiring old connections matters even though they still work: the point of a short-lived
+credential is that access ends when the lease does, and a pool quietly holding a session
+opened under a revoked account keeps that access alive for as long as the process runs.
+
+Deliberately **not** automatic — this crate does not depend on `rustlavel-vault`, and an
+application may get its credentials from somewhere this framework has never heard of. The
+application calls `credentials.rotate(user, password)`; nothing here reaches for a store.
+
 ## Phase 1.0+ — Ecosystem (partly)
 
 - [x] A worked example: `examples/blog`
