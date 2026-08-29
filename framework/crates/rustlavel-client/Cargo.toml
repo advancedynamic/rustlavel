@@ -14,6 +14,18 @@ tokio.workspace = true
 # TLS only. The framework writes its own protocols, but never its own
 # cryptography — a hand-rolled TLS stack would be a vulnerability, not a
 # feature.
+#
+# `aws_lc_rs` rather than `ring`, for `prefer-post-quantum`: it puts the
+# X25519MLKEM768 hybrid key exchange first in the ClientHello. Only the key
+# exchange is at risk from a quantum computer, and it is at risk *today* —
+# traffic recorded now can be decrypted once the machine exists, so this is
+# the one part of TLS that cannot wait for the threat to arrive. `ring`
+# offers no post-quantum group at all.
 tokio-rustls = "0.26"
-rustls = { version = "0.23", default-features = false, features = ["std", "ring", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = [
+    "std",
+    "aws_lc_rs",
+    "prefer-post-quantum",
+    "tls12",
+] }
 webpki-roots = "0.26"

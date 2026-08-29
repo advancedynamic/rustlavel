@@ -180,6 +180,23 @@ Decisions worth recording:
 - [ ] `rustlavel make:package` — scaffolding for third-party packages
 - [ ] Livewire-style server-driven components
 
+
+## Known gaps, stated plainly
+
+- **The PostgreSQL and MySQL drivers do not speak TLS.** Neither implements
+  PostgreSQL's `SSLRequest` nor MySQL's `CLIENT_SSL` capability flag, so a connection to
+  either travels in clear text: the password on the wire during authentication, and every
+  row afterwards. That is safe over a loopback or a private network segment and unsafe
+  anywhere else, and there is currently no configuration that changes it. The SQL Server
+  driver *is* encrypted, because TDS negotiates it inside the pre-login exchange and there
+  was no way to write that driver without it. This is the largest security gap in the
+  framework and it outranks anything else on this list.
+- **Passkeys / WebAuthn** — the remaining gap in `rustlavel-auth`.
+- **SQL Server connections get no post-quantum protection.** TDS pins them to TLS 1.2 and
+  the hybrid key exchange is TLS 1.3 only.
+- **Inbound TLS is not ours.** `rustlavel-http` serves plain HTTP and expects a reverse
+  proxy in front, so the post-quantum posture users see is that proxy's to configure.
+
 ---
 
 ## Decisions already made
@@ -197,5 +214,5 @@ Decisions worth recording:
 | API tokens | Opaque, SHA-256 at rest, `<id>|<secret>` — not JWT, so revocation works |
 | OAuth access tokens | Opaque by default, for the same reason |
 | PKCE | Mandatory on both halves, S256 only; `plain` is refused |
-| Post-quantum | Nothing yet. The framework's own crypto is symmetric (AES-GCM, HMAC, argon2) and already quantum-resistant; the exposure is TLS key exchange, which is `rustls`' to solve, not ours to write |
+| Post-quantum | The outbound HTTP client and SMTP lead their ClientHello with the X25519MLKEM768 hybrid (rustls + `aws_lc_rs` + `prefer-post-quantum`). Not written here, and never will be: PQC is cryptography. The framework's own crypto is symmetric (AES-GCM, HMAC, argon2) and already quantum-resistant |
 | GitHub | `advancedynamic/rustlavel` (a separate account; gh multi-account over HTTPS) |

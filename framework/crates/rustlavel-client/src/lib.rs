@@ -384,6 +384,13 @@ pub async fn connect(url: &Url, timeout: Duration) -> Result<Connection> {
 ///
 /// Trust anchors come from webpki-roots rather than the OS store, so behaviour
 /// is identical on a developer's laptop and in a scratch container.
+///
+/// The key exchange groups come from the provider chosen in `Cargo.toml`, and
+/// that choice is the one security decision in this function: with
+/// `prefer-post-quantum`, X25519MLKEM768 leads the list, so its key share goes
+/// out in the first ClientHello rather than costing a HelloRetryRequest. A
+/// server that does not know the group ignores it and picks X25519, so nothing
+/// is lost against one that has not caught up.
 fn tls_connector() -> tokio_rustls::TlsConnector {
     use std::sync::OnceLock;
     static CONNECTOR: OnceLock<tokio_rustls::TlsConnector> = OnceLock::new();
@@ -631,5 +638,46 @@ mod tests {
             .to_string();
 
         assert!(error.contains("127.0.0.1:1"), "{error}");
+    }
+
+    /// The one property of the TLS setup worth a test.
+    ///
+    /// Only the key exchange is at risk from a quantum computer, and it is at
+    /// risk *today*: an observer can record a handshake now and decrypt it once
+    /// the machine exists. Everything else in TLS — the symmetric cipher, the
+    /// certificate signature — either survives Grover comfortably or matters
+    /// only while the connection is live.
+    ///
+    /// So this asserts the hybrid group is offered, and that it is offered
+    /// first. Position is not cosmetic: rustls sends a key share only for the
+    /// leading groups, and a hybrid group listed last is one the server can
+    /// reach only by asking for a second round trip that most will not bother
+    /// with. Switching the provider back to `ring` silently loses this, which
+    /// is exactly the kind of regression a test should catch.
+    #[test]
+    fn the_key_exchange_leads_with_a_post_quantum_hybrid() {
+        // Built exactly the way `tls_connector` builds it, so this exercises the
+        // real resolution — `builder()` picking a provider from the crate
+        // features — rather than a provider named here.
+        let config = rustls::ClientConfig::builder()
+            .with_root_certificates(rustls::RootCertStore::empty())
+            .with_no_client_auth();
+
+        let offered: Vec<String> = config
+            .crypto_provider()
+            .kx_groups
+            .iter()
+            .map(|group| format!("{:?}", group.name()))
+            .collect();
+
+        assert_eq!(
+            offered.first().map(String::as_str),
+            Some("X25519MLKEM768"),
+            "the post-quantum hybrid must lead the ClientHello; offered: {offered:?}"
+        );
+        assert!(
+            offered.iter().any(|name| name == "X25519"),
+            "a classical group must remain, for servers that do not know the hybrid: {offered:?}"
+        );
     }
 }

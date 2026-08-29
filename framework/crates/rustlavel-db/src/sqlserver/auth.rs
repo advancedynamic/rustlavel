@@ -445,11 +445,17 @@ pub async fn start_tls(
 
 /// Build the TLS configuration, once per process.
 ///
-/// The provider is named rather than left to rustls to infer: a build that also
-/// pulls in `aws-lc-rs` — which `tokio-rustls` does by default — has two
-/// candidates and rustls refuses to guess between them. Saying `ring` here makes
-/// the choice a property of this driver rather than of whatever else happens to
-/// be in the dependency graph.
+/// The provider is named rather than left to rustls to infer: a build holding
+/// two candidates makes rustls refuse to guess, and naming it here makes the
+/// choice a property of this driver rather than of whatever else happens to be
+/// in the dependency graph.
+///
+/// It is `aws_lc_rs` to match the rest of the framework, not for the
+/// post-quantum key exchange that motivated the switch elsewhere: this
+/// connection is pinned to TLS 1.2 (see [`builder`]), and the X25519MLKEM768
+/// hybrid exists only in TLS 1.3. A SQL Server connection is therefore *not*
+/// protected against a recorded-now, decrypted-later attack, and cannot be
+/// until TDS and TLS 1.3 can be made to agree.
 fn client_config(options: TlsOptions) -> Arc<rustls::ClientConfig> {
     use std::sync::OnceLock;
     static TRUSTING: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
@@ -457,7 +463,7 @@ fn client_config(options: TlsOptions) -> Arc<rustls::ClientConfig> {
 
     if options.trust_server_certificate {
         Arc::clone(TRUSTING.get_or_init(|| {
-            let provider = Arc::new(rustls::crypto::ring::default_provider());
+            let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
             let verifier = Arc::new(TrustAnyCertificate(Arc::clone(&provider)));
             Arc::new(
                 builder(provider)
@@ -472,7 +478,7 @@ fn client_config(options: TlsOptions) -> Arc<rustls::ClientConfig> {
             // behaviour is identical on a laptop and in a scratch container.
             let roots = rustls::RootCertStore { roots: webpki_roots::TLS_SERVER_ROOTS.to_vec() };
             Arc::new(
-                builder(Arc::new(rustls::crypto::ring::default_provider()))
+                builder(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
                     .with_root_certificates(roots)
                     .with_no_client_auth(),
             )

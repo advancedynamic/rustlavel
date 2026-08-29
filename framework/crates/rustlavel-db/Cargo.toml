@@ -25,6 +25,16 @@ sha1 = "0.10"
 # pre-login exchange and the login packet is never sent in the clear. The
 # framework writes its own protocols, but never its own cryptography — a
 # hand-rolled TLS stack would be a vulnerability, not a feature.
+#
+# `aws_lc_rs` to match the other TLS crates. Two providers in one dependency
+# graph make rustls refuse to pick, so this is not a free choice per crate.
+# Note that the post-quantum key exchange does not reach this driver: TDS pins
+# the connection to TLS 1.2, and X25519MLKEM768 is TLS 1.3 only.
 tokio-rustls = "0.26"
-rustls = { version = "0.23", default-features = false, features = ["std", "ring", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = [
+    "std",
+    "aws_lc_rs",
+    "prefer-post-quantum",
+    "tls12",
+] }
 webpki-roots = "0.26"
