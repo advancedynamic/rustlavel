@@ -30,10 +30,16 @@ pub use rustlavel_client as client;
 pub use rustlavel_db as db;
 #[cfg(feature = "i18n")]
 pub use rustlavel_i18n as i18n;
+#[cfg(feature = "mail")]
+pub use rustlavel_mail as mail;
+#[cfg(feature = "mail")]
+pub use rustlavel_mail::Mail;
 #[cfg(feature = "mcp")]
 pub use rustlavel_mcp as mcp;
 #[cfg(feature = "openapi")]
 pub use rustlavel_openapi as openapi;
+#[cfg(feature = "queue")]
+pub use rustlavel_queue as queue;
 #[cfg(feature = "storage")]
 pub use rustlavel_storage as storage;
 #[cfg(feature = "telescope")]
@@ -75,6 +81,8 @@ pub mod prelude {
     pub use rustlavel_db::prelude::*;
     #[cfg(feature = "i18n")]
     pub use rustlavel_i18n::Translator;
+    #[cfg(feature = "queue")]
+    pub use rustlavel_queue::prelude::*;
     #[cfg(feature = "storage")]
     pub use rustlavel_storage::{Storage, Visibility};
     #[cfg(feature = "validation")]

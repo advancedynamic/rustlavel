@@ -94,6 +94,9 @@ fn help() {
     row("migrate:fresh", "Drop every table and migrate from scratch");
     row("migrate:status", "Show which migrations have run");
     row("db:seed", "Run the seeders");
+    row("queue:work", "Process background jobs");
+    row("queue:failed", "List jobs that gave up");
+    row("schedule:run", "Run the scheduler");
     row("doctor", "Diagnose why the app will not start");
     row("build", "Build the single deployable binary");
     row("key:generate", "Generate APP_KEY into .env");

@@ -17,8 +17,10 @@ rustlavel-cache = { workspace = true, optional = true }
 rustlavel-client = { workspace = true, optional = true }
 rustlavel-db = { workspace = true, optional = true }
 rustlavel-i18n = { workspace = true, optional = true }
+rustlavel-mail = { workspace = true, optional = true }
 rustlavel-mcp = { workspace = true, optional = true }
 rustlavel-openapi = { workspace = true, optional = true }
+rustlavel-queue = { workspace = true, optional = true }
 rustlavel-storage = { workspace = true, optional = true }
 rustlavel-telescope = { workspace = true, optional = true }
 rustlavel-validation = { workspace = true, optional = true }
@@ -36,8 +38,10 @@ cache = ["dep:rustlavel-cache"]
 client = ["dep:rustlavel-client"]
 db = ["dep:rustlavel-db"]
 i18n = ["dep:rustlavel-i18n"]
+mail = ["dep:rustlavel-mail", "view"]
 mcp = ["dep:rustlavel-mcp"]
 openapi = ["dep:rustlavel-openapi"]
+queue = ["dep:rustlavel-queue", "db"]
 storage = ["dep:rustlavel-storage"]
 telescope = ["dep:rustlavel-telescope"]
 validation = ["dep:rustlavel-validation"]
@@ -50,8 +54,10 @@ full = [
     "client",
     "db",
     "i18n",
+    "mail",
     "mcp",
     "openapi",
+    "queue",
     "storage",
     "telescope",
     "validation",

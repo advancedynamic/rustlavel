@@ -232,12 +232,12 @@ migration!(
 async fn migrations_apply_are_idempotent_and_roll_back() {
     let db = database!();
     db.run("drop table if exists m_widgets cascade").await.unwrap();
-    db.run("delete from rustlavel_migrations where name like '2026_08_29_000001%'")
-        .await
-        .ok();
+    db.run("drop table if exists db_test_migrations").await.ok();
 
     let migrations: Vec<&dyn Migration> = vec![&CreateWidgets];
-    let migrator = Migrator::new(&db, migrations);
+    // Its own tracking table: the queue crate's suite runs against the same
+    // database, and a shared table means one suite rolls back the other's batch.
+    let migrator = Migrator::new(&db, migrations).with_table("db_test_migrations").unwrap();
 
     let report = migrator.run().await.unwrap();
     assert_eq!(report.applied, vec!["2026_08_29_000001_create_widgets_table"]);

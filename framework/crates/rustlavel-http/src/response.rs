@@ -4,16 +4,48 @@ use crate::status::Status;
 use rustlavel_core::{Error, Json};
 
 /// An outgoing response.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Response {
     pub status: Status,
     pub headers: Headers,
     pub body: Vec<u8>,
+    /// Set when the handler answered `101` and wants the socket.
+    pub(crate) upgrade: Option<crate::upgrade::Upgrader>,
+}
+
+impl std::fmt::Debug for Response {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Response")
+            .field("status", &self.status)
+            .field("headers", &self.headers)
+            .field("body_len", &self.body.len())
+            .field("upgrades", &self.upgrade.is_some())
+            .finish()
+    }
 }
 
 impl Response {
     pub fn new(status: Status) -> Self {
-        Response { status, headers: Headers::new(), body: Vec::new() }
+        Response { status, headers: Headers::new(), body: Vec::new(), upgrade: None }
+    }
+
+    /// Answer `101` and hand the connection to another protocol.
+    ///
+    /// The caller sets whatever headers the new protocol's handshake requires;
+    /// this only arranges for the socket to be handed over afterwards.
+    pub fn upgrading(mut self, upgrade: impl crate::upgrade::Upgrade) -> Self {
+        self.status = Status(101);
+        self.upgrade = Some(std::sync::Arc::new(upgrade));
+        self
+    }
+
+    /// Whether this response takes the connection over.
+    pub fn upgrades(&self) -> bool {
+        self.upgrade.is_some()
+    }
+
+    pub(crate) fn take_upgrade(&mut self) -> Option<crate::upgrade::Upgrader> {
+        self.upgrade.take()
     }
 
     pub fn ok() -> Self {

@@ -9,6 +9,9 @@ use crate::schema::Schema;
 use crate::{Database, Value};
 use rustlavel_core::Result;
 
+/// Where applied migrations are recorded, unless a `Migrator` says otherwise.
+pub const DEFAULT_TABLE: &str = "rustlavel_migrations";
+
 /// One migration.
 ///
 /// `name` must be unique and sortable — the generator produces
@@ -96,11 +99,28 @@ pub struct MigrationReport {
 pub struct Migrator<'a> {
     db: &'a Database,
     migrations: Vec<&'a dyn Migration>,
+    /// Where applied migrations are recorded.
+    ///
+    /// Configurable so two suites can share one database without rolling back
+    /// each other's batches — which is exactly what happened the first time the
+    /// framework's own tests ran side by side.
+    table: String,
 }
 
 impl<'a> Migrator<'a> {
     pub fn new(db: &'a Database, migrations: Vec<&'a dyn Migration>) -> Self {
-        Migrator { db, migrations }
+        Migrator { db, migrations, table: DEFAULT_TABLE.to_string() }
+    }
+
+    /// Record applied migrations in a different table.
+    pub fn with_table(mut self, table: &str) -> Result<Self> {
+        crate::validate_identifier(table)?;
+        self.table = table.to_string();
+        Ok(self)
+    }
+
+    pub fn table(&self) -> &str {
+        &self.table
     }
 
     /// Create the tracking table if it is not there yet.
@@ -109,13 +129,14 @@ impl<'a> Migrator<'a> {
     /// worth of migrations rather than one migration.
     pub async fn prepare(&self) -> Result<()> {
         self.db
-            .run(
-                "create table if not exists rustlavel_migrations (\n  \
+            .run(&format!(
+                "create table if not exists \"{}\" (\n  \
                  id bigserial primary key,\n  \
                  name varchar(255) not null unique,\n  \
                  batch integer not null,\n  \
                  ran_at timestamptz not null default now()\n)",
-            )
+                self.table
+            ))
             .await?;
         Ok(())
     }
@@ -124,7 +145,7 @@ impl<'a> Migrator<'a> {
     pub async fn applied(&self) -> Result<Vec<String>> {
         let rows = self
             .db
-            .select("select name from rustlavel_migrations order by id", &[])
+            .select(&format!("select name from \"{}\" order by id", self.table), &[])
             .await?;
         rows.iter().map(|row| row.get::<String>("name")).collect()
     }
@@ -143,7 +164,7 @@ impl<'a> Migrator<'a> {
     async fn next_batch(&self) -> Result<i64> {
         let highest = self
             .db
-            .scalar::<Option<i64>>("select max(batch) from rustlavel_migrations", &[])
+            .scalar::<Option<i64>>(&format!("select max(batch) from \"{}\"", self.table), &[])
             .await?
             .flatten();
         Ok(highest.unwrap_or(0) + 1)
@@ -171,7 +192,10 @@ impl<'a> Migrator<'a> {
                 Ok(()) => {
                     self.db
                         .execute(
-                            "insert into rustlavel_migrations (name, batch) values ($1, $2)",
+                            &format!(
+                                "insert into \"{}\" (name, batch) values ($1, $2)",
+                                self.table
+                            ),
                             &[Value::from(migration.name()), Value::from(batch)],
                         )
                         .await?;
@@ -198,7 +222,7 @@ impl<'a> Migrator<'a> {
 
         let batch = self
             .db
-            .scalar::<Option<i64>>("select max(batch) from rustlavel_migrations", &[])
+            .scalar::<Option<i64>>(&format!("select max(batch) from \"{}\"", self.table), &[])
             .await?
             .flatten();
 
@@ -207,7 +231,10 @@ impl<'a> Migrator<'a> {
         let rows = self
             .db
             .select(
-                "select name from rustlavel_migrations where batch = $1 order by id desc",
+                &format!(
+                    "select name from \"{}\" where batch = $1 order by id desc",
+                    self.table
+                ),
                 &[Value::from(batch)],
             )
             .await?;
@@ -229,7 +256,7 @@ impl<'a> Migrator<'a> {
                 Ok(()) => {
                     self.db
                         .execute(
-                            "delete from rustlavel_migrations where name = $1",
+                            &format!("delete from \"{}\" where name = $1", self.table),
                             &[Value::from(name.as_str())],
                         )
                         .await?;

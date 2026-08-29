@@ -138,9 +138,25 @@ impl Server {
 
             request.context = self.context.clone();
             let is_head = request.method() == Method::Head;
-            let response = self.dispatch(request).await;
+            let mut response = self.dispatch(request).await;
 
-            let mut response = response;
+            // A handler that answered 101 wants the socket. Write the
+            // handshake, then stop speaking HTTP on this connection.
+            if let Some(upgrade) = response.take_upgrade() {
+                writer.write_all(&response.to_bytes(false)).await.map_err(Error::Io)?;
+                writer.flush().await.map_err(Error::Io)?;
+
+                let upgraded = crate::upgrade::Upgraded {
+                    reader: Box::new(reader),
+                    writer: Box::new(writer),
+                    // Anything already read past the request belongs to the new
+                    // protocol; dropping it would lose its first frame.
+                    buffered: std::mem::take(&mut buffer),
+                };
+                upgrade.run(upgraded).await;
+                return Ok(());
+            }
+
             if !keep_alive {
                 response.headers.set("connection", "close");
             }

@@ -18,6 +18,7 @@ pub mod router;
 pub mod server;
 pub mod status;
 pub mod testing;
+pub mod upgrade;
 pub mod url;
 
 pub use cookie::{Cookie, SameSite};
@@ -33,3 +34,4 @@ pub use router::{Resource, Route, RouteHandle, Router};
 pub use server::{Limits, Server};
 pub use status::Status;
 pub use testing::{TestClient, TestResponse};
+pub use upgrade::{Upgrade, Upgraded};
