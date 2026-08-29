@@ -296,7 +296,11 @@ impl Dialect for MySql {
 
     fn column_type(&self, kind: &ColumnType) -> String {
         match kind {
-            ColumnType::Id => "bigint unsigned not null auto_increment".into(),
+            // Signed, matching PostgreSQL's bigserial and SQL Server's bigint
+            // identity. MySQL's convention is unsigned, but then a `bigint`
+            // foreign key cannot reference it — MySQL requires the types to
+            // match exactly, signedness included.
+            ColumnType::Id => "bigint not null auto_increment".into(),
             // MySQL has no uuid type; 36 characters holds the canonical form.
             ColumnType::UuidId | ColumnType::Uuid => "char(36)".into(),
             ColumnType::SmallInteger => "smallint".into(),
@@ -566,7 +570,7 @@ mod tests {
     #[test]
     fn the_key_column_is_auto_incrementing_everywhere() {
         assert_eq!(Postgres.column_type(&ColumnType::Id), "bigserial");
-        assert_eq!(MySql.column_type(&ColumnType::Id), "bigint unsigned not null auto_increment");
+        assert_eq!(MySql.column_type(&ColumnType::Id), "bigint not null auto_increment");
         assert_eq!(SqlServer.column_type(&ColumnType::Id), "bigint identity(1,1)");
     }
 

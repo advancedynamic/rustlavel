@@ -169,19 +169,35 @@ impl Column {
             sql.push_str(&format!(" default {rendered}"));
         }
 
-        if let Some((table, column)) = &self.references {
-            validate_identifier(column, dialect.max_identifier_length())?;
-            sql.push_str(&format!(
-                " references {} ({})",
-                quote_qualified(dialect, table)?,
-                dialect.quote(column)
-            ));
-            if let Some(action) = self.on_delete {
-                sql.push_str(&format!(" on delete {action}"));
-            }
-        }
+        // No inline `references` here: MySQL parses one and silently creates
+        // no constraint at all, so foreign keys are emitted as table-level
+        // constraints by `foreign_key_sql` instead.
 
         Ok(sql)
+    }
+
+    /// The table-level constraint for this column's foreign key, if it has one.
+    fn foreign_key_sql(&self, dialect: &dyn Dialect, table: &str) -> Result<Option<String>> {
+        let Some((target, target_column)) = &self.references else { return Ok(None) };
+
+        let limit = dialect.max_identifier_length();
+        validate_identifier(target_column, limit)?;
+
+        // Laravel's naming, so a constraint can be found by the column it is on.
+        let name = format!("{table}_{}_foreign", self.name);
+        validate_identifier(&name, limit)?;
+
+        let mut sql = format!(
+            "constraint {} foreign key ({}) references {} ({})",
+            dialect.quote(&name),
+            dialect.quote(&self.name),
+            quote_qualified(dialect, target)?,
+            dialect.quote(target_column)
+        );
+        if let Some(action) = self.on_delete {
+            sql.push_str(&format!(" on delete {action}"));
+        }
+        Ok(Some(sql))
     }
 }
 
@@ -395,11 +411,19 @@ pub fn create_statements(
     define(&mut definition);
 
     let quoted = quote_qualified(dialect, table)?;
-    let columns: Result<Vec<String>> =
-        definition.columns.iter().map(|column| column.to_sql(dialect)).collect();
+    let mut lines: Vec<String> = definition
+        .columns
+        .iter()
+        .map(|column| column.to_sql(dialect))
+        .collect::<Result<_>>()?;
 
-    let mut statements =
-        vec![format!("create table {quoted} (\n  {}\n)", columns?.join(",\n  "))];
+    for column in &definition.columns {
+        if let Some(constraint) = column.foreign_key_sql(dialect, table)? {
+            lines.push(constraint);
+        }
+    }
+
+    let mut statements = vec![format!("create table {quoted} (\n  {}\n)", lines.join(",\n  "))];
     statements.extend(index_statements(dialect, table, &definition)?);
     Ok(statements)
 }
@@ -422,6 +446,11 @@ pub fn alter_statements(
             dialect.add_column_clause(),
             column.to_sql(dialect)?
         ));
+        // The constraint is a second statement: a column has to exist before
+        // anything can be declared about it.
+        if let Some(constraint) = column.foreign_key_sql(dialect, table)? {
+            statements.push(format!("alter table {quoted} add {constraint}"));
+        }
     }
     for name in &definition.drops {
         validate_identifier(name, dialect.max_identifier_length())?;
@@ -513,9 +542,17 @@ mod tests {
         })
         .unwrap();
 
-        assert!(statements[0].contains(
-            "\"user_id\" bigint not null references \"users\" (\"id\") on delete cascade"
-        ));
+        // A table-level constraint, not an inline `references`: MySQL parses an
+        // inline one and silently creates no foreign key at all.
+        assert!(statements[0].contains("\"user_id\" bigint not null,"), "{}", statements[0]);
+        assert!(
+            statements[0].contains(
+                "constraint \"posts_user_id_foreign\" foreign key (\"user_id\") \
+                 references \"users\" (\"id\") on delete cascade"
+            ),
+            "{}",
+            statements[0]
+        );
         assert_eq!(
             statements[1],
             "create index if not exists \"posts_user_id_index\" on \"posts\" (\"user_id\")"
@@ -596,7 +633,7 @@ mod tests {
 
         let mysql = create_statements(&MySql, "users", define).unwrap();
         assert!(
-            mysql[0].contains("`id` bigint unsigned not null auto_increment primary key"),
+            mysql[0].contains("`id` bigint not null auto_increment primary key"),
             "{}",
             mysql[0]
         );
