@@ -23,6 +23,9 @@ pub const CACHING_SHA2_PASSWORD: &str = "caching_sha2_password";
 /// [`insecure_plugin_error`].
 pub const MYSQL_CLEAR_PASSWORD: &str = "mysql_clear_password";
 
+/// The plugin MySQL names when it does not want to say the user is unknown.
+pub const SHA256_PASSWORD: &str = "sha256_password";
+
 /// `mysql_native_password`: `SHA1(password) XOR SHA1(scramble ++ SHA1(SHA1(password)))`.
 ///
 /// The server stores only `SHA1(SHA1(password))`, so it can verify the answer
@@ -138,6 +141,24 @@ pub fn insecure_plugin_error(plugin: &str) -> Error {
             "the server asked for `{plugin}`, which sends the password in the clear. This driver \
              refuses: a server that asks for it can read the password, and a server that has been \
              replaced by someone else can too."
+        ));
+    }
+
+    // `sha256_password` deserves its own sentence, because the usual reason for
+    // seeing it is not that anybody configured it. MySQL answers a login for a
+    // user that does not exist with a plugin chosen from the *name*, so that a
+    // stranger cannot learn which accounts are real by watching the handshake.
+    // Taken at face value the message below sends a developer off to implement
+    // an authentication plugin when the account has simply been deleted — which
+    // is exactly what happens when a dynamic credential's lease is revoked.
+    if plugin == SHA256_PASSWORD {
+        return Error::msg(format!(
+            "the server asked for the `{plugin}` authentication plugin, which this driver does \
+             not implement — but the more likely explanation is that this account does not \
+             exist. MySQL answers a login for an unknown user with a plugin picked from the \
+             user name, so that watching the handshake cannot reveal which accounts are real. \
+             Check the user name first; if the account really is configured for {plugin}, \
+             change it to {CACHING_SHA2_PASSWORD}."
         ));
     }
 
@@ -285,9 +306,23 @@ mod tests {
         let error = insecure_plugin_error(MYSQL_CLEAR_PASSWORD).to_string();
         assert!(error.contains("in the clear"), "{error}");
 
-        let error = insecure_plugin_error("sha256_password").to_string();
+        let error = insecure_plugin_error("some_other_plugin").to_string();
         assert!(error.contains("does not implement"), "{error}");
         assert!(error.contains(MYSQL_NATIVE_PASSWORD), "{error}");
+    }
+
+    #[test]
+    fn sha256_password_leads_with_the_reason_it_is_usually_seen() {
+        // Measured against MySQL 8.4: connecting as a user whose account has
+        // been deleted — a dynamic credential whose lease was revoked — is
+        // answered with `sha256_password`, because MySQL picks a plugin from
+        // the user name rather than admit the account is unknown. The literal
+        // reading of the old message sent you off to implement a plugin.
+        let error = insecure_plugin_error(SHA256_PASSWORD).to_string();
+
+        assert!(error.contains("does not exist"), "{error}");
+        assert!(error.contains("unknown user"), "{error}");
+        assert!(error.contains("Check the user name first"), "{error}");
     }
 
     #[test]

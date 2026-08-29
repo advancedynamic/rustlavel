@@ -239,15 +239,24 @@ without restarting. Spring Boot has the same problem and solves it the same way
 (`HikariConfigMXBean` plus `softEvictConnections`); PHP never had it, because a process that
 dies after every request re-reads its credentials for free.
 
-The design was settled by measurement rather than assumption, and the measurement is now a
-test (`crates/rustlavel-db/tests/rotation.rs`):
+The design was settled by measurement rather than assumption, and the measurements are now
+tests (`crates/rustlavel-db/tests/revocation.rs`). **The three databases do not agree**, so
+the first version of this entry — written from PostgreSQL alone — was wrong:
 
-- A connection that is **already open** keeps working after its account is dropped.
-  PostgreSQL authenticates once, at connect time, and does not check again per query. No
-  query fails mid-flight and no transaction is torn in half.
-- A **new** connection with the old credentials is refused (`28P01`).
+| | Account droppable while connected? | Open connection survives? | New one refused? |
+|---|---|---|---|
+| PostgreSQL 16 | yes | **yes** | yes (`28P01`) |
+| MySQL 8.4 | yes | **yes** | yes |
+| SQL Server 2022 | **no** (`15434`) | **no**, once sessions are killed | yes (`18456`) |
 
-So rotation interrupts nothing. The pool only has to stop *reusing* superseded connections:
+PostgreSQL and MySQL authenticate once, at connect time, and never look again, so revoking a
+credential cannot interrupt work in flight. SQL Server refuses to drop a login that is
+logged in at all — so revoking one *requires* killing its sessions first, and that does
+interrupt them.
+
+The rule that follows is the same for all three: **retire the old connections before the old
+lease is revoked**, not after. On PostgreSQL and MySQL the wrong order is survivable; on SQL
+Server it is not. The pool makes the right order easy:
 
 - [x] `Credentials` — a shared username and password with a generation counter, replaced by
       whoever fetched the new one
@@ -256,8 +265,10 @@ So rotation interrupts nothing. The pool only has to stop *reusing* superseded c
 - [x] The pool stores each idle connection beside the generation it was opened under; a stale
       one is closed rather than handed out, and a borrowed one is closed when it comes back
 - [x] `Pool::retire_superseded()` to close idle stale connections eagerly, for a quiet pool
-- [x] Four integration tests against a real PostgreSQL 16 and OpenBao, including revoking the
+- [x] Four rotation tests against a real PostgreSQL 16 and OpenBao, including revoking the
       first lease after a rotation and showing the process carries on serving
+- [x] Three revocation tests recording what PostgreSQL 16, MySQL 8.4 and SQL Server 2022 each
+      actually do, so the difference is a test rather than a belief
 
 Retiring old connections matters even though they still work: the point of a short-lived
 credential is that access ends when the lease does, and a pool quietly holding a session
@@ -289,6 +300,10 @@ application calls `credentials.rotate(user, password)`; nothing here reaches for
 - **SQL Server connections get no post-quantum protection.** TDS pins them to TLS 1.2 and
   the hybrid key exchange is TLS 1.3 only. PostgreSQL and MySQL both negotiate TLS 1.3, so
   they do get it.
+- **OpenBao ships no MSSQL database plugin.** Its built-in catalog holds Cassandra, InfluxDB,
+  MySQL (four variants), PostgreSQL, Redis and Valkey — nothing for SQL Server. Dynamic SQL
+  Server credentials therefore need HashiCorp Vault, which does ship one, or an external
+  plugin. Everything else in `rustlavel-vault` works against either.
 - **Inbound TLS is not ours.** `rustlavel-http` serves plain HTTP and expects a reverse
   proxy in front, so the post-quantum posture users see is that proxy's to configure.
 
