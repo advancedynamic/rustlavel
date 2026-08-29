@@ -81,7 +81,7 @@ App::new()?
 | `rustlavel-db` | Drivers for PostgreSQL, MySQL and SQL Server; query builder, schema, migrations, ORM, pagination |
 | `rustlavel-view` | Blade-shaped template engine |
 | `rustlavel-validation` | Laravel-style rules and 422 responses |
-| `rustlavel-auth` | Password hashing, encryption, sessions, CSRF, signed URLs, guards |
+| `rustlavel-auth` | Password hashing, encryption, sessions, CSRF, signed URLs, guards, API tokens |
 | `rustlavel-cache` | Memory, file, and a from-scratch Redis client; rate limiting |
 | `rustlavel-queue` | Background jobs, workers, retries, dead letters, cron scheduling |
 | `rustlavel-mail` | SMTP written from scratch, MIME, mailables, notifications |
@@ -89,6 +89,8 @@ App::new()?
 | `rustlavel-client` | Outbound HTTP with TLS, streaming, and `Http::fake()` |
 | `rustlavel-ai` | Anthropic, OpenAI and Ollama through one API |
 | `rustlavel-mcp` | Model Context Protocol, server and client |
+| `rustlavel-oauth` | Sign in through Google, GitHub and the rest — OAuth 2.1 with mandatory PKCE |
+| `rustlavel-oauth-provider` | Be the provider: authorization code, refresh rotation, revocation, introspection |
 | `rustlavel-telescope` | The debugging dashboard |
 | `rustlavel-metrics` | Prometheus metrics from the events already being emitted |
 | `rustlavel-openapi` | API documentation generated from the routes |

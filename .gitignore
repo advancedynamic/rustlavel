@@ -4,3 +4,6 @@ target/
 .env
 *.sqlite
 *.db
+
+# Scratch worktrees used by coding agents; never part of the project.
+.claude/worktrees/

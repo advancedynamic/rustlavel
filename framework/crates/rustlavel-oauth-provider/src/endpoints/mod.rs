@@ -26,23 +26,38 @@ pub fn register(server: &AuthorizationServer, router: &mut Router) {
     // GET renders the consent screen; POST is that screen coming back. Same
     // path, so the form posts to where it came from and there is one URL in the
     // discovery document.
+    //
+    // These two are the only endpoints here a *browser* reaches, so they are
+    // the only ones that carry `Csrf`. Without it the consent form is forgeable:
+    // an attacker's page auto-submits "approve" in the victim's logged-in
+    // browser and walks away with an authorization code for its own client.
+    // Rendering the hidden `_token` field without checking it would be worse
+    // than not rendering it, because the form would look protected.
+    //
+    // The rest of the mount — token, revoke, introspect — is machine-to-machine,
+    // has no session and no cookie to ride on, and authenticates with client
+    // credentials instead. CSRF there would reject every legitimate caller.
     let authorize = server.clone();
-    router
-        .get(&format!("{mount}/authorize"), move |request| {
-            let server = authorize.clone();
-            async move { authorize::show(server, request).await }
-        })
-        .name("oauth.authorize")
-        .describe("Begin an authorization code flow");
-
     let decide = server.clone();
-    router
-        .post(&format!("{mount}/authorize"), move |request| {
-            let server = decide.clone();
-            async move { authorize::decide(server, request).await }
-        })
-        .name("oauth.authorize.decide")
-        .describe("Record the user's decision on the consent screen");
+    router.group(&mount, |browser_facing| {
+        browser_facing.middleware(rustlavel_auth::Csrf::new());
+
+        browser_facing
+            .get("/authorize", move |request| {
+                let server = authorize.clone();
+                async move { authorize::show(server, request).await }
+            })
+            .name("oauth.authorize")
+            .describe("Begin an authorization code flow");
+
+        browser_facing
+            .post("/authorize", move |request| {
+                let server = decide.clone();
+                async move { authorize::decide(server, request).await }
+            })
+            .name("oauth.authorize.decide")
+            .describe("Record the user's decision on the consent screen");
+    });
 
     let issue = server.clone();
     router

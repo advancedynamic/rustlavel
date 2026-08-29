@@ -32,6 +32,10 @@ pub use rustlavel_client as client;
 pub use rustlavel_db as db;
 #[cfg(feature = "i18n")]
 pub use rustlavel_i18n as i18n;
+#[cfg(feature = "oauth")]
+pub use rustlavel_oauth as oauth;
+#[cfg(feature = "oauth-provider")]
+pub use rustlavel_oauth_provider as oauth_provider;
 #[cfg(feature = "mail")]
 pub use rustlavel_mail as mail;
 #[cfg(feature = "mail")]

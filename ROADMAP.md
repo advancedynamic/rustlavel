@@ -29,13 +29,15 @@ rustlavel/
         ├── rustlavel-db/         # dialects, drivers, query builder, migrations, ORM
         ├── rustlavel-view/       # Blade-shaped template engine
         ├── rustlavel-validation/ # Laravel-style validation
-        ├── rustlavel-auth/       # sessions, hashing, CSRF, signed URLs, guards
+        ├── rustlavel-auth/       # sessions, hashing, CSRF, signed URLs, guards, API tokens
         ├── rustlavel-cache/      # memory / file / Redis + rate limiting
         ├── rustlavel-client/     # outbound HTTP client + Http::fake()
         ├── rustlavel-storage/    # local disk + S3-compatible
         ├── rustlavel-i18n/       # translations + locale detection
         ├── rustlavel-ai/         # Anthropic / OpenAI / Ollama
         ├── rustlavel-mcp/        # MCP server + client
+        ├── rustlavel-oauth/      # OAuth 2.1 vocabulary + the client half (social login)
+        ├── rustlavel-oauth-provider/ # being an OAuth 2.1 authorization server
         ├── rustlavel-telescope/  # the debugging dashboard
         ├── rustlavel-metrics/    # Prometheus, from the event bus
         ├── rustlavel-openapi/    # API docs generated from the routes
@@ -84,6 +86,7 @@ Publishing model: one repository, many crates — the way `laravel/framework` ho
 - [x] `IntoResponse` generalised so each error type decides its own response shape
 - [x] Pagination wired through the query builder
 - [x] Testing: the test client with its cookie jar, and `Http::fake()`
+- [x] API tokens (Sanctum-shaped): opaque, hashed at rest with SHA-256, scoped, expiring, `Bearer` middleware
 - [ ] Passkeys / WebAuthn, and an `--auth` starter kit (login, register, reset) — not yet
 - [ ] An HTML form that fails validation is not re-rendered with its errors; it gets a plain 422 today. JSON clients already get Laravel's shape.
 
@@ -128,6 +131,48 @@ Publishing model: one repository, many crates — the way `laravel/framework` ho
 - [x] A conformance suite that runs the *generated* SQL against every configured server — the dialect tests assert what the strings look like, these assert that they work
 - [ ] **Oracle — not supported, and not planned.** Oracle has never published its network protocol. Every driver in existence either wraps OCI, a proprietary C library that has to be installed on every machine, or is a multi-year reverse-engineering effort maintained by Oracle themselves. Neither fits a framework whose premise is that the protocols are written here. If Oracle is ever needed, the honest shape is a separate `rustlavel-db-oracle` package that links OCI and says plainly that it breaks the rule.
 
+## Phase 0.8 — OAuth 2.1 and API tokens ✅ done
+
+Three pieces, built against one frozen set of wire types so the two halves of OAuth
+cannot drift apart.
+
+- [x] **API tokens** in `rustlavel-auth`, Sanctum-shaped `<id>|<secret>` so verification is
+      an indexed lookup rather than a scan. Hashed at rest with SHA-256 — argon2 is right for
+      passwords, which are guessable, but a 256-bit random token is not, and argon2 on every
+      API request is a denial of service you inflict on yourself. Scopes with a `*` wildcard,
+      expiry, and a `Bearer` middleware. No `rustlavel-db` dependency: an application backs
+      the `TokenStore` trait with its own table.
+- [x] **The shared vocabulary** in `rustlavel-oauth`: `Scopes`, every RFC 6749/6750 error code
+      with the status and `WWW-Authenticate` header each one requires, PKCE (checked against
+      RFC 7636 appendix B), `TokenResponse`, and percent-encoding.
+- [x] **The client half** — Google, GitHub, GitLab, Microsoft and Discord presets plus
+      `custom()`. PKCE is always sent and always S256, and every callback is checked against a
+      `state` this application issued; neither is configurable, because a client that can be
+      talked out of them will be. Two state modes: stateful in the session, or sealed with an
+      `AppKey` for a stateless deployment. Tested entirely through `Http::fake()`.
+- [x] **The provider half** in `rustlavel-oauth-provider` — authorization code with mandatory
+      PKCE, refresh token rotation with family revocation, `client_credentials`, revocation
+      (RFC 7009), introspection (RFC 7662), a discovery document (RFC 8414), a consent screen,
+      and a resource-server middleware. `password` and `implicit` are refused: OAuth 2.1
+      removes both. The consent screen carries `Csrf` itself rather than leaving it to the
+      application — a form nothing checks is forgeable, and that is not a protection anyone
+      should have to remember to opt into.
+
+Decisions worth recording:
+
+- **Access tokens are opaque, not JWT.** A JWT cannot be revoked before it expires; an opaque
+  token checked against a store can. Revocation that does not revoke is worse than no
+  revocation, because it is believed.
+- **Redirect URIs match exactly** — no prefix matching, no wildcards, no ignoring the query
+  string. An open redirect here is a full account takeover, and it is the single most
+  commonly botched part of an authorization server.
+- **A reused authorization code revokes everything issued from it**, and a reused refresh
+  token kills the whole family. Rotation without that detection is bookkeeping, not security.
+- **Stateless OAuth state cannot detect replay**, by construction — there is nowhere to burn
+  it. The authorization code is single-use at the provider, so a replay dies at the token
+  endpoint; the lifetime is short, and the limitation is a named test rather than a footnote.
+- **Not done: passkeys/WebAuthn**, which is the remaining gap in `rustlavel-auth`.
+
 ## Phase 1.0+ — Ecosystem (partly)
 
 - [x] A worked example: `examples/blog`
@@ -149,4 +194,8 @@ Publishing model: one repository, many crates — the way `laravel/framework` ho
 | Transactions | A guard (`begin`/`commit`), not a closure — a closure returning a future that borrows its argument cannot express the lifetime it needs |
 | CLI | A global binary for `new/serve/make:*/doctor/build`; `migrate`, `db:seed` and `queue:work` are forwarded to the application's own binary |
 | The pitch | "As comfortable as Laravel while you write it. As calm as Rust when you deploy it." |
+| API tokens | Opaque, SHA-256 at rest, `<id>|<secret>` — not JWT, so revocation works |
+| OAuth access tokens | Opaque by default, for the same reason |
+| PKCE | Mandatory on both halves, S256 only; `plain` is refused |
+| Post-quantum | Nothing yet. The framework's own crypto is symmetric (AES-GCM, HMAC, argon2) and already quantum-resistant; the exposure is TLS key exchange, which is `rustls`' to solve, not ours to write |
 | GitHub | `advancedynamic/rustlavel` (a separate account; gh multi-account over HTTPS) |

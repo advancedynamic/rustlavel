@@ -16,7 +16,8 @@ Rustlavel is a full-stack Rust web framework inspired by **Laravel 13**, built *
 - `rustlavel-http` — an HTTP/1.1 server on Tokio TCP (not hyper), the `Router`, middleware, the development error page, `TestClient`, and the `Plugin` trait.
 - `rustlavel-cli` — the `rustlavel` binary: `new` (with `--with`), `serve`, `make:*`, `doctor`, `build`, `key:generate`. Commands that need the application itself (`route:list`, `migrate`, `db:seed`, `queue:work`) are forwarded to the project's own binary, the way Loco does it.
 - `rustlavel-macros` — `#[derive(Model)]`, a proc macro written by hand with no syn or quote.
-- Optional packages: `-db`, `-view`, `-validation`, `-auth`, `-cache`, `-client`, `-storage`, `-i18n`, `-ai`, `-mcp`, `-telescope`, `-metrics`, `-openapi`, `-queue`, `-ws`, `-mail`. One crate per package; never merge two.
+- Optional packages: `-db`, `-view`, `-validation`, `-auth`, `-cache`, `-client`, `-storage`, `-i18n`, `-ai`, `-mcp`, `-telescope`, `-metrics`, `-openapi`, `-queue`, `-ws`, `-mail`, `-oauth`, `-oauth-provider`. One crate per package; never merge two.
+- **OAuth is split in two, and the split is deliberate.** `rustlavel-oauth` holds the wire vocabulary (`Scopes`, the RFC 6749 error codes, PKCE, `TokenResponse`, percent-encoding) *and* the client half; `rustlavel-oauth-provider` depends on it for those types so both ends agree on the format by construction rather than by review. Never duplicate a wire type across the two. Note that `rustlavel-auth::tokens::Scopes` is a separate, simpler type on purpose — API tokens must not drag an OAuth dependency into the auth crate.
 
 ## Design rules (not optional)
 

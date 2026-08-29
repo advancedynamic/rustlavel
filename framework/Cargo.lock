@@ -462,6 +462,8 @@ dependencies = [
  "rustlavel-mail",
  "rustlavel-mcp",
  "rustlavel-metrics",
+ "rustlavel-oauth",
+ "rustlavel-oauth-provider",
  "rustlavel-openapi",
  "rustlavel-queue",
  "rustlavel-storage",

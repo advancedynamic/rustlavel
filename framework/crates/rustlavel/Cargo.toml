@@ -20,6 +20,8 @@ rustlavel-i18n = { workspace = true, optional = true }
 rustlavel-mail = { workspace = true, optional = true }
 rustlavel-mcp = { workspace = true, optional = true }
 rustlavel-metrics = { workspace = true, optional = true }
+rustlavel-oauth = { workspace = true, optional = true }
+rustlavel-oauth-provider = { workspace = true, optional = true }
 rustlavel-openapi = { workspace = true, optional = true }
 rustlavel-queue = { workspace = true, optional = true }
 rustlavel-storage = { workspace = true, optional = true }
@@ -43,6 +45,11 @@ i18n = ["dep:rustlavel-i18n"]
 mail = ["dep:rustlavel-mail", "view"]
 mcp = ["dep:rustlavel-mcp"]
 metrics = ["dep:rustlavel-metrics"]
+# Signing in *through* Google, GitHub and the rest. Needs the session guard
+# and the outbound HTTP client, so it turns both on.
+oauth = ["dep:rustlavel-oauth", "auth", "client"]
+# Being the provider yourself. Renders a consent screen, so it needs auth.
+oauth-provider = ["dep:rustlavel-oauth-provider", "oauth", "auth"]
 openapi = ["dep:rustlavel-openapi"]
 queue = ["dep:rustlavel-queue", "db"]
 storage = ["dep:rustlavel-storage"]
@@ -61,6 +68,8 @@ full = [
     "mail",
     "mcp",
     "metrics",
+    "oauth",
+    "oauth-provider",
     "openapi",
     "queue",
     "storage",

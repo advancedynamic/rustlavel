@@ -20,6 +20,8 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("mail", &["resources/views"]),
     ("mcp", &[]),
     ("metrics", &[]),
+    ("oauth", &["storage/sessions"]),
+    ("oauth-provider", &["storage/sessions"]),
     ("openapi", &[]),
     ("queue", &["database/migrations"]),
     ("storage", &["storage/app"]),
