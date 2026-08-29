@@ -190,6 +190,81 @@ multi-year reverse-engineering effort. Neither fits a framework whose premise is
 that the protocols are written here. [ROADMAP.md](ROADMAP.md) records the
 reasoning in full.
 
+## Benchmarks
+
+Eight endpoints, six deployments, on one developer machine. Every app implements
+the same [contract](benchmarks/CONTRACT.md) — identical responses, a pool of 16,
+release builds throughout — and the harness refuses to measure an app until all
+eight endpoints answer 200, because a 500 error page benchmarks as very fast.
+
+Requests per second, higher is better. Two independent runs; the second is shown
+and the first agreed to within 1% on every database row.
+
+| | Rustlavel | Axum | Loco | Spring Boot | Laravel FPM | Laravel Octane |
+|---|---|---|---|---|---|---|
+| Plaintext | 123,484 | 123,541 | 120,700 | 94,807 | 5,588 | 11,905 |
+| JSON | 123,342 | 122,940 | 120,801 | 94,793 | 4,818 | 12,237 |
+| Routing | 123,421 | 122,519 | 121,050 | 95,649 | 5,845 | 11,683 |
+| Middleware ×5 | 123,793 | 121,513 | 124,877 | 95,508 | 5,480 | 10,446 |
+| **JSON ×100** | **85,337** | 124,950 | 113,060 | 80,538 | 4,925 | 9,894 |
+| **DB, one row** | **26,458** | 10,501 | 10,212 | 24,867 | 656 | 4,706 |
+| **DB, relations** | **11,953** | 5,245 | 9,668 | 11,899 | 819 | 2,146 |
+| Template | 95,871 | 119,682 | 116,003 | 37,604 | 5,343 | 8,210 |
+
+| | Rustlavel | Axum | Loco | Spring Boot | Laravel FPM | Laravel Octane |
+|---|---|---|---|---|---|---|
+| Startup | 121 ms | 113 ms | 109 ms | 1,829 ms | 587 ms | 1,027 ms |
+| Memory | 17 MB | 18 MB | 30 MB | 632 MB | — | 60 MB |
+| Artifact | 4 MB | 2 MB | 14 MB | 26 MB | 44 MB | 44 MB |
+
+### Where this framework loses
+
+**JSON serialisation, by about 1.5×.** `serde_json` is faster than the parser
+written here, and Loco uses serde too, so that column is a clean like-for-like.
+This is the measurable price of writing it from scratch, and it was predicted
+before anything was measured rather than explained afterwards.
+
+**Templates, by about 1.2×** against Askama — which compiles templates into Rust
+at build time, so it is not really the same kind of thing. Against Thymeleaf,
+the runtime engine in the comparison, it is 2.5× ahead.
+
+### Where it wins, and why that was checked
+
+**Database queries, by 2.5× over sqlx.** A result that flatters the framework
+its own author wrote deserves more suspicion than the rest, so it was checked
+rather than published: with `log_statement='all'`, both apps issue **exactly one
+statement per request**. sqlx uses a cached named prepared statement
+(`sqlx_s_1`); this driver uses the unnamed one. So it does *more* protocol work,
+not less, and still wins. The result stands.
+
+Spring Boot's `JdbcClient` lands in the same place, which is the useful
+corroboration: two very different stacks agree, and the two sqlx-based ones agree
+with each other.
+
+### The part that needs no benchmark
+
+`loco-rs` depends unconditionally on `lettre` (SMTP), `opendal` (S3, Azure, GCS),
+`argon2` and `notify` — none behind a feature flag. A Loco application with no
+mailer and no object storage ships both anyway: 14 MB against 4 MB here. That is
+the whole "opt-in packages" premise, visible without timing anything.
+
+### Reading these honestly
+
+- The top four rows are a **ceiling**, not a result. All three Rust frameworks
+  land within 3% of each other around 123,000, which is the loopback interface
+  and the load generator sharing a CPU with the server. Read a tie there as "no
+  measurable difference on this hardware".
+- Laravel FPM's memory is missing because the measurement was wrong, not small:
+  PHP-FPM workers are not children of the process the harness watches.
+- Laravel FPM exhausted the machine's ephemeral ports under sustained load
+  (`os error 49`) on two of three database runs — a real property of opening a
+  connection per request, but its 656 req/s is not a clean number.
+- One developer machine, PostgreSQL in a VM, load generator on the same box. The
+  ratios travel; the absolute numbers do not.
+- Written by the author of one of the frameworks compared. The method, the apps
+  and the raw output are all in [`benchmarks/`](benchmarks/) so the numbers can
+  be disagreed with.
+
 ## Status
 
 Early, but broad. Everything in the table above works today and is covered by

@@ -42,12 +42,23 @@ def load(directory: pathlib.Path):
         except json.JSONDecodeError:
             continue
 
-        summary = data.get("summary", {})
-        latency = data.get("latencyPercentiles", {})
-        slot = results.setdefault(app, {}).setdefault(case, {"rps": [], "p99": []})
-        slot["rps"].append(summary.get("requestsPerSec", 0.0))
+        summary = data.get("summary") or {}
+        latency = data.get("latencyPercentiles") or {}
+        errors = data.get("errorDistribution") or {}
+
+        slot = results.setdefault(app, {}).setdefault(case, {"rps": [], "p99": [], "errors": []})
+
+        # A run that failed part-way has no percentiles at all. Dropping it
+        # silently would quietly average away the failure; recording it means
+        # the table can say the run was incomplete, which is the useful thing.
+        p99 = latency.get("p99")
+        if p99 is None:
+            slot["errors"].extend(errors)
+            continue
+
+        slot["rps"].append(summary.get("requestsPerSec") or 0.0)
         # oha reports seconds; milliseconds is what anyone reading this thinks in.
-        slot["p99"].append(latency.get("p99", 0.0) * 1000)
+        slot["p99"].append(p99 * 1000)
 
     return results, meta
 
@@ -84,7 +95,10 @@ def main():
                 continue
             rps = statistics.median(slot["rps"])
             p99 = statistics.median(slot["p99"])
-            cells.append(f"{rps:,.0f} <br><small>p99 {p99:.1f} ms</small>")
+            note = ""
+            if slot["errors"]:
+                note = f" <br><small>⚠ {len(slot['errors'])} run(s) failed</small>"
+            cells.append(f"{rps:,.0f} <br><small>p99 {p99:.1f} ms</small>{note}")
         print(f"| {label} " + "".join(f"| {cell} " for cell in cells) + "|")
 
     if meta:
