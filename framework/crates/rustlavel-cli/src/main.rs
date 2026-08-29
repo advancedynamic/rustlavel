@@ -128,7 +128,9 @@ fn key_generate() -> Result<(), String> {
             .map_err(|e| format!("cannot read system entropy: {e}"))?;
         source.read_exact(&mut bytes).map_err(|e| format!("cannot read system entropy: {e}"))?;
     }
-    let key = base64(&bytes);
+    // The `base64:` prefix is part of the value: it tells the auth package the
+    // key is encoded rather than raw, the way Laravel's APP_KEY does.
+    let key = format!("base64:{}", base64(&bytes));
 
     let existing = std::fs::read_to_string(&path).unwrap_or_default();
     let updated = if existing.lines().any(|line| line.trim_start().starts_with("APP_KEY=")) {

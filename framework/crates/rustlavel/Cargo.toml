@@ -11,9 +11,16 @@ repository.workspace = true
 rustlavel-core.workspace = true
 rustlavel-http.workspace = true
 # Opt-in packages. What is not enabled is never compiled.
+rustlavel-ai = { workspace = true, optional = true }
+rustlavel-auth = { workspace = true, optional = true }
+rustlavel-cache = { workspace = true, optional = true }
+rustlavel-client = { workspace = true, optional = true }
 rustlavel-db = { workspace = true, optional = true }
-rustlavel-view = { workspace = true, optional = true }
+rustlavel-i18n = { workspace = true, optional = true }
+rustlavel-storage = { workspace = true, optional = true }
+rustlavel-telescope = { workspace = true, optional = true }
 rustlavel-validation = { workspace = true, optional = true }
+rustlavel-view = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
@@ -21,8 +28,26 @@ rustlavel-view.workspace = true
 
 [features]
 default = []
+ai = ["dep:rustlavel-ai"]
+auth = ["dep:rustlavel-auth"]
+cache = ["dep:rustlavel-cache"]
+client = ["dep:rustlavel-client"]
 db = ["dep:rustlavel-db"]
-view = ["dep:rustlavel-view"]
+i18n = ["dep:rustlavel-i18n"]
+storage = ["dep:rustlavel-storage"]
+telescope = ["dep:rustlavel-telescope"]
 validation = ["dep:rustlavel-validation"]
+view = ["dep:rustlavel-view"]
 # Everything the framework currently ships, for trying it out.
-full = ["db", "view", "validation"]
+full = [
+    "ai",
+    "auth",
+    "cache",
+    "client",
+    "db",
+    "i18n",
+    "storage",
+    "telescope",
+    "validation",
+    "view",
+]

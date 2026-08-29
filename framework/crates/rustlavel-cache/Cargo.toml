@@ -1,0 +1,13 @@
+[package]
+name = "rustlavel-cache"
+description = "Rustlavel cache: memory, file and from-scratch Redis drivers, plus rate limiting"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-http.workspace = true
+tokio.workspace = true

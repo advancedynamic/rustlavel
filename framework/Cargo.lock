@@ -451,9 +451,16 @@ dependencies = [
 name = "rustlavel"
 version = "0.1.0"
 dependencies = [
+ "rustlavel-ai",
+ "rustlavel-auth",
+ "rustlavel-cache",
+ "rustlavel-client",
  "rustlavel-core",
  "rustlavel-db",
  "rustlavel-http",
+ "rustlavel-i18n",
+ "rustlavel-storage",
+ "rustlavel-telescope",
  "rustlavel-validation",
  "rustlavel-view",
  "tokio",

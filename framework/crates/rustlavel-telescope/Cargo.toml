@@ -1,0 +1,18 @@
+[package]
+name = "rustlavel-telescope"
+description = "Rustlavel Telescope: an in-process debugging dashboard for requests, queries, and logs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-http.workspace = true
+
+# Only the tests need an async runtime: Telescope's own storage is a ring
+# buffer and a plain writer thread, so an application that enables it pulls in
+# nothing it was not already compiling.
+[dev-dependencies]
+tokio.workspace = true

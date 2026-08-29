@@ -1,0 +1,22 @@
+[package]
+name = "rustlavel-auth"
+description = "Rustlavel authentication: sessions, argon2 hashing, CSRF, signed URLs, encryption"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-http.workspace = true
+tokio.workspace = true
+# Cryptography only. Everything non-cryptographic in this crate — base64, the
+# session stores, the middleware, the URL canonicalisation — is written from
+# scratch, but a hand-rolled KDF, cipher or MAC is a vulnerability, not a
+# feature, so the primitives come from the RustCrypto crates.
+argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash"] }
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+sha2 = "0.10"
+hmac = "0.12"
+subtle = "2"

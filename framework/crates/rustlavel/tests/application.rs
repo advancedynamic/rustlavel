@@ -141,3 +141,49 @@ mod validation {
         assert!(body.get("errors.age").is_some(), "age should be rejected: {}", response.body());
     }
 }
+
+/// Telescope is the framework's showcase feature; this proves it mounts, sees
+/// real traffic, and stays out of production.
+#[cfg(feature = "telescope")]
+mod telescope {
+    use super::*;
+    use rustlavel::Telescope;
+
+    #[tokio::test]
+    async fn records_requests_and_serves_a_dashboard() {
+        let client = App::bare()
+            .plugin(Telescope::default())
+            .routes(|r| {
+                r.get("/orders", |_req: Request| async { "orders" });
+            })
+            .test_client();
+
+        client.get("/orders").await.assert_ok();
+
+        // Give the event a moment to reach the recorder.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        client
+            .get("/telescope")
+            .await
+            .assert_ok()
+            .assert_header("content-type", "text/html; charset=utf-8");
+
+        let entries = client.get("/telescope/api/entries").await.assert_ok();
+        assert!(
+            entries.body().contains("/orders"),
+            "the recorded request should be listed: {}",
+            entries.body()
+        );
+    }
+
+    #[tokio::test]
+    async fn refuses_to_mount_in_production() {
+        let app = App::bare();
+        app.config().set("app.env", "production");
+
+        let client = app.plugin(Telescope::default()).test_client();
+
+        client.get("/telescope").await.assert_not_found();
+    }
+}

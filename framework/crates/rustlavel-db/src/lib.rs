@@ -23,6 +23,7 @@ pub use config::DatabaseConfig;
 pub use migration::{Faker, Migration, Migrator, Seeder};
 pub use model::{Model, ModelExt, belongs_to, has_many};
 pub use pagination::{CursorPage, Page};
+pub use postgres::connection::{log_bindings, set_log_bindings};
 pub use pool::{Pool, PooledConnection};
 pub use schema::{Schema, Table};
 pub use row::{Row, rows_to_json};

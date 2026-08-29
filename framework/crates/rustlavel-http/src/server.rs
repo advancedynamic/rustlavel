@@ -10,7 +10,6 @@ use crate::response::Response;
 use crate::router::Router;
 use crate::status::Status;
 use crate::url;
-use rustlavel_core::events::Event;
 use rustlavel_core::{Context, Error, Result};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -161,17 +160,10 @@ impl Server {
         let method = request.method();
         let path = request.path().to_string();
 
-        // Panics are caught inside the router, so a handler that panics
-        // renders the error page in tests exactly as it does here.
+        // Panics are caught, and the request event is dispatched, inside the
+        // router — so both behave identically under the test client.
         let response = self.router.dispatch(request).await;
-
         let elapsed = started.elapsed();
-        Event::new("http.request")
-            .with("method", method.as_str())
-            .with("path", path.as_str())
-            .with("status", response.status.code())
-            .took(elapsed)
-            .dispatch();
 
         if rustlavel_core::log::enabled(rustlavel_core::log::Level::Debug) {
             rustlavel_core::debug!(

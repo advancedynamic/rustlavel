@@ -10,9 +10,26 @@ use crate::value::Value;
 use rustlavel_core::events::Event;
 use rustlavel_core::{Error, Result};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+
+/// Whether query parameters are included in the `db.query` event.
+///
+/// Bindings are what make a slow-query log useful, but they are also where a
+/// password or a token ends up when one is being written. On by default because
+/// the instrumentation bus only has subscribers in development; turned off for
+/// production by the application at boot.
+static LOG_BINDINGS: AtomicBool = AtomicBool::new(true);
+
+pub fn set_log_bindings(enabled: bool) {
+    LOG_BINDINGS.store(enabled, Ordering::Relaxed);
+}
+
+pub fn log_bindings() -> bool {
+    LOG_BINDINGS.load(Ordering::Relaxed)
+}
 
 /// What a statement returned.
 #[derive(Debug, Default)]
@@ -268,10 +285,14 @@ impl Connection {
         let elapsed = started.elapsed();
 
         if rustlavel_core::events::has_subscribers() {
-            let bindings: Vec<String> = params.iter().map(Value::to_display).collect();
+            let bindings = if log_bindings() {
+                params.iter().map(Value::to_display).collect::<Vec<_>>().join(", ")
+            } else {
+                format!("{} value(s) hidden", params.len())
+            };
             Event::new("db.query")
                 .with("sql", sql)
-                .with("bindings", bindings.join(", "))
+                .with("bindings", bindings)
                 .with("rows", result.as_ref().map(|r| r.rows.len()).unwrap_or(0))
                 .with("ok", result.is_ok())
                 .took(elapsed)
@@ -386,6 +407,15 @@ mod tests {
         assert_eq!(affected_rows("UPDATE 2"), 2);
         assert_eq!(affected_rows("DELETE 0"), 0);
         assert_eq!(affected_rows("CREATE TABLE"), 0);
+    }
+
+    #[test]
+    fn bindings_can_be_kept_out_of_the_event_stream() {
+        // Restored immediately: the flag is process-wide.
+        assert!(log_bindings());
+        set_log_bindings(false);
+        assert!(!log_bindings());
+        set_log_bindings(true);
     }
 
     #[test]

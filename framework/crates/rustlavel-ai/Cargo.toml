@@ -1,0 +1,14 @@
+[package]
+name = "rustlavel-ai"
+description = "Rustlavel AI: one API for Anthropic, OpenAI and Ollama, with streaming, tools and a fake provider"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-client.workspace = true
+rustlavel-http.workspace = true
+tokio.workspace = true

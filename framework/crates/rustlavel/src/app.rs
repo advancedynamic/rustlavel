@@ -170,6 +170,11 @@ impl App {
 
         rustlavel_core::info!("{name} [{environment}]");
 
+        // Query bindings are what make a slow-query log useful, and also where
+        // a password ends up. They stay out of the event stream in production.
+        #[cfg(feature = "db")]
+        rustlavel_db::set_log_bindings(!self.config.is_production());
+
         let (router, context) = self.finish();
         Server::new(router, context).listen(format!("{host}:{port}")).await
     }

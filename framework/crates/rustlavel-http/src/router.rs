@@ -276,13 +276,15 @@ impl Router {
 /// otherwise abort the whole run instead reports a 500.
 async fn run_guarded(next: Next, request: Request) -> Response {
     crate::panic::install_hook();
+    let started = std::time::Instant::now();
 
     // A panicking handler still needs to render a page describing the request,
     // but the request itself has been moved into the pipeline by then.
     let probe = Request::new(request.method(), request.target().to_string())
         .with_header("accept", request.header("accept").unwrap_or("text/html"));
+    let route = request.route().map(str::to_string);
 
-    match crate::panic::catch(next.run(request)).await {
+    let response = match crate::panic::catch(next.run(request)).await {
         Ok(response) => response,
         Err(message) => {
             let location = crate::panic::take_location().map(|l| (l.file, l.line));
@@ -296,7 +298,24 @@ async fn run_guarded(next: Next, request: Request) -> Response {
                 Some(&probe),
             )
         }
+    };
+
+    // Dispatched here rather than in the server, so instrumentation sees the
+    // same events under the test client as it does over a socket.
+    if rustlavel_core::events::has_subscribers() {
+        let mut event = rustlavel_core::Event::new("http.request")
+            .with("method", probe.method().as_str())
+            .with("path", probe.path())
+            .with("status", response.status.code())
+            .took(started.elapsed());
+        if let Some(route) = route {
+            // The pattern, not the path: one metric series per route, not per id.
+            event = event.with("route", route);
+        }
+        event.dispatch();
     }
+
+    response
 }
 
 /// Returned by `get`/`post`/… so a route can be named after registration.

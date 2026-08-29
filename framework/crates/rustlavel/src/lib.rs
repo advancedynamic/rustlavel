@@ -18,8 +18,24 @@ mod view;
 
 pub use app::App;
 
+#[cfg(feature = "ai")]
+pub use rustlavel_ai as ai;
+#[cfg(feature = "auth")]
+pub use rustlavel_auth as auth;
+#[cfg(feature = "cache")]
+pub use rustlavel_cache as cache;
+#[cfg(feature = "client")]
+pub use rustlavel_client as client;
 #[cfg(feature = "db")]
 pub use rustlavel_db as db;
+#[cfg(feature = "i18n")]
+pub use rustlavel_i18n as i18n;
+#[cfg(feature = "storage")]
+pub use rustlavel_storage as storage;
+#[cfg(feature = "telescope")]
+pub use rustlavel_telescope as telescope;
+#[cfg(feature = "telescope")]
+pub use rustlavel_telescope::Telescope;
 #[cfg(feature = "validation")]
 pub use rustlavel_validation as validation;
 #[cfg(feature = "view")]
@@ -43,8 +59,20 @@ pub mod prelude {
     };
     pub use rustlavel_core::{debug, error, info, warn};
 
+    #[cfg(feature = "ai")]
+    pub use rustlavel_ai::Ai;
+    #[cfg(feature = "auth")]
+    pub use rustlavel_auth::prelude::*;
+    #[cfg(feature = "cache")]
+    pub use rustlavel_cache::prelude::*;
+    #[cfg(feature = "client")]
+    pub use rustlavel_client::Client;
     #[cfg(feature = "db")]
     pub use rustlavel_db::prelude::*;
+    #[cfg(feature = "i18n")]
+    pub use rustlavel_i18n::Translator;
+    #[cfg(feature = "storage")]
+    pub use rustlavel_storage::{Storage, Visibility};
     #[cfg(feature = "validation")]
     pub use rustlavel_validation::{Errors, Rule, Validated, validate};
     #[cfg(feature = "view")]

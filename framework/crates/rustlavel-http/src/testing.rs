@@ -13,17 +13,26 @@ use crate::request::Request;
 use crate::response::Response;
 use crate::router::Router;
 use rustlavel_core::{Context, Json};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub struct TestClient {
     router: Arc<Router>,
     context: Context,
+    /// Cookies the "browser" is holding, so a session survives between
+    /// requests the way it does for a real client. Without this, every test of
+    /// anything stateful has to shuttle `set-cookie` by hand.
+    jar: Arc<std::sync::Mutex<BTreeMap<String, String>>>,
 }
 
 impl TestClient {
     pub fn new(mut router: Router) -> Self {
         router.finalize();
-        TestClient { router: Arc::new(router), context: Context::default() }
+        TestClient {
+            router: Arc::new(router),
+            context: Context::default(),
+            jar: Arc::new(std::sync::Mutex::new(BTreeMap::new())),
+        }
     }
 
     /// Use an application context, so handlers can resolve real services.
@@ -32,9 +41,53 @@ impl TestClient {
         self
     }
 
-    pub async fn send(&self, request: Request) -> TestResponse {
+    pub async fn send(&self, mut request: Request) -> TestResponse {
+        // Send what the jar holds, unless the caller set its own header.
+        if !request.headers().contains("cookie") {
+            let jar = self.jar.lock().expect("cookie jar poisoned");
+            if !jar.is_empty() {
+                let header = jar
+                    .iter()
+                    .map(|(name, value)| format!("{name}={value}"))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                request.headers_mut().set("cookie", header);
+            }
+        }
+
         let request = request.with_context(self.context.clone());
-        TestResponse { response: self.router.dispatch(request).await }
+        let response = self.router.dispatch(request).await;
+        self.remember(&response);
+        TestResponse { response }
+    }
+
+    /// Record any `Set-Cookie` the response carried.
+    fn remember(&self, response: &Response) {
+        let mut jar = self.jar.lock().expect("cookie jar poisoned");
+
+        for header in response.headers.get_all("set-cookie") {
+            let Some(pair) = header.split(';').next() else { continue };
+            let Some((name, value)) = pair.split_once('=') else { continue };
+            let name = name.trim().to_string();
+
+            // Max-Age=0 is how a cookie is expired; drop it rather than keeping
+            // an empty value that would look like a live session.
+            if header.contains("Max-Age=0") {
+                jar.remove(&name);
+            } else {
+                jar.insert(name, crate::url::decode(value.trim()));
+            }
+        }
+    }
+
+    /// The cookies this client is currently holding.
+    pub fn cookies(&self) -> BTreeMap<String, String> {
+        self.jar.lock().expect("cookie jar poisoned").clone()
+    }
+
+    /// Forget every cookie — the equivalent of a fresh browser.
+    pub fn clear_cookies(&self) {
+        self.jar.lock().expect("cookie jar poisoned").clear();
     }
 
     pub async fn get(&self, path: &str) -> TestResponse {
@@ -213,6 +266,45 @@ mod tests {
             .post_json("/users", Json::object([("name", "grace".into())]))
             .await
             .assert_json("created", "grace");
+    }
+
+    #[tokio::test]
+    async fn cookies_persist_between_requests_like_a_browser() {
+        let mut router = Router::new();
+        router.post("/login", |_req: Request| async {
+            Response::text("in").with_cookie(crate::Cookie::new("session", "abc123"))
+        });
+        router.get("/me", |req: Request| async move {
+            req.cookie("session").unwrap_or_else(|| "anonymous".to_string())
+        });
+        router.post("/logout", |_req: Request| async {
+            Response::text("out").without_cookie("session")
+        });
+
+        let client = TestClient::new(router);
+
+        client.get("/me").await.assert_see("anonymous");
+
+        client.post("/login", &[]).await.assert_ok();
+        assert_eq!(client.cookies().get("session").map(String::as_str), Some("abc123"));
+        client.get("/me").await.assert_see("abc123");
+
+        client.post("/logout", &[]).await.assert_ok();
+        client.get("/me").await.assert_see("anonymous");
+    }
+
+    #[tokio::test]
+    async fn an_explicit_cookie_header_overrides_the_jar() {
+        let mut router = Router::new();
+        router.get("/me", |req: Request| async move {
+            req.cookie("session").unwrap_or_default()
+        });
+        let client = TestClient::new(router);
+
+        client
+            .send(Request::new(Method::Get, "/me").with_header("cookie", "session=explicit"))
+            .await
+            .assert_see("explicit");
     }
 
     #[tokio::test]
