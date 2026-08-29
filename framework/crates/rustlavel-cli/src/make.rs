@@ -19,6 +19,7 @@ pub fn run(command: &str, args: &[String]) -> Result<(), String> {
         "make:model" => crate::database::model(&project, name),
         "make:migration" => crate::database::migration(&project, name),
         "make:seeder" => crate::database::seeder(&project, name),
+        "make:mcp-tool" => mcp_tool(&project, name),
         other => Err(format!("unknown generator `{other}`")),
     }
 }
@@ -74,6 +75,39 @@ fn middleware(project: &Project, name: &str) -> Result<(), String> {
 
     console::success(&format!(
         "{function} created. Apply it:\n\n  r.middleware(middleware::{function}::{function});"
+    ));
+    Ok(())
+}
+
+/// `make:mcp-tool` — a tool an agent can call over MCP.
+fn mcp_tool(project: &Project, name: &str) -> Result<(), String> {
+    let function = naming::snake(name);
+    // Agents see the kebab-case name; Rust sees the snake_case function.
+    let tool = naming::kebab(name);
+
+    let mut values = BTreeMap::new();
+    values.insert("function", function.clone());
+    values.insert("tool", tool.clone());
+
+    let path = project.root.join("src/tools").join(format!("{function}.rs"));
+    write_new(&path, &render(stubs::MCP_TOOL_STUB, &values))?;
+    console::created(&relative(project, &path));
+
+    let mod_file = project.root.join("src/tools/mod.rs");
+    if project::declare_module(&mod_file, &function)? {
+        console::updated(&relative(project, &mod_file));
+    }
+
+    let lib = project.root.join("src/lib.rs");
+    if let Ok(contents) = std::fs::read_to_string(&lib)
+        && !contents.contains("pub mod tools;")
+    {
+        std::fs::write(&lib, format!("{contents}pub mod tools;\n")).map_err(|e| e.to_string())?;
+        console::updated(&relative(project, &lib));
+    }
+
+    console::success(&format!(
+        "{tool} created. Register it:\n\n           let server = Server::new().tool(tools::{function}::{function}());\n           App::new()?.plugin(Mcp::new(server))"
     ));
     Ok(())
 }

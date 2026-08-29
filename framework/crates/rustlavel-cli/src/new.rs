@@ -99,6 +99,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         (".env", stubs::ENV),
         (".env.example", stubs::ENV),
         ("README.md", stubs::README),
+        ("CLAUDE.md", stubs::AGENT_NOTES),
         ("config/app.json", stubs::CONFIG_APP),
         ("public/README.md", stubs::PUBLIC_KEEP),
         ("src/main.rs", stubs::MAIN_RS),

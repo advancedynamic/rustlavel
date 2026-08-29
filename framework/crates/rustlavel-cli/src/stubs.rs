@@ -296,3 +296,68 @@ pub fn all() -> Vec<&'static dyn Seeder> {
     ]
 }
 "#;
+
+pub const MCP_TOOL_STUB: &str = r#"use rustlavel::mcp::{Schema, Tool};
+use rustlavel::prelude::*;
+
+/// Exposed to agents over MCP as `{{tool}}`.
+///
+/// The schema is declared once and does double duty: it becomes the tool's
+/// advertised `inputSchema`, and arguments are validated against it before this
+/// handler ever runs.
+pub fn {{function}}() -> Tool {
+    Tool::new(
+        "{{tool}}",
+        "Describe what this tool does, in the words an agent will read.",
+        Schema::object().string("query", "What to look for"),
+        |arguments: Json| async move {
+            let query = arguments.get("query").and_then(Json::as_str).unwrap_or_default();
+
+            Ok(Json::object([("result", Json::from(format!("saw {query}")))]))
+        },
+    )
+}
+"#;
+
+/// Written into every new application so a coding agent starts with the
+/// conventions instead of guessing them.
+pub const AGENT_NOTES: &str = r#"# {{app_name}}
+
+A [Rustlavel](https://github.com/advancedynamic/rustlavel) application.
+
+## Layout
+
+| Path                  | What lives there                     |
+| --------------------- | ------------------------------------ |
+| `src/routes/web.rs`   | Routes, registered from `main.rs`    |
+| `src/controllers/`    | Controllers                          |
+| `src/middleware/`     | Middleware functions                 |
+| `config/`             | Configuration; `${VAR}` reads `.env` |
+| `public/`             | Static files, served automatically   |
+| `tests/`              | Application tests                    |
+
+## Conventions
+
+- A handler is `async fn(Request) -> impl IntoResponse`. Returning `Result` works:
+  each error type decides its own response, so `?` is normal.
+- Reach services with `req.state::<T>()`, not a global. Register them with
+  `.state(...)` on the `App`.
+- Optional packages are enabled by a feature on the `rustlavel` dependency and
+  one explicit line in `main.rs` (`.plugin(...)`). There is no auto-discovery.
+- Tests use the test client, which dispatches without a socket:
+  `client.get("/x").await.assert_ok()`. It keeps cookies between requests.
+
+## Commands
+
+```bash
+rustlavel serve          # run with reload
+rustlavel route:list     # what routes exist
+rustlavel doctor         # why won't it start
+rustlavel make:controller PostController
+cargo test               # the whole suite
+```
+
+## Before you finish
+
+Run `cargo test` and `cargo clippy --all-targets`. Both should be clean.
+"#;

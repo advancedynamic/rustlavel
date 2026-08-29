@@ -105,6 +105,7 @@ fn help() {
     row("make:model <Name>", "Create a model");
     row("make:migration <name>", "Create a migration");
     row("make:seeder <Name>", "Create a seeder");
+    row("make:mcp-tool <name>", "Create a tool agents can call over MCP");
     row("make:docker", "Create a two-stage Dockerfile");
     println!();
 
