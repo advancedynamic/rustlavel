@@ -18,7 +18,8 @@ rustlavel/
 ├── README.md           # perkenalan proyek
 ├── ROADMAP.md          # file ini
 ├── CLAUDE.md           # keperluan AI/coding agent (di luar kode)
-└── framework/          # semua kode: Cargo workspace
+├── examples/blog/      # aplikasi contoh (workspace sendiri)
+└── framework/          # kode framework: Cargo workspace
     └── crates/
         ├── rustlavel/            # meta-crate + feature flags
         ├── rustlavel-core/       # config, .env, JSON, context, event bus, dispatcher
@@ -93,7 +94,7 @@ Model publish: satu repo banyak crate (seperti `laravel/framework` berisi `illum
 - [x] `rustlavel-client`: HTTP client keluar dengan TLS, streaming, SSE, retry, `Http::fake()`
 - [x] `rustlavel-ai`: Anthropic / OpenAI / Ollama lewat satu API; streaming, tool calling, structured output, `Ai::fake()`, API key tidak pernah bocor ke log
 - [x] `rustlavel-mcp`: MCP server (stdio + HTTP) dan client; JSON-RPC from scratch; argumen tervalidasi sebelum handler; panic jadi `isError`
-- [ ] `make:mcp-tool`; `rustlavel new` menulis CLAUDE.md/AGENTS.md — belum
+- [x] `make:mcp-tool`; `rustlavel new` menulis CLAUDE.md berisi konvensi untuk coding agent
 
 ## Fase 0.5 — Observability ✅ sebagian
 
