@@ -1,0 +1,19 @@
+[package]
+name = "rustlavel-oauth-provider"
+description = "Be an OAuth 2.1 provider: authorization code + PKCE, refresh rotation, revocation, introspection"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-http.workspace = true
+rustlavel-auth.workspace = true
+rustlavel-oauth.workspace = true
+tokio.workspace = true
+sha2 = "0.10"
+
+[dev-dependencies]
+tokio = { workspace = true }

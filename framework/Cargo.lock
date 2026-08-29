@@ -595,6 +595,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustlavel-oauth"
+version = "0.1.0"
+dependencies = [
+ "rustlavel-auth",
+ "rustlavel-client",
+ "rustlavel-core",
+ "rustlavel-http",
+ "sha2",
+ "tokio",
+]
+
+[[package]]
+name = "rustlavel-oauth-provider"
+version = "0.1.0"
+dependencies = [
+ "rustlavel-auth",
+ "rustlavel-core",
+ "rustlavel-http",
+ "rustlavel-oauth",
+ "sha2",
+ "tokio",
+]
+
+[[package]]
 name = "rustlavel-openapi"
 version = "0.1.0"
 dependencies = [

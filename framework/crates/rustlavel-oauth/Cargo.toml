@@ -1,0 +1,20 @@
+[package]
+name = "rustlavel-oauth"
+description = "OAuth 2.1 for Rustlavel: the shared protocol types, and the client half"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-http.workspace = true
+rustlavel-client.workspace = true
+rustlavel-auth.workspace = true
+# PKCE's S256 challenge, and nothing else. Hashing is the one thing this
+# framework does not write for itself.
+sha2 = "0.10"
+
+[dev-dependencies]
+tokio = { workspace = true }
