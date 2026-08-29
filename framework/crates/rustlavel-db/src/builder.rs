@@ -379,8 +379,11 @@ impl QueryBuilder {
             }
             (Some(column), ReturningStyle::OutputClause) => {
                 validate_identifier(column, dialect.max_identifier_length())?;
+                // T-SQL puts OUTPUT between the column list and VALUES. Before
+                // the column list it parses as a second column list and fails
+                // with a count mismatch — which a real server confirmed.
                 format!(
-                    "insert into {table} output inserted.{} ({columns_sql}) values {values_sql}",
+                    "insert into {table} ({columns_sql}) output inserted.{} values {values_sql}",
                     dialect.quote(column)
                 )
             }
@@ -894,7 +897,7 @@ mod tests {
             QueryBuilder::new("users").to_insert_sql(&SqlServer, rows, Some("id")).unwrap();
         assert_eq!(
             sqlserver,
-            "insert into [users] output inserted.[id] ([name]) values (@P1)"
+            "insert into [users] ([name]) output inserted.[id] values (@P1)"
         );
 
         // MySQL has no such clause; the key is read with a second statement.

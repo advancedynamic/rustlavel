@@ -17,6 +17,10 @@ tokio.workspace = true
 sha2 = "0.10"
 hmac = "0.12"
 md-5 = "0.10"
+# Same exception, for MySQL: `mysql_native_password` is built on SHA-1, and a
+# hand-written SHA-1 that is subtly wrong fails open, not closed. The MySQL
+# protocol itself is ours; only the digest is borrowed.
+sha1 = "0.10"
 # TLS only, for the SQL Server driver: TDS negotiates encryption inside its own
 # pre-login exchange and the login packet is never sent in the clear. The
 # framework writes its own protocols, but never its own cryptography — a

@@ -46,8 +46,8 @@ pub enum ColumnType {
 pub enum ReturningStyle {
     /// `insert into … values (…) returning "id"` — PostgreSQL.
     Suffix,
-    /// `insert into … output inserted.[id] (…) values (…)` — SQL Server puts it
-    /// before the column list, so it cannot be appended.
+    /// `insert into … (…) output inserted.[id] values (…)` — SQL Server puts it
+    /// between the column list and `values`, so it cannot be appended.
     OutputClause,
     /// Not supported: the key is read with a second statement. MySQL.
     SeparateQuery(&'static str),
@@ -113,10 +113,14 @@ pub trait Dialect: Send + Sync + std::fmt::Debug + 'static {
     }
 
     /// The DDL for the migration tracking table.
+    ///
+    /// The key column has to say `primary key`: MySQL refuses an
+    /// `auto_increment` column that is not one, and a real server is the only
+    /// thing that will tell you so.
     fn migrations_table_sql(&self, table: &str) -> String {
         format!(
             "create table if not exists {} (\n  \
-             id {},\n  \
+             id {} primary key,\n  \
              name {} not null unique,\n  \
              batch {} not null,\n  \
              ran_at {} not null default {}\n)",
@@ -580,11 +584,12 @@ mod tests {
     fn the_migration_table_is_valid_for_each_database() {
         let postgres = Postgres.migrations_table_sql("rustlavel_migrations");
         assert!(postgres.contains("create table if not exists \"rustlavel_migrations\""));
-        assert!(postgres.contains("bigserial"));
+        assert!(postgres.contains("bigserial primary key"));
 
         let mysql = MySql.migrations_table_sql("rustlavel_migrations");
         assert!(mysql.contains("`rustlavel_migrations`"));
-        assert!(mysql.contains("auto_increment"));
+        // MySQL rejects an auto_increment column that is not a key.
+        assert!(mysql.contains("auto_increment primary key"), "{mysql}");
 
         // SQL Server has no `if not exists`, so it checks the catalogue.
         let sqlserver = SqlServer.migrations_table_sql("rustlavel_migrations");
