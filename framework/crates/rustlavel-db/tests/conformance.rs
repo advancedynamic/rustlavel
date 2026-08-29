@@ -353,3 +353,80 @@ async fn a_hostile_value_stays_a_value_on_every_database() {
         drop_if_present(&db, &name).await;
     }
 }
+
+#[tokio::test]
+async fn a_transaction_commits_and_rolls_back_on_every_database() {
+    // `begin` is a syntax error in T-SQL, so this went untested for exactly as
+    // long as it was broken.
+    for (dialect, db) in databases().await {
+        let name = table("tx", &dialect);
+        drop_if_present(&db, &name).await;
+
+        Schema::new(&db)
+            .create(&name, |t| {
+                t.id();
+                t.string("note");
+            })
+            .await
+            .unwrap();
+
+        let insert = format!(
+            "insert into {} ({}) values ({})",
+            db.dialect().quote(&name),
+            db.dialect().quote("note"),
+            db.dialect().placeholder(1)
+        );
+
+        // Rolled back: nothing is written.
+        let mut tx = db.begin().await.unwrap_or_else(|e| panic!("{dialect}: begin failed: {e}"));
+        tx.execute(&insert, &[Value::from("discarded")]).await.unwrap();
+        tx.rollback().await.unwrap_or_else(|e| panic!("{dialect}: rollback failed: {e}"));
+        assert_eq!(db.table(&name).count(&db).await.unwrap(), 0, "{dialect}");
+
+        // Committed: it is.
+        let mut tx = db.begin().await.unwrap();
+        tx.execute(&insert, &[Value::from("kept")]).await.unwrap();
+        tx.commit().await.unwrap_or_else(|e| panic!("{dialect}: commit failed: {e}"));
+        assert_eq!(db.table(&name).count(&db).await.unwrap(), 1, "{dialect}");
+
+        drop_if_present(&db, &name).await;
+    }
+}
+
+#[tokio::test]
+async fn a_savepoint_undoes_only_part_of_a_transaction_everywhere() {
+    for (dialect, db) in databases().await {
+        let name = table("savepoint", &dialect);
+        drop_if_present(&db, &name).await;
+
+        Schema::new(&db)
+            .create(&name, |t| {
+                t.id();
+                t.string("note");
+            })
+            .await
+            .unwrap();
+
+        let insert = format!(
+            "insert into {} ({}) values ({})",
+            db.dialect().quote(&name),
+            db.dialect().quote("note"),
+            db.dialect().placeholder(1)
+        );
+
+        let mut tx = db.begin().await.unwrap();
+        tx.execute(&insert, &[Value::from("keep")]).await.unwrap();
+        tx.savepoint("sp1").await.unwrap_or_else(|e| panic!("{dialect}: savepoint failed: {e}"));
+        tx.execute(&insert, &[Value::from("discard")]).await.unwrap();
+        tx.rollback_to("sp1")
+            .await
+            .unwrap_or_else(|e| panic!("{dialect}: rollback to savepoint failed: {e}"));
+        tx.commit().await.unwrap();
+
+        let rows = db.table(&name).get(&db).await.unwrap();
+        assert_eq!(rows.len(), 1, "{dialect}");
+        assert_eq!(rows[0].get::<String>("note").unwrap(), "keep", "{dialect}");
+
+        drop_if_present(&db, &name).await;
+    }
+}

@@ -121,9 +121,11 @@ Publishing model: one repository, many crates — the way `laravel/framework` ho
 
 - [x] The database layer split into a `Dialect` (SQL differences) and a `Driver` (wire protocol), so everything above that line is written once
 - [x] Dialects for PostgreSQL, MySQL and SQL Server, tested with no database in sight
-- [x] URLs choose the driver: `postgres://`, `mysql://`, `sqlserver://`
-- [ ] MySQL driver — in progress
-- [ ] SQL Server driver (TDS) — in progress
+- [x] URLs choose the driver and its default port: `postgres://`, `mysql://`, `sqlserver://`
+- [x] Transaction control, paging, `information_schema` lookups and `migrate:fresh` all go through the dialect
+- [x] MySQL driver, written from scratch on the client/server protocol; both authentication plugins, prepared statements
+- [x] SQL Server driver, written from scratch on the published MS-TDS specification
+- [x] A conformance suite that runs the *generated* SQL against every configured server — the dialect tests assert what the strings look like, these assert that they work
 - [ ] **Oracle — not supported, and not planned.** Oracle has never published its network protocol. Every driver in existence either wraps OCI, a proprietary C library that has to be installed on every machine, or is a multi-year reverse-engineering effort maintained by Oracle themselves. Neither fits a framework whose premise is that the protocols are written here. If Oracle is ever needed, the honest shape is a separate `rustlavel-db-oracle` package that links OCI and says plainly that it breaks the rule.
 
 ## Phase 1.0+ — Ecosystem (partly)

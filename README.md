@@ -190,9 +190,16 @@ reasoning in full.
 ## Status
 
 Early, but broad. Everything in the table above works today and is covered by
-tests — over 1,200 of them, including integration tests against a real
-PostgreSQL server and a real Redis. See [ROADMAP.md](ROADMAP.md) for what has
-landed and what has not.
+tests — over 1,400 of them, including integration suites against real
+PostgreSQL, MySQL, SQL Server and Redis servers. See [ROADMAP.md](ROADMAP.md)
+for what has landed and what has not.
+
+The database layer additionally carries a conformance suite: the same schema
+and query code runs against every configured server, so "the generated SQL
+looks right" and "the generated SQL works" are checked separately. Writing it
+found six bugs the unit tests were perfectly happy with — among them a `t.foreign_id(...)`
+that produced no foreign key at all on MySQL, and a migrator whose transaction
+spanned four different pooled connections.
 
 Not there yet: passkeys and an auth starter kit, re-rendering an HTML form with
 its validation errors, a Livewire-style component layer, and a documentation
