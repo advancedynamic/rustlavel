@@ -306,6 +306,14 @@ application calls `credentials.rotate(user, password)`; nothing here reaches for
   plugin. Everything else in `rustlavel-vault` works against either.
 - **Inbound TLS is not ours.** `rustlavel-http` serves plain HTTP and expects a reverse
   proxy in front, so the post-quantum posture users see is that proxy's to configure.
+- **The revocation measurements cover three specific versions.** `tests/revocation.rs`
+  records what PostgreSQL 16, MySQL 8.4 and SQL Server 2022 do when an account is deleted
+  under an open connection, and the rotation design rests on those answers. PostgreSQL 17,
+  MySQL 9, MariaDB, Azure SQL and the managed cloud variants are untested and could behave
+  differently — SQL Server already proved the three do not agree, so a fourth answer would
+  not be a surprise. The tests are written to run against any server the URLs point at, so
+  checking a new version is a matter of starting it and setting `REVOCATION_*_URL`, not of
+  writing anything.
 
 ---
 
