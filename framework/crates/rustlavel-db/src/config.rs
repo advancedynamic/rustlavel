@@ -5,6 +5,8 @@ use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct DatabaseConfig {
+    /// Which database this points at: `postgres`, `mysql`, `sqlserver`.
+    pub driver: String,
     pub host: String,
     pub port: u16,
     pub user: String,
@@ -21,6 +23,7 @@ pub struct DatabaseConfig {
 impl Default for DatabaseConfig {
     fn default() -> Self {
         DatabaseConfig {
+            driver: "postgres".into(),
             host: "127.0.0.1".into(),
             port: 5432,
             user: "postgres".into(),
@@ -35,21 +38,38 @@ impl Default for DatabaseConfig {
 }
 
 impl DatabaseConfig {
-    /// Parse `postgres://user:password@host:port/database`.
+    /// Parse a database URL.
     ///
-    /// User, password and database are percent-decoded, so a password with an
-    /// `@` or `/` in it works without the caller escaping anything twice.
+    /// The scheme chooses the driver: `postgres://`, `mysql://` or
+    /// `sqlserver://`. User, password and database are percent-decoded, so a
+    /// password with an `@` or `/` in it works without escaping anything twice.
     pub fn from_url(url: &str) -> Result<Self> {
-        let rest = url
-            .strip_prefix("postgres://")
-            .or_else(|| url.strip_prefix("postgresql://"))
-            .ok_or_else(|| {
-                Error::msg(format!(
-                    "`{url}` is not a PostgreSQL URL. Expected postgres://user:password@host:port/database"
-                ))
-            })?;
+        let (scheme, rest) = url.split_once("://").ok_or_else(|| {
+            Error::msg(format!(
+                "`{url}` has no scheme. Expected postgres://, mysql:// or sqlserver:// \
+                 followed by user:password@host:port/database"
+            ))
+        })?;
 
-        let mut config = DatabaseConfig::default();
+        // The scheme names the database, and the default port follows from it,
+        // because nobody remembers 1433.
+        let (driver, default_port) = match scheme.to_ascii_lowercase().as_str() {
+            "postgres" | "postgresql" | "pgsql" => ("postgres", 5432),
+            "mysql" | "mariadb" => ("mysql", 3306),
+            "sqlserver" | "mssql" => ("sqlserver", 1433),
+            other => {
+                return Err(Error::msg(format!(
+                    "`{other}` is not a database this framework speaks. \
+                     Available schemes: postgres, mysql, sqlserver."
+                )));
+            }
+        };
+
+        let mut config = DatabaseConfig {
+            driver: driver.to_string(),
+            port: default_port,
+            ..DatabaseConfig::default()
+        };
 
         // Split off the query string before anything else, so `?` inside it
         // cannot be mistaken for part of the database name.
@@ -119,6 +139,11 @@ impl DatabaseConfig {
         Ok(config)
     }
 
+    /// The dialect this configuration implies.
+    pub fn dialect(&self) -> Result<Box<dyn crate::dialect::Dialect>> {
+        crate::dialect::by_name(&self.driver)
+    }
+
     /// Read from the application config, falling back to `DATABASE_URL`.
     pub fn from_app_config(config: &Config) -> Result<Self> {
         if let Some(url) = config.get("database.url").and_then(|v| v.as_str().map(str::to_string))
@@ -131,6 +156,7 @@ impl DatabaseConfig {
             }
 
         let mut settings = DatabaseConfig {
+            driver: config.string("database.driver", "postgres"),
             host: config.string("database.host", "127.0.0.1"),
             port: config.int("database.port", 5432) as u16,
             user: config.string("database.user", "postgres"),
@@ -147,8 +173,8 @@ impl DatabaseConfig {
     pub fn redacted_url(&self) -> String {
         let password = if self.password.is_empty() { "" } else { ":***" };
         format!(
-            "postgres://{}{password}@{}:{}/{}",
-            self.user, self.host, self.port, self.database
+            "{}://{}{password}@{}:{}/{}",
+            self.driver, self.user, self.host, self.port, self.database
         )
     }
 }
@@ -216,17 +242,60 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_url_with_the_wrong_scheme() {
-        let error = DatabaseConfig::from_url("mysql://host/blog").unwrap_err();
-        assert!(error.to_string().contains("not a PostgreSQL URL"));
+    fn the_scheme_chooses_the_driver_and_its_default_port() {
+        for (url, driver, port) in [
+            ("postgres://host/blog", "postgres", 5432),
+            ("postgresql://host/blog", "postgres", 5432),
+            ("mysql://host/blog", "mysql", 3306),
+            ("mariadb://host/blog", "mysql", 3306),
+            ("sqlserver://host/blog", "sqlserver", 1433),
+            ("mssql://host/blog", "sqlserver", 1433),
+        ] {
+            let config = DatabaseConfig::from_url(url).unwrap();
+            assert_eq!(config.driver, driver, "for {url}");
+            assert_eq!(config.port, port, "for {url}");
+        }
+    }
+
+    #[test]
+    fn an_explicit_port_still_wins_over_the_default() {
+        assert_eq!(DatabaseConfig::from_url("mysql://host:3307/blog").unwrap().port, 3307);
+    }
+
+    #[test]
+    fn a_configuration_knows_its_dialect() {
+        for (url, dialect) in [
+            ("postgres://host/b", "postgres"),
+            ("mysql://host/b", "mysql"),
+            ("sqlserver://host/b", "sqlserver"),
+        ] {
+            assert_eq!(
+                DatabaseConfig::from_url(url).unwrap().dialect().unwrap().name(),
+                dialect
+            );
+        }
+    }
+
+    #[test]
+    fn an_unsupported_database_lists_the_ones_that_work() {
+        let error = DatabaseConfig::from_url("oracle://host/blog").unwrap_err().to_string();
+        assert!(error.contains("postgres, mysql, sqlserver"), "{error}");
+
+        let missing = DatabaseConfig::from_url("just-a-host/blog").unwrap_err().to_string();
+        assert!(missing.contains("has no scheme"), "{missing}");
     }
 
     #[test]
     fn never_prints_the_password() {
-        let config = DatabaseConfig::from_url("postgres://ada:hunter2@host/blog").unwrap();
-        let shown = config.redacted_url();
+        for url in [
+            "postgres://ada:hunter2@host/blog",
+            "mysql://ada:hunter2@host/blog",
+            "sqlserver://ada:hunter2@host/blog",
+        ] {
+            let shown = DatabaseConfig::from_url(url).unwrap().redacted_url();
 
-        assert!(!shown.contains("hunter2"));
-        assert!(shown.contains("ada"));
+            assert!(!shown.contains("hunter2"), "the password leaked into {shown}");
+            assert!(shown.contains("ada"));
+        }
     }
 }

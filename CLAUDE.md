@@ -1,34 +1,36 @@
-# Rustlavel — panduan untuk AI/coding agent
+# Rustlavel — notes for AI and coding agents
 
-Rustlavel adalah framework web Rust full-stack terinspirasi **Laravel 13**, dibangun **from scratch** (tanpa Axum/SeaORM; async runtime satu-satunya dependency besar: Tokio). Visi lengkap dan urutan pengerjaan ada di `ROADMAP.md` — baca itu dulu sebelum mengerjakan fitur.
+Rustlavel is a full-stack Rust web framework inspired by **Laravel 13**, built **from scratch** — no Axum, no SeaORM; Tokio is the only large dependency. The full vision and the order of work are in `ROADMAP.md`. Read it before starting a feature.
 
-## Struktur repo
+## Repository layout
 
-- `ROADMAP.md` — visi, prinsip desain, fase pengerjaan, keputusan yang sudah diambil.
-- `framework/` — **kode framework** (Cargo workspace). Semua crate framework ada di sini.
-- `examples/blog/` — aplikasi contoh; workspace-nya sendiri, bergantung ke framework lewat path. Bukan member workspace framework.
-- File AI/dokumentasi proses (seperti file ini) tinggal di root, di luar `framework/`.
+- `ROADMAP.md` — vision, design principles, phases, and the decisions already made.
+- `framework/` — **the framework** (one Cargo workspace). Every framework crate lives here.
+- `examples/blog/` — a worked example application. Its own workspace, depending on the framework by path; deliberately not a member of the framework workspace.
+- Process and agent documentation (this file included) stays at the root, outside `framework/`.
 
-## Workspace (`framework/crates/`)
+## The workspace (`framework/crates/`)
 
-- `rustlavel` — meta-crate yang di-import aplikasi; package opsional diaktifkan via feature flags. Yang tidak di-enable tidak dikompilasi. `App` builder ada di sini.
-- `rustlavel-core` — config, loader `.env` sendiri, `Json`, `Context` bertipe, event bus instrumentasi, dispatcher event aplikasi.
-- `rustlavel-http` — server HTTP/1.1 di atas Tokio TCP (bukan hyper), `Router`, middleware, error page, `TestClient`, trait `Plugin`.
-- `rustlavel-cli` — binary `rustlavel`: `new` (dengan `--with`), `serve`, `make:*`, `doctor`, `build`, `key:generate`. Perintah app-bound (`route:list`, `migrate`, `db:seed`, `queue:work`) di-forward ke binary project user (pola Loco).
-- `rustlavel-macros` — `#[derive(Model)]`, proc-macro tulis tangan (tanpa syn/quote).
-- Package opsional: `-db`, `-view`, `-validation`, `-auth`, `-cache`, `-client`, `-storage`, `-i18n`, `-ai`, `-mcp`, `-telescope`, `-queue`, `-mail`. Satu crate per package, jangan digabung.
+- `rustlavel` — the meta-crate an application imports. Optional packages are enabled through feature flags, and what is not enabled is never compiled. The `App` builder lives here.
+- `rustlavel-core` — config, a `.env` loader written here, `Json`, the typed `Context`, the instrumentation event bus, and the typed application-event dispatcher.
+- `rustlavel-http` — an HTTP/1.1 server on Tokio TCP (not hyper), the `Router`, middleware, the development error page, `TestClient`, and the `Plugin` trait.
+- `rustlavel-cli` — the `rustlavel` binary: `new` (with `--with`), `serve`, `make:*`, `doctor`, `build`, `key:generate`. Commands that need the application itself (`route:list`, `migrate`, `db:seed`, `queue:work`) are forwarded to the project's own binary, the way Loco does it.
+- `rustlavel-macros` — `#[derive(Model)]`, a proc macro written by hand with no syn or quote.
+- Optional packages: `-db`, `-view`, `-validation`, `-auth`, `-cache`, `-client`, `-storage`, `-i18n`, `-ai`, `-mcp`, `-telescope`, `-metrics`, `-openapi`, `-queue`, `-ws`, `-mail`. One crate per package; never merge two.
 
-## Aturan desain (wajib)
+## Design rules (not optional)
 
-1. **Jangan tambah dependency pihak ketiga** untuk hal yang bisa dibangun sendiri — from scratch adalah keputusan produk. Tokio boleh; Axum/hyper/SeaORM/dotenv/serde/regex/syn tidak. **Pengecualian: kriptografi.** argon2, sha2, hmac, aes-gcm, rustls/tokio-rustls/webpki-roots boleh dan harus dipakai — menulis cipher, KDF, MAC atau TLS sendiri itu kerentanan, bukan prestasi. Tulis komentar di Cargo.toml yang menjelaskan kenapa.
-2. **Tanpa magic runtime.** Tidak ada reflection/auto-discovery; semua eksplisit di `main.rs` user atau di-generate CLI (registry migration, dsb). Gantinya facade Laravel: extractor/DI compile-time.
-3. **DX adalah fitur.** Pesan error macro dan compiler harus manusiawi; API dirancang meniru *rasa* Laravel (`r.get(...)`, `Schema::create(...)`, `make:controller`).
-4. **Package opt-in.** Fitur baru = crate baru + feature flag di meta-crate `rustlavel`, bukan penambahan di core.
-5. **Urutan pembuatan crate baru:** buat `src/lib.rs` di langkah yang sama dengan `Cargo.toml`, jangan lebih dulu. Direktori crate ber-Cargo.toml tanpa target membuat seluruh workspace gagal dimuat.
-6. **Test berjalan paralel.** Jangan berbagi direktori fixture, port tetap, atau state global antar test; beri nama unik per test, atau serialisasi dengan `static Mutex` bila state-nya proses-wide.
-7. Verifikasi dengan `cargo test --workspace --all-features` dan `cargo clippy --workspace --all-features --all-targets` (harus nol warning) dari dalam `framework/` sebelum menyatakan selesai.
+1. **Do not add a third-party dependency for something that can be written here.** From scratch is a product decision, not a preference. Tokio is fine; Axum, hyper, SeaORM, dotenv, serde, regex and syn are not. **The exception is cryptography.** argon2, sha2, sha1, hmac, aes-gcm, md-5 and rustls/tokio-rustls/webpki-roots are allowed and should be used — writing your own cipher, KDF, MAC or TLS stack is a vulnerability, not an achievement. Put a comment in `Cargo.toml` saying why the exception applies.
+2. **No runtime magic.** No reflection, no auto-discovery. Everything is explicit in the user's `main.rs` or generated by the CLI (the migration registry, for instance). Laravel's facades are replaced by compile-time extractors and dependency injection.
+3. **DX is a feature.** Macro and compiler errors must read like something a person wrote, and APIs are shaped to feel like Laravel: `r.get(...)`, `Schema::create(...)`, `make:controller`.
+4. **Packages are opt-in.** A new feature is a new crate plus a feature flag on the `rustlavel` meta-crate — never an addition to core.
+5. **Creating a crate:** write `src/lib.rs` in the same step as `Cargo.toml`, never before it. A crate directory holding a `Cargo.toml` with no target makes the entire workspace fail to load, for everyone.
+6. **Tests run concurrently.** Never share a fixture directory, a fixed port, or global state between tests. Give each test its own name-spaced fixture, or serialise with a `static Mutex` when the state really is process-wide.
+7. **The database layer is split in two.** A `Dialect` (in `rustlavel-db/src/dialect.rs`) holds what SQL databases disagree about; a `Driver` (in `driver.rs`) holds the wire protocol. Everything above that line — query builder, schema builder, migrator, ORM — is written once and must stay database-agnostic. The PostgreSQL driver is the reference implementation; a new driver should read as though the same person wrote it.
+8. Verify with `cargo test --workspace --all-features` and `cargo clippy --workspace --all-features --all-targets` — zero warnings — from inside `framework/`, before claiming anything is finished.
 
-## Konteks project
+## Project context
 
-- GitHub target publish: akun `advancedynamic` (bukan `galihlasahido`); gh multi-account via HTTPS.
-- Referensi framework: Laravel 13 (skeleton slim, AI SDK first-party, passkeys) dan Loco.rs sebagai pembanding kompetitor.
+- Published to GitHub under `advancedynamic` (not `galihlasahido`); gh multi-account over HTTPS.
+- References: Laravel 13 (slim skeleton, first-party AI SDK, passkeys) for the shape, and Loco.rs as the competitor to measure against.
+- Supported databases: PostgreSQL, MySQL, SQL Server. **Oracle is deliberately excluded** — its network protocol has never been published, so a driver means either wrapping the proprietary OCI library or a multi-year reverse-engineering effort. `ROADMAP.md` records the reasoning.
