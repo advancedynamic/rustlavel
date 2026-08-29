@@ -12,10 +12,10 @@ them at compile time, so a renamed column or a typo'd service is a build error
 rather than a `null` in production.
 
 **From scratch means from scratch.** The HTTP server, the router, the JSON
-parser, the `.env` loader, the PostgreSQL wire protocol, the template engine,
-the derive macros — all written here. The only dependencies are Tokio for the
-async runtime and a small set of cryptography crates, because hand-rolling a
-cipher or a KDF would be a vulnerability, not an achievement.
+parser, the `.env` loader, the PostgreSQL and MySQL and TDS wire protocols, the
+template engine, the derive macros — all written here. The only dependencies are
+Tokio for the async runtime and a small set of cryptography crates, because
+hand-rolling a cipher or a KDF would be a vulnerability, not an achievement.
 
 ## A first look
 
@@ -78,7 +78,7 @@ App::new()?
 | `rustlavel-core` | Config, `.env`, JSON, typed context, instrumentation bus, events |
 | `rustlavel-http` | HTTP/1.1 server, router, middleware, dev error page, test client |
 | `rustlavel-cli` | The `rustlavel` binary — `new`, `serve`, `make:*`, `migrate`, `doctor`, `build` |
-| `rustlavel-db` | PostgreSQL driver, query builder, schema, migrations, ORM, pagination |
+| `rustlavel-db` | Drivers for PostgreSQL, MySQL and SQL Server; query builder, schema, migrations, ORM, pagination |
 | `rustlavel-view` | Blade-shaped template engine |
 | `rustlavel-validation` | Laravel-style rules and 422 responses |
 | `rustlavel-auth` | Password hashing, encryption, sessions, CSRF, signed URLs, guards |
@@ -133,7 +133,8 @@ let posts = has_many::<User, Post>(&db, &users, "user_id").await?;  // two queri
 ```
 
 **Queries** cannot be injected into, by construction — values are always bound
-and identifiers are validated before they are quoted:
+and identifiers are validated before they are quoted. The same chain produces
+correct SQL on PostgreSQL, MySQL and SQL Server; only the URL changes:
 
 ```rust
 db.table("posts")
@@ -167,10 +168,29 @@ And some things fall out of Rust that Laravel cannot offer: a single binary to
 deploy with no runtime to install, and a compiler that catches a renamed column
 before the request does.
 
+## Databases
+
+```bash
+DATABASE_URL=postgres://user:password@host/db
+DATABASE_URL=mysql://user:password@host/db
+DATABASE_URL=sqlserver://user:password@host/db
+```
+
+The scheme picks the driver and its default port. Above the driver line the
+framework is one codebase — the query builder, schema builder, migrator and ORM
+are written once — and a `Dialect` supplies the handful of things the databases
+genuinely disagree about.
+
+**Oracle is deliberately not supported.** Its network protocol has never been
+published, so a driver means either wrapping the proprietary OCI library or a
+multi-year reverse-engineering effort. Neither fits a framework whose premise is
+that the protocols are written here. [ROADMAP.md](ROADMAP.md) records the
+reasoning in full.
+
 ## Status
 
 Early, but broad. Everything in the table above works today and is covered by
-tests — over 1,100 of them, including integration tests against a real
+tests — over 1,200 of them, including integration tests against a real
 PostgreSQL server and a real Redis. See [ROADMAP.md](ROADMAP.md) for what has
 landed and what has not.
 
