@@ -9,9 +9,25 @@ use crate::console;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// The packages `--with` can turn on, and what each one needs on disk.
+const PACKAGES: &[(&str, &[&str])] = &[
+    ("ai", &[]),
+    ("auth", &["storage/sessions"]),
+    ("cache", &["storage/cache"]),
+    ("client", &[]),
+    ("db", &["database/migrations", "database/seeders"]),
+    ("i18n", &["lang"]),
+    ("mcp", &[]),
+    ("storage", &["storage/app"]),
+    ("telescope", &[]),
+    ("validation", &[]),
+    ("view", &["resources/views"]),
+];
+
 pub fn run(args: &[String]) -> Result<(), String> {
     let mut name = None;
     let mut local_framework: Option<String> = None;
+    let mut packages: Vec<String> = Vec::new();
 
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -22,12 +38,30 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 local_framework =
                     Some(iter.next().ok_or("--local needs a path to the framework workspace")?.clone())
             }
+            // `rustlavel new blog --with db,view` is the scaffold-time form of
+            // `cargo add`: the same opt-in, chosen up front.
+            "--with" => {
+                let list = iter.next().ok_or("--with needs a comma-separated list of packages")?;
+                for requested in list.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+                    if !PACKAGES.iter().any(|(known, _)| *known == requested) {
+                        return Err(format!(
+                            "`{requested}` is not a package. Available: {}",
+                            PACKAGES.iter().map(|(name, _)| *name).collect::<Vec<_>>().join(", ")
+                        ));
+                    }
+                    packages.push(requested.to_string());
+                }
+            }
+            "--all" => packages = PACKAGES.iter().map(|(name, _)| (*name).to_string()).collect(),
             other if other.starts_with('-') => return Err(format!("unknown option `{other}`")),
             other => name = Some(other.to_string()),
         }
     }
 
-    let name = name.ok_or("usage: rustlavel new <name> [--local <framework path>]")?;
+    packages.sort();
+    packages.dedup();
+
+    let name = name.ok_or("usage: rustlavel new <name> [--with db,view] [--local <path>]")?;
     let crate_name = naming::snake(&name);
     let root = PathBuf::from(&name);
 
@@ -35,13 +69,20 @@ pub fn run(args: &[String]) -> Result<(), String> {
         return Err(format!("`{name}` already exists"));
     }
 
-    let dependency = match &local_framework {
+    let source = match &local_framework {
         Some(path) => {
             let absolute = std::fs::canonicalize(path)
                 .map_err(|e| format!("cannot resolve --local path `{path}`: {e}"))?;
             format!("path = \"{}/crates/rustlavel\"", absolute.display())
         }
         None => format!("version = \"{}\"", env!("CARGO_PKG_VERSION")),
+    };
+
+    let dependency = if packages.is_empty() {
+        source
+    } else {
+        let list = packages.iter().map(|p| format!("\"{p}\"")).collect::<Vec<_>>().join(", ");
+        format!("{source}, features = [{list}]")
     };
 
     let mut values = BTreeMap::new();
@@ -78,8 +119,28 @@ pub fn run(args: &[String]) -> Result<(), String> {
     write(&root.join("src/lib.rs"), LIB_RS)?;
     console::created("src/lib.rs");
 
+    // A package that needs a directory gets one now, so the first run does not
+    // fail on a path that was only ever going to be created by hand.
+    for (package, directories) in PACKAGES {
+        if !packages.iter().any(|enabled| enabled == package) {
+            continue;
+        }
+        for directory in *directories {
+            std::fs::create_dir_all(root.join(directory))
+                .map_err(|e| format!("cannot create {directory}: {e}"))?;
+            write(&root.join(directory).join(".gitkeep"), "")?;
+            console::created(directory);
+        }
+    }
+
+    let enabled = if packages.is_empty() {
+        String::new()
+    } else {
+        format!("\n  Packages: {}", packages.join(", "))
+    };
+
     console::success(&format!(
-        "Created {name}.\n\n  cd {name}\n  rustlavel serve"
+        "Created {name}.{enabled}\n\n  cd {name}\n  rustlavel serve"
     ));
     Ok(())
 }

@@ -459,6 +459,7 @@ dependencies = [
  "rustlavel-db",
  "rustlavel-http",
  "rustlavel-i18n",
+ "rustlavel-mcp",
  "rustlavel-storage",
  "rustlavel-telescope",
  "rustlavel-validation",

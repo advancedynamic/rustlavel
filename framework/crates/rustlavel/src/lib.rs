@@ -30,6 +30,8 @@ pub use rustlavel_client as client;
 pub use rustlavel_db as db;
 #[cfg(feature = "i18n")]
 pub use rustlavel_i18n as i18n;
+#[cfg(feature = "mcp")]
+pub use rustlavel_mcp as mcp;
 #[cfg(feature = "storage")]
 pub use rustlavel_storage as storage;
 #[cfg(feature = "telescope")]

@@ -86,6 +86,7 @@ fn help() {
 
     println!("{}", console::bold("APPLICATION"));
     row("new <name>", "Create a new application");
+    row("  --with <pkgs>", "Enable packages: db, view, auth, cache, ai, …");
     row("serve", "Run the app, reloading when files change");
     row("route:list", "Show the registered routes");
     row("migrate", "Run pending migrations");
