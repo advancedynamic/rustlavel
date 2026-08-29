@@ -1,0 +1,2 @@
+[38;5;39m INFO[0m  Rustlavel [local]
+Error: Io(Os { code: 48, kind: AddrInUse, message: "Address already in use" })

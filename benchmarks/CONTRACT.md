@@ -130,3 +130,19 @@ Seeded with 1,000 users (`User {id}`, `user{id}@example.test`) and 1,000 posts
 
 Every app uses a pool of **16** connections, so the comparison is between the
 drivers rather than between two different pool sizes.
+
+## A note on the ceiling
+
+On the machine this was first run on, `/plaintext`, `/json`, `/users/{id}/…`
+and `/middleware` all landed within a percent of each other — around 124,000
+requests a second. That is not four cases agreeing that the framework is fast;
+it is four cases hitting the same limit, which at that rate is the loopback
+interface and the load generator sharing a CPU with the server.
+
+So those four cases cannot separate two frameworks that are both above the
+ceiling. They can still show one that is *below* it, which is what they are for.
+The cases that discriminate on this hardware are the ones with real work behind
+them: `json-big`, `template`, and the two database endpoints.
+
+Read a four-way tie there as "no measurable difference on this machine", never
+as "identical".

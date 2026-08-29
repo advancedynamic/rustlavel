@@ -1,0 +1,6 @@
+target/
+build/
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+.gradle/
+*.log
