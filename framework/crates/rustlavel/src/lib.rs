@@ -38,6 +38,10 @@ pub use rustlavel_mail as mail;
 pub use rustlavel_mail::Mail;
 #[cfg(feature = "mcp")]
 pub use rustlavel_mcp as mcp;
+#[cfg(feature = "metrics")]
+pub use rustlavel_metrics as metrics;
+#[cfg(feature = "metrics")]
+pub use rustlavel_metrics::Metrics;
 #[cfg(feature = "openapi")]
 pub use rustlavel_openapi as openapi;
 #[cfg(feature = "queue")]

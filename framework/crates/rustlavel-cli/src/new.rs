@@ -19,6 +19,7 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("i18n", &["lang"]),
     ("mail", &["resources/views"]),
     ("mcp", &[]),
+    ("metrics", &[]),
     ("openapi", &[]),
     ("queue", &["database/migrations"]),
     ("storage", &["storage/app"]),

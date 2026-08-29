@@ -19,6 +19,7 @@ rustlavel-db = { workspace = true, optional = true }
 rustlavel-i18n = { workspace = true, optional = true }
 rustlavel-mail = { workspace = true, optional = true }
 rustlavel-mcp = { workspace = true, optional = true }
+rustlavel-metrics = { workspace = true, optional = true }
 rustlavel-openapi = { workspace = true, optional = true }
 rustlavel-queue = { workspace = true, optional = true }
 rustlavel-storage = { workspace = true, optional = true }
@@ -40,6 +41,7 @@ db = ["dep:rustlavel-db"]
 i18n = ["dep:rustlavel-i18n"]
 mail = ["dep:rustlavel-mail", "view"]
 mcp = ["dep:rustlavel-mcp"]
+metrics = ["dep:rustlavel-metrics"]
 openapi = ["dep:rustlavel-openapi"]
 queue = ["dep:rustlavel-queue", "db"]
 storage = ["dep:rustlavel-storage"]
@@ -56,6 +58,7 @@ full = [
     "i18n",
     "mail",
     "mcp",
+    "metrics",
     "openapi",
     "queue",
     "storage",

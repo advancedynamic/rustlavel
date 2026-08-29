@@ -461,6 +461,7 @@ dependencies = [
  "rustlavel-i18n",
  "rustlavel-mail",
  "rustlavel-mcp",
+ "rustlavel-metrics",
  "rustlavel-openapi",
  "rustlavel-queue",
  "rustlavel-storage",
@@ -580,6 +581,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustlavel-metrics"
+version = "0.1.0"
+dependencies = [
+ "rustlavel-core",
+ "rustlavel-http",
+ "tokio",
+]
+
+[[package]]
 name = "rustlavel-openapi"
 version = "0.1.0"
 dependencies = [
@@ -635,6 +645,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustlavel-ws"
+version = "0.1.0"
+dependencies = [
+ "rustlavel-core",
+ "rustlavel-http",
+ "sha1",
+ "tokio",
+]
+
+[[package]]
 name = "rustls"
 version = "0.23.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -676,6 +696,17 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "sha1"
+version = "0.10.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
+]
 
 [[package]]
 name = "sha2"
