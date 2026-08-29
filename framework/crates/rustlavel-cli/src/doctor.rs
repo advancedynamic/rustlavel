@@ -151,41 +151,79 @@ fn check_database(env: &std::collections::BTreeMap<String, String>) -> Check {
 
     // Parsing the URL here keeps the check dependency-free; reachability is
     // proved by opening a TCP connection, without speaking the protocol.
-    let after_scheme = url.split("://").nth(1).unwrap_or("");
+    let Some((scheme, after_scheme)) = url.split_once("://") else {
+        return Check::fail(
+            "Database",
+            "DATABASE_URL has no scheme",
+            "Expected postgres://, mysql:// or sqlserver:// followed by user:password@host:port/database",
+        );
+    };
+
+    // The scheme decides which port to try when the URL gives none, which is
+    // why this cannot assume PostgreSQL.
+    let default_port = match scheme.to_ascii_lowercase().as_str() {
+        "postgres" | "postgresql" | "pgsql" => "5432",
+        "mysql" | "mariadb" => "3306",
+        "sqlserver" | "mssql" => "1433",
+        other => {
+            return Check::fail(
+                "Database",
+                format!("`{other}` is not a database this framework speaks"),
+                "Use postgres://, mysql:// or sqlserver://.",
+            );
+        }
+    };
+
     let authority = after_scheme.rsplit('@').next().unwrap_or("");
     let host_port = authority.split('/').next().unwrap_or("");
     let (host, port) = match host_port.rsplit_once(':') {
         Some((host, port)) => (host, port),
-        None => (host_port, "5432"),
+        None => (host_port, default_port),
     };
 
     if host.is_empty() {
-        return Check::fail("Database", "DATABASE_URL is malformed", "Expected postgres://user:password@host:port/database");
+        return Check::fail(
+            "Database",
+            "DATABASE_URL names no host",
+            "Expected <scheme>://user:password@host:port/database",
+        );
     }
 
-    match std::net::TcpStream::connect_timeout(
-        &format!("{host}:{port}")
-            .parse()
-            .or_else(|_| resolve(host, port))
-            .map_err(|_| ())
-            .unwrap_or_else(|_| ([127, 0, 0, 1], 5432).into()),
-        std::time::Duration::from_secs(3),
-    ) {
-        Ok(_) => Check::pass("Database", format!("{host}:{port} is reachable")),
+    // Resolution failure is reported, never guessed around. Falling back to a
+    // default address could connect to some other database on this machine and
+    // cheerfully report the wrong one as reachable.
+    let address = match resolve(host, port) {
+        Ok(address) => address,
+        Err(e) => {
+            return Check::fail(
+                "Database",
+                format!("cannot resolve `{host}` ({e})"),
+                "Check the host in DATABASE_URL.",
+            );
+        }
+    };
+
+    match std::net::TcpStream::connect_timeout(&address, std::time::Duration::from_secs(3)) {
+        Ok(_) => Check::pass("Database", format!("{scheme} at {host}:{port} is reachable")),
         Err(e) => Check::fail(
             "Database",
             format!("cannot reach {host}:{port} ({e})"),
-            "Start PostgreSQL, or point DATABASE_URL at a server that is running.",
+            format!("Start the {scheme} server, or point DATABASE_URL at one that is running."),
         ),
     }
 }
 
 fn resolve(host: &str, port: &str) -> Result<std::net::SocketAddr, std::io::Error> {
     use std::net::ToSocketAddrs;
-    (host, port.parse::<u16>().unwrap_or(5432))
+
+    let port: u16 = port
+        .parse()
+        .map_err(|_| std::io::Error::other(format!("`{port}` is not a port number")))?;
+
+    (host, port)
         .to_socket_addrs()?
         .next()
-        .ok_or_else(|| std::io::Error::other("no address"))
+        .ok_or_else(|| std::io::Error::other("the host resolved to no address"))
 }
 
 fn check_directories(root: &Path) -> Check {
@@ -280,6 +318,49 @@ mod tests {
 
         assert!(check.outcome == Outcome::Warn);
         assert!(check.advice.unwrap().contains("key:generate"));
+    }
+
+    #[test]
+    fn the_database_check_knows_each_schemes_default_port() {
+        let mut env = std::collections::BTreeMap::new();
+
+        for (url, expected) in [
+            ("postgres://nowhere.invalid/db", "5432"),
+            ("mysql://nowhere.invalid/db", "3306"),
+            ("sqlserver://nowhere.invalid/db", "1433"),
+        ] {
+            env.insert("DATABASE_URL".to_string(), url.to_string());
+            let check = check_database(&env);
+
+            // The host does not resolve, so this fails — but the message must
+            // name the port the scheme implies rather than PostgreSQL's.
+            assert!(
+                check.detail.contains(expected) || check.detail.contains("cannot resolve"),
+                "for {url} the message was {:?}",
+                check.detail
+            );
+        }
+    }
+
+    #[test]
+    fn an_unresolvable_host_is_reported_rather_than_guessed_around() {
+        let mut env = std::collections::BTreeMap::new();
+        env.insert("DATABASE_URL".to_string(), "mysql://nowhere.invalid/db".to_string());
+
+        let check = check_database(&env);
+
+        assert!(check.outcome == Outcome::Fail);
+        // It must not silently try localhost and report someone else's database.
+        assert!(check.detail.contains("cannot resolve"), "{:?}", check.detail);
+    }
+
+    #[test]
+    fn an_unsupported_scheme_says_which_ones_work() {
+        let mut env = std::collections::BTreeMap::new();
+        env.insert("DATABASE_URL".to_string(), "oracle://host/db".to_string());
+
+        let check = check_database(&env);
+        assert!(check.advice.unwrap().contains("postgres://, mysql:// or sqlserver://"));
     }
 
     #[test]
