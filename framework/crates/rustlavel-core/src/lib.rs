@@ -6,6 +6,7 @@
 
 pub mod config;
 pub mod context;
+pub mod dispatcher;
 pub mod env;
 pub mod error;
 pub mod events;
@@ -14,6 +15,7 @@ pub mod log;
 
 pub use config::Config;
 pub use context::{Context, ContextBuilder};
+pub use dispatcher::{AppEvent, Dispatcher};
 pub use error::{Error, Result};
 pub use events::Event;
 pub use json::Json;
