@@ -60,10 +60,8 @@ Like `composer require`, every feature beyond the core is opt-in — and what yo
 do not add is never compiled into your binary.
 
 ```bash
-cargo add rustlavel-db          # query builder, migrations, ORM
-cargo add rustlavel-view        # Blade-shaped templates
-cargo add rustlavel-validation  # request validation
-cargo add rustlavel-telescope   # the debugging dashboard
+rustlavel new blog --with db,view,auth      # choose them at scaffold time
+cargo add rustlavel-telescope               # or add one later
 ```
 
 ```rust
@@ -77,13 +75,24 @@ App::new()?
 | Crate | What it gives you |
 | --- | --- |
 | `rustlavel` | The meta-crate an application imports, with feature flags |
-| `rustlavel-core` | Config, `.env`, JSON, typed application context, instrumentation bus |
+| `rustlavel-core` | Config, `.env`, JSON, typed context, instrumentation bus, events |
 | `rustlavel-http` | HTTP/1.1 server, router, middleware, dev error page, test client |
-| `rustlavel-cli` | The `rustlavel` binary — `new`, `serve`, `make:*`, `migrate`, `doctor` |
-| `rustlavel-db` | PostgreSQL driver, query builder, schema, migrations, ORM |
+| `rustlavel-cli` | The `rustlavel` binary — `new`, `serve`, `make:*`, `migrate`, `doctor`, `build` |
+| `rustlavel-db` | PostgreSQL driver, query builder, schema, migrations, ORM, pagination |
 | `rustlavel-view` | Blade-shaped template engine |
 | `rustlavel-validation` | Laravel-style rules and 422 responses |
-| `rustlavel-client` | Outbound HTTP client with TLS, streaming, and `Http::fake()` |
+| `rustlavel-auth` | Password hashing, encryption, sessions, CSRF, signed URLs, guards |
+| `rustlavel-cache` | Memory, file, and a from-scratch Redis client; rate limiting |
+| `rustlavel-queue` | Background jobs, workers, retries, dead letters, cron scheduling |
+| `rustlavel-mail` | SMTP written from scratch, MIME, mailables, notifications |
+| `rustlavel-storage` | Local disk and S3-compatible object stores |
+| `rustlavel-client` | Outbound HTTP with TLS, streaming, and `Http::fake()` |
+| `rustlavel-ai` | Anthropic, OpenAI and Ollama through one API |
+| `rustlavel-mcp` | Model Context Protocol, server and client |
+| `rustlavel-telescope` | The debugging dashboard |
+| `rustlavel-metrics` | Prometheus metrics from the events already being emitted |
+| `rustlavel-openapi` | API documentation generated from the routes |
+| `rustlavel-i18n` | Translations, plurals, locale detection |
 | `rustlavel-macros` | `#[derive(Model)]` |
 
 ## What it looks like in practice
@@ -159,14 +168,13 @@ before the request does.
 
 ## Status
 
-Early and moving. Working today: the HTTP stack, routing, middleware, the CLI
-and its generators, config and `.env`, the dev error page, the PostgreSQL
-driver with migrations and the ORM, the template engine, validation, the
-outbound HTTP client, pagination, and `doctor`. See
-[ROADMAP.md](ROADMAP.md) for what is landing next and what has already landed.
+Early, but broad. Everything in the table above works today and is covered by
+tests — over 1,100 of them, including integration tests against a real
+PostgreSQL server and a real Redis. See [ROADMAP.md](ROADMAP.md) for what has
+landed and what has not.
 
-Everything is covered by tests, including integration tests against a real
-PostgreSQL server.
+Not there yet: passkeys and an auth starter kit, a Livewire-style component
+layer, and a documentation site.
 
 ```bash
 cd framework
