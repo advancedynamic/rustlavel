@@ -190,8 +190,12 @@ impl Database {
     /// a half-finished transaction behind.
     pub async fn begin(&self) -> Result<Transaction> {
         let mut connection = self.pool.acquire().await?;
-        connection.simple_query("begin").await?;
-        Ok(Transaction { connection: Some(connection), finished: false })
+        connection.simple_query(self.dialect.begin_sql()).await?;
+        Ok(Transaction {
+            connection: Some(connection),
+            dialect: Arc::clone(&self.dialect),
+            finished: false,
+        })
     }
 
     /// Close every pooled connection.
@@ -203,6 +207,8 @@ impl Database {
 /// An open transaction, holding its connection until it ends.
 pub struct Transaction {
     connection: Option<PooledConnection>,
+    /// Kept so committing and rolling back use this database's own words.
+    dialect: Arc<dyn Dialect>,
     finished: bool,
 }
 
@@ -239,26 +245,30 @@ impl Transaction {
     /// A named savepoint, so part of a transaction can be undone on its own.
     pub async fn savepoint(&mut self, name: &str) -> Result<()> {
         validate_identifier(name)?;
-        self.connection()?.simple_query(&format!("savepoint {name}")).await?;
+        let sql = self.dialect.savepoint_sql(name);
+        self.connection()?.simple_query(&sql).await?;
         Ok(())
     }
 
     pub async fn rollback_to(&mut self, name: &str) -> Result<()> {
         validate_identifier(name)?;
-        self.connection()?.simple_query(&format!("rollback to savepoint {name}")).await?;
+        let sql = self.dialect.rollback_to_savepoint_sql(name);
+        self.connection()?.simple_query(&sql).await?;
         Ok(())
     }
 
     /// Commit and release the connection.
     pub async fn commit(mut self) -> Result<()> {
-        self.connection()?.simple_query("commit").await?;
+        let sql = self.dialect.commit_sql();
+        self.connection()?.simple_query(sql).await?;
         self.finished = true;
         Ok(())
     }
 
     /// Roll back and release the connection.
     pub async fn rollback(mut self) -> Result<()> {
-        self.connection()?.simple_query("rollback").await?;
+        let sql = self.dialect.rollback_sql();
+        self.connection()?.simple_query(sql).await?;
         self.finished = true;
         Ok(())
     }
@@ -273,8 +283,9 @@ impl Drop for Transaction {
         // left in a transaction anyway; rolling back explicitly returns it to
         // service instead of throwing it away.
         if let Some(mut connection) = self.connection.take() {
+            let sql = self.dialect.rollback_sql();
             tokio::spawn(async move {
-                let _ = connection.simple_query("rollback").await;
+                let _ = connection.simple_query(sql).await;
             });
         }
     }

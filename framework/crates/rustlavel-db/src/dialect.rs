@@ -142,6 +142,31 @@ pub trait Dialect: Send + Sync + std::fmt::Debug + 'static {
         "add column"
     }
 
+    /// Start a transaction.
+    ///
+    /// T-SQL wants the word `transaction`; the others are happy with `begin`
+    /// alone and reject `begin transaction` is fine there too, but the bare
+    /// form is what their documentation uses.
+    fn begin_sql(&self) -> &'static str {
+        "begin"
+    }
+
+    fn commit_sql(&self) -> &'static str {
+        "commit"
+    }
+
+    fn rollback_sql(&self) -> &'static str {
+        "rollback"
+    }
+
+    fn savepoint_sql(&self, name: &str) -> String {
+        format!("savepoint {name}")
+    }
+
+    fn rollback_to_savepoint_sql(&self, name: &str) -> String {
+        format!("rollback to savepoint {name}")
+    }
+
     /// The expression naming the schema this connection is working in.
     ///
     /// `information_schema` is standard; the way you ask "which schema am I in"
@@ -494,6 +519,28 @@ impl Dialect for SqlServer {
         "add"
     }
 
+    fn begin_sql(&self) -> &'static str {
+        "begin transaction"
+    }
+
+    fn commit_sql(&self) -> &'static str {
+        "commit transaction"
+    }
+
+    fn rollback_sql(&self) -> &'static str {
+        "rollback transaction"
+    }
+
+    fn savepoint_sql(&self, name: &str) -> String {
+        // T-SQL has no `savepoint` keyword; a named save point is made and
+        // returned to with `transaction`.
+        format!("save transaction {name}")
+    }
+
+    fn rollback_to_savepoint_sql(&self, name: &str) -> String {
+        format!("rollback transaction {name}")
+    }
+
     fn current_schema_expression(&self) -> &'static str {
         "schema_name()"
     }
@@ -672,6 +719,23 @@ mod tests {
         let sqlserver = SqlServer.migrations_table_sql("rustlavel_migrations");
         assert!(sqlserver.starts_with("if object_id("));
         assert!(sqlserver.contains("identity(1,1)"));
+    }
+
+    #[test]
+    fn transaction_control_uses_each_databases_own_words() {
+        // `begin` alone is a syntax error in T-SQL, which would have broken
+        // every transaction on SQL Server.
+        assert_eq!(Postgres.begin_sql(), "begin");
+        assert_eq!(MySql.begin_sql(), "begin");
+        assert_eq!(SqlServer.begin_sql(), "begin transaction");
+
+        assert_eq!(SqlServer.commit_sql(), "commit transaction");
+        assert_eq!(SqlServer.rollback_sql(), "rollback transaction");
+        assert_eq!(SqlServer.savepoint_sql("sp1"), "save transaction sp1");
+        assert_eq!(SqlServer.rollback_to_savepoint_sql("sp1"), "rollback transaction sp1");
+
+        assert_eq!(Postgres.savepoint_sql("sp1"), "savepoint sp1");
+        assert_eq!(Postgres.rollback_to_savepoint_sql("sp1"), "rollback to savepoint sp1");
     }
 
     #[test]

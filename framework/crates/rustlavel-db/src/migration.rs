@@ -135,6 +135,22 @@ impl<'a> Migrator<'a> {
         Ok(())
     }
 
+    /// Record that a migration ran.
+    async fn record(&self, name: &str, batch: i64) -> Result<()> {
+        self.db
+            .execute(
+                &format!(
+                    "insert into {} (name, batch) values ({}, {})",
+                    self.quoted_table(),
+                    self.db.dialect().placeholder(1),
+                    self.db.dialect().placeholder(2)
+                ),
+                &[Value::from(name), Value::from(batch)],
+            )
+            .await?;
+        Ok(())
+    }
+
     /// The tracking table, quoted for the database in use.
     fn quoted_table(&self) -> String {
         self.db.dialect().quote(&self.table)
@@ -174,8 +190,15 @@ impl<'a> Migrator<'a> {
 
     /// Run every pending migration.
     ///
-    /// Each runs in its own transaction, so a failure halfway leaves the
-    /// database on a migration boundary rather than inside one.
+    /// A migration is **not** wrapped in a transaction, which is also what
+    /// Laravel does. Wrapping one here would be a lie: the migration's DDL and
+    /// the tracking insert are separate statements, a pooled connection is not
+    /// guaranteed to be the same one twice, and MySQL commits implicitly before
+    /// and after every DDL statement regardless — a CREATE TABLE cannot be
+    /// rolled back there at all.
+    ///
+    /// A migration that needs to be atomic should open a transaction itself
+    /// with `db.begin()`.
     pub async fn run(&self) -> Result<MigrationReport> {
         self.prepare().await?;
 
@@ -189,28 +212,17 @@ impl<'a> Migrator<'a> {
         for migration in pending {
             let schema = Schema::new(self.db);
 
-            self.db.run("begin").await?;
             match migration.up(&schema).await {
                 Ok(()) => {
-                    self.db
-                        .execute(
-                            &format!(
-                                "insert into {} (name, batch) values ({}, {})",
-                                self.quoted_table(),
-                                self.db.dialect().placeholder(1),
-                                self.db.dialect().placeholder(2)
-                            ),
-                            &[Value::from(migration.name()), Value::from(batch)],
-                        )
-                        .await?;
-                    self.db.run("commit").await?;
+                    self.record(migration.name(), batch).await?;
                     report.applied.push(migration.name().to_string());
                     rustlavel_core::info!("migrated: {}", migration.name());
                 }
                 Err(error) => {
-                    self.db.run("rollback").await?;
                     return Err(rustlavel_core::Error::msg(format!(
-                        "migration `{}` failed and was rolled back: {error}",
+                        "migration `{}` failed: {error}\n  \
+                         Anything it had already done is still applied. Fix the migration and \
+                         run `rustlavel migrate` again.",
                         migration.name()
                     )));
                 }
@@ -259,7 +271,6 @@ impl<'a> Migrator<'a> {
             };
 
             let schema = Schema::new(self.db);
-            self.db.run("begin").await?;
             match migration.down(&schema).await {
                 Ok(()) => {
                     self.db
@@ -272,14 +283,13 @@ impl<'a> Migrator<'a> {
                             &[Value::from(name.as_str())],
                         )
                         .await?;
-                    self.db.run("commit").await?;
                     report.rolled_back.push(name.clone());
                     rustlavel_core::info!("rolled back: {name}");
                 }
                 Err(error) => {
-                    self.db.run("rollback").await?;
                     return Err(rustlavel_core::Error::msg(format!(
-                        "rolling back `{name}` failed: {error}"
+                        "rolling back `{name}` failed: {error}\n  \
+                         The migration is still recorded as applied."
                     )));
                 }
             }
