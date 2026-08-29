@@ -669,6 +669,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustlavel-vault"
+version = "0.1.0"
+dependencies = [
+ "rustlavel-client",
+ "rustlavel-core",
+ "rustlavel-http",
+ "tokio",
+]
+
+[[package]]
 name = "rustlavel-view"
 version = "0.1.0"
 dependencies = [
