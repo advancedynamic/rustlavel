@@ -14,10 +14,18 @@
 
 pub mod client;
 pub mod error;
+pub mod fake;
 pub mod lease;
+pub mod plugin;
+pub mod renew;
+pub mod resolve;
 
 pub use client::{VaultClient, VaultResponse};
 pub use error::VaultError;
+pub use fake::{Fake, FakeVault};
 pub use lease::Lease;
+pub use plugin::Vault;
+pub use renew::Renewer;
+pub use resolve::{Resolver, Secret, SecretRef, SecretSource};
 
 pub use rustlavel_core::{Error, Result};
