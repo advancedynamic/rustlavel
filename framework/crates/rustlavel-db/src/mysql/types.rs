@@ -57,6 +57,8 @@ pub fn decode_text(column: &Column, raw: Option<&[u8]>) -> Value {
 
     match column.column_type {
         TINY | SHORT | LONG | INT24 | LONGLONG | YEAR => decode_integer_text(bytes, column),
+        // Never a float: see the note above about precision.
+        DECIMAL | NEWDECIMAL => Value::Text(String::from_utf8_lossy(bytes).into_owned()),
         FLOAT | DOUBLE => {
             let text = String::from_utf8_lossy(bytes);
             text.parse::<f64>().map_or_else(|_| Value::Text(text.into_owned()), Value::Float)
@@ -109,6 +111,11 @@ pub fn decode_binary(column: &Column, reader: &mut Reader<'_>) -> Result<Value> 
         DOUBLE => Value::Float(f64::from_le_bytes(reader.take(8)?.try_into().expect("8 bytes"))),
         DATE | DATETIME | TIMESTAMP => Value::Text(decode_binary_datetime(reader, column.column_type)?),
         TIME => Value::Text(decode_binary_time(reader)?),
+        // A decimal arrives as digits, and the server tags it with the binary
+        // collation — which would make it a blob if it fell through below.
+        DECIMAL | NEWDECIMAL => {
+            Value::Text(String::from_utf8_lossy(reader.lenenc_bytes()?).into_owned())
+        }
         JSON => {
             let bytes = reader.lenenc_bytes()?;
             let text = String::from_utf8_lossy(bytes);
@@ -117,7 +124,10 @@ pub fn decode_binary(column: &Column, reader: &mut Reader<'_>) -> Result<Value> 
         BIT => Value::Int(bits_to_int(reader.lenenc_bytes()?)),
         _ => {
             let bytes = reader.lenenc_bytes()?;
-            if column.is_binary() {
+            // Only a genuine string or blob column becomes bytes; the binary
+            // collation on anything else means "not text I chose", not "binary
+            // data the caller wants back as bytes".
+            if column.is_binary() && is_string_type(column.column_type) {
                 Value::Bytes(bytes.to_vec())
             } else {
                 Value::Text(String::from_utf8_lossy(bytes).into_owned())
@@ -361,6 +371,21 @@ mod tests {
     }
 
     #[test]
+    fn a_decimal_is_text_even_though_the_server_calls_it_binary() {
+        // MySQL tags DECIMAL with the binary collation, so the plain
+        // "binary collation means bytes" rule would turn money into a blob.
+        let money = Column { charset: CHARSET_BINARY, ..column(NEWDECIMAL) };
+
+        assert_eq!(decode_text(&money, Some(b"12345.6789")), Value::Text("12345.6789".into()));
+
+        let mut reader = Reader::new(b"\x0a12345.6789");
+        assert_eq!(
+            decode_binary(&money, &mut reader).unwrap(),
+            Value::Text("12345.6789".into())
+        );
+    }
+
+    #[test]
     fn decodes_json_columns_into_parsed_values() {
         match decode_text(&column(JSON), Some(br#"{"a":1}"#)) {
             Value::Json(json) => assert_eq!(json.get("a").unwrap().as_i64(), Some(1)),
@@ -407,16 +432,19 @@ mod tests {
 
     #[test]
     fn decodes_binary_integers_and_floats() {
-        let mut reader = Reader::new(&9_000_000_000i64.to_le_bytes());
+        let big = 9_000_000_000i64.to_le_bytes();
+        let mut reader = Reader::new(&big);
         assert_eq!(
             decode_binary(&column(LONGLONG), &mut reader).unwrap(),
             Value::Int(9_000_000_000)
         );
 
-        let mut reader = Reader::new(&1.5f64.to_le_bytes());
+        let double = 1.5f64.to_le_bytes();
+        let mut reader = Reader::new(&double);
         assert_eq!(decode_binary(&column(DOUBLE), &mut reader).unwrap(), Value::Float(1.5));
 
-        let mut reader = Reader::new(&0.5f32.to_le_bytes());
+        let single = 0.5f32.to_le_bytes();
+        let mut reader = Reader::new(&single);
         assert_eq!(decode_binary(&column(FLOAT), &mut reader).unwrap(), Value::Float(0.5));
     }
 

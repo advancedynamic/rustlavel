@@ -9,4 +9,4 @@ pub mod connection;
 pub mod protocol;
 pub mod types;
 
-pub use connection::{DEFAULT_PORT, MySqlConnection, MySqlDriver, config_from_url};
+pub use connection::{DEFAULT_PORT, DRIVER_NAME, MySqlConnection, MySqlDriver};

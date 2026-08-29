@@ -377,11 +377,16 @@ impl<'a> Schema<'a> {
 
     /// Whether a table exists — how the migration runner decides what to do.
     pub async fn has_table(&self, table: &str) -> Result<bool> {
+        let dialect = self.db.dialect();
         let found = self
             .db
             .scalar::<i64>(
-                "select count(*) from information_schema.tables \
-                 where table_schema = current_schema() and table_name = $1",
+                &format!(
+                    "select count(*) from information_schema.tables \
+                     where table_schema = {} and table_name = {}",
+                    dialect.current_schema_expression(),
+                    dialect.placeholder(1)
+                ),
                 &[crate::Value::from(table)],
             )
             .await?;
@@ -389,11 +394,17 @@ impl<'a> Schema<'a> {
     }
 
     pub async fn has_column(&self, table: &str, column: &str) -> Result<bool> {
+        let dialect = self.db.dialect();
         let found = self
             .db
             .scalar::<i64>(
-                "select count(*) from information_schema.columns \
-                 where table_schema = current_schema() and table_name = $1 and column_name = $2",
+                &format!(
+                    "select count(*) from information_schema.columns \
+                     where table_schema = {} and table_name = {} and column_name = {}",
+                    dialect.current_schema_expression(),
+                    dialect.placeholder(1),
+                    dialect.placeholder(2)
+                ),
                 &[crate::Value::from(table), crate::Value::from(column)],
             )
             .await?;

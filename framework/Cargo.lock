@@ -533,8 +533,12 @@ dependencies = [
  "md-5",
  "rustlavel-core",
  "rustlavel-macros",
+ "rustls",
+ "sha1",
  "sha2",
  "tokio",
+ "tokio-rustls",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]

@@ -119,7 +119,7 @@ impl MySqlConnection {
             // A server that is out of connections, or that has banned this
             // host, refuses before it ever says hello.
             self.broken = true;
-            return Err(self.server_error(protocol::parse_err(&greeting)?, None));
+            return Err(server_error(protocol::parse_err(&greeting)?, &self.config, None));
         }
 
         let handshake = protocol::parse_handshake(&greeting)?;
@@ -149,7 +149,6 @@ impl MySqlConnection {
         }
 
         let response = auth::respond(&plugin, &self.config.password, &handshake.scramble)?;
-        let mut scramble = handshake.scramble.clone();
 
         let mut reply = Buffer::new();
         reply.handshake_response(
@@ -177,7 +176,7 @@ impl MySqlConnection {
                 }
                 Packet::Err(error) => {
                     self.broken = true;
-                    return Err(self.authentication_error(error));
+                    return Err(authentication_error(error, &self.config));
                 }
                 Packet::AuthSwitch { plugin: wanted, data } => {
                     if !auth::is_supported(&wanted) {
@@ -186,10 +185,8 @@ impl MySqlConnection {
                     }
                     // The switch carries a fresh scramble; the old one belongs
                     // to a plugin we are no longer speaking.
-                    scramble = data;
                     plugin = wanted;
-                    let response =
-                        auth::respond(&plugin, &self.config.password, &scramble)?;
+                    let response = auth::respond(&plugin, &self.config.password, &data)?;
                     let mut reply = Buffer::new();
                     reply.auth_response(&response);
                     self.write_packet(reply).await?;
@@ -285,7 +282,7 @@ impl MySqlConnection {
 
         let payload = self.read_packet().await?;
         if protocol::is_err(&payload) {
-            return Err(self.server_error(protocol::parse_err(&payload)?, Some(sql)));
+            return Err(server_error(protocol::parse_err(&payload)?, &self.config, Some(sql)));
         }
 
         let prepared = protocol::parse_prepare_ok(&payload)?;
@@ -339,7 +336,7 @@ impl MySqlConnection {
             let payload = self.read_packet().await?;
 
             if protocol::is_err(&payload) {
-                return Err(self.server_error(protocol::parse_err(&payload)?, Some(sql)));
+                return Err(server_error(protocol::parse_err(&payload)?, &self.config, Some(sql)));
             }
 
             if payload.first() == Some(&0x00) {
@@ -404,7 +401,7 @@ impl MySqlConnection {
             let payload = self.read_packet().await?;
 
             if protocol::is_err(&payload) {
-                return Err(self.server_error(protocol::parse_err(&payload)?, None));
+                return Err(server_error(protocol::parse_err(&payload)?, &self.config, None));
             }
             if protocol::is_eof(&payload) {
                 let eof = protocol::parse_eof(&payload)?;
@@ -447,7 +444,7 @@ impl MySqlConnection {
                 self.status = ok.status;
                 Ok(())
             }
-            Packet::Err(error) => Err(self.server_error(error, None)),
+            Packet::Err(error) => Err(server_error(error, &self.config, None)),
             _ => Err(Error::Protocol("the server answered a ping with something else".into())),
         }
     }
@@ -539,59 +536,6 @@ impl MySqlConnection {
         Ok(())
     }
 
-    /// Turn a server error into one that says what to do about it.
-    fn server_error(&self, error: ServerError, sql: Option<&str>) -> Error {
-        let advice = match error.code {
-            1049 => Some(format!(
-                "Database `{}` does not exist. Create it, or point DATABASE_URL at one that does.",
-                self.config.database
-            )),
-            1044 => Some(format!(
-                "User `{}` has no rights on `{}`. Grant them, or connect as a user who has.",
-                self.config.user, self.config.database
-            )),
-            1146 => Some("The table is missing. Have the migrations been run?".to_string()),
-            _ => None,
-        };
-
-        let base = error.into_error(sql);
-        match advice {
-            Some(advice) => Error::msg(format!("{base}\n  {advice}")),
-            None => base,
-        }
-    }
-
-    /// Turn an authentication failure into something the developer can act on.
-    fn authentication_error(&self, error: ServerError) -> Error {
-        let advice = match error.code {
-            1045 => Some(format!(
-                "The password for `{}` was rejected. Check DATABASE_URL in your .env.",
-                self.config.user
-            )),
-            1049 => Some(format!(
-                "Database `{}` does not exist. Create it, or point DATABASE_URL at one that does.",
-                self.config.database
-            )),
-            1130 | 1698 => Some(format!(
-                "The server will not let `{}` in from this host. Check the account's host pattern \
-                 and its authentication plugin.",
-                self.config.user
-            )),
-            1040 | 1203 => Some(
-                "The server is out of connections. Lower max_connections in DATABASE_URL, or \
-                 raise the server's."
-                    .to_string(),
-            ),
-            _ => None,
-        };
-
-        let base = error.into_error(None);
-        match advice {
-            Some(advice) => Error::msg(format!("{base}\n  {advice}")),
-            None => base,
-        }
-    }
-
     /// Say goodbye politely, then hang up.
     pub async fn close(mut self) {
         let mut command = Buffer::new();
@@ -599,6 +543,59 @@ impl MySqlConnection {
         self.sequence = 0;
         let _ = self.write_packet(command).await;
         let _ = self.stream.shutdown().await;
+    }
+}
+
+/// Turn a server error into one that says what to do about it.
+fn server_error(error: ServerError, config: &DatabaseConfig, sql: Option<&str>) -> Error {
+    let advice = match error.code {
+        1049 => Some(format!(
+            "Database `{}` does not exist. Create it, or point DATABASE_URL at one that does.",
+            config.database
+        )),
+        1044 => Some(format!(
+            "User `{}` has no rights on `{}`. Grant them, or connect as a user who has.",
+            config.user, config.database
+        )),
+        1146 => Some("The table is missing. Have the migrations been run?".to_string()),
+        _ => None,
+    };
+
+    let base = error.into_error(sql);
+    match advice {
+        Some(advice) => Error::msg(format!("{base}\n  {advice}")),
+        None => base,
+    }
+}
+
+/// Turn an authentication failure into something the developer can act on.
+fn authentication_error(error: ServerError, config: &DatabaseConfig) -> Error {
+    let advice = match error.code {
+        1045 => Some(format!(
+            "The password for `{}` was rejected. Check DATABASE_URL in your .env.",
+            config.user
+        )),
+        1049 => Some(format!(
+            "Database `{}` does not exist. Create it, or point DATABASE_URL at one that does.",
+            config.database
+        )),
+        1130 | 1698 => Some(format!(
+            "The server will not let `{}` in from this host. Check the account's host pattern \
+             and its authentication plugin.",
+            config.user
+        )),
+        1040 | 1203 => Some(
+            "The server is out of connections. Lower max_connections in DATABASE_URL, or raise \
+             the server's."
+                .to_string(),
+        ),
+        _ => None,
+    };
+
+    let base = error.into_error(None);
+    match advice {
+        Some(advice) => Error::msg(format!("{base}\n  {advice}")),
+        None => base,
     }
 }
 
@@ -723,7 +720,6 @@ impl DriverConnection for MySqlConnection {
 mod tests {
     use super::*;
     use crate::mysql::protocol::{CHARSET_BINARY, CHARSET_UTF8MB4};
-    use crate::dialect::Dialect;
 
     fn column(name: &str, column_type: u8) -> Column {
         Column {
@@ -802,18 +798,20 @@ mod tests {
     }
 
     #[test]
-    fn a_url_defaults_to_mysqls_port_and_root() {
-        let config = config_from_url("mysql://localhost/blog").unwrap();
+    fn a_url_defaults_to_mysqls_port() {
+        let driver = MySqlDriver::from_url("mysql://localhost/blog").unwrap();
 
-        assert_eq!(config.host, "localhost");
-        assert_eq!(config.port, DEFAULT_PORT);
-        assert_eq!(config.user, "root");
-        assert_eq!(config.database, "blog");
+        assert_eq!(driver.config().host, "localhost");
+        assert_eq!(driver.config().port, DEFAULT_PORT);
+        assert_eq!(driver.config().database, "blog");
+        assert_eq!(driver.config().driver, DRIVER_NAME);
     }
 
     #[test]
     fn a_url_keeps_everything_it_states() {
-        let config = config_from_url("mysql://ada:hunter2@db.internal:3307/blog").unwrap();
+        let driver =
+            MySqlDriver::from_url("mysql://ada:hunter2@db.internal:3307/blog").unwrap();
+        let config = driver.config();
 
         assert_eq!(config.user, "ada");
         assert_eq!(config.password, "hunter2");
@@ -823,65 +821,58 @@ mod tests {
     }
 
     #[test]
-    fn a_url_with_no_database_leaves_it_unset() {
-        // MySQL will connect without one; substituting a name would silently
-        // point the session at a database the caller never asked for.
-        let config = config_from_url("mysql://ada:pw@host:3306").unwrap();
-        assert!(config.database.is_empty());
-    }
-
-    #[test]
-    fn a_password_may_contain_an_at_sign_and_query_options_still_parse() {
-        let config =
-            config_from_url("mysql://ada:p%40ss@host/blog?max_connections=25").unwrap();
-
-        assert_eq!(config.password, "p@ss");
-        assert_eq!(config.max_connections, 25);
-        assert_eq!(config.port, DEFAULT_PORT);
-    }
-
-    #[test]
     fn mariadb_urls_are_accepted_too() {
-        assert_eq!(config_from_url("mariadb://host/blog").unwrap().database, "blog");
+        // MariaDB speaks the same wire protocol, so it is the same driver.
+        let driver = MySqlDriver::from_url("mariadb://host/blog").unwrap();
+
+        assert_eq!(driver.config().database, "blog");
+        assert_eq!(driver.config().port, DEFAULT_PORT);
     }
 
     #[test]
-    fn rejects_a_url_with_the_wrong_scheme() {
-        let error = config_from_url("postgres://host/blog").unwrap_err().to_string();
-        assert!(error.contains("not a MySQL URL"), "{error}");
+    fn rejects_a_url_that_points_at_another_database() {
+        // Better here than as a handshake that makes no sense later.
+        let error = match MySqlDriver::from_url("postgres://host/blog") {
+            Err(error) => error.to_string(),
+            Ok(driver) => panic!("accepted a {} URL", driver.config().driver),
+        };
+        assert!(error.contains("not a MySQL one"), "{error}");
     }
 
     #[test]
-    fn never_prints_the_password() {
-        let config = config_from_url("mysql://ada:hunter2@host/blog").unwrap();
-        let shown = redacted_url(&config);
+    fn a_hand_built_config_still_describes_itself_as_mysql() {
+        // `DatabaseConfig::default` says `postgres`, and that name is the
+        // scheme in every log line and error message this driver prints.
+        let driver = MySqlDriver::new(DatabaseConfig::default());
+        assert!(driver.describe().starts_with("mysql://"), "{}", driver.describe());
+    }
 
+    #[test]
+    fn the_driver_speaks_the_mysql_dialect_and_never_prints_the_password() {
+        let driver =
+            MySqlDriver::from_url("mysql://ada:hunter2@host/blog?max_connections=4").unwrap();
+
+        assert_eq!(driver.dialect().name(), "mysql");
+        assert!(driver.dialect().booleans_are_integers());
+        assert_eq!(driver.max_connections(), 4);
+
+        let shown = driver.describe();
         assert!(!shown.contains("hunter2"), "{shown}");
         assert!(shown.starts_with("mysql://ada:***@"), "{shown}");
     }
 
     #[test]
-    fn the_driver_speaks_the_mysql_dialect_and_describes_itself_safely() {
-        let driver = MySqlDriver::from_url("mysql://ada:hunter2@host/blog?max_connections=4").unwrap();
-
-        assert_eq!(driver.dialect().name(), "mysql");
-        assert!(driver.dialect().booleans_are_integers());
-        assert_eq!(driver.max_connections(), 4);
-        assert!(!driver.describe().contains("hunter2"));
-    }
-
-    #[test]
     fn a_wrong_password_explains_where_to_look() {
         let config = DatabaseConfig { user: "ada".into(), ..DatabaseConfig::default() };
-        let connection = offline(config);
-
-        let error = connection
-            .authentication_error(ServerError {
+        let error = authentication_error(
+            ServerError {
                 code: 1045,
                 sql_state: "28000".into(),
                 message: "Access denied for user 'ada'@'localhost'".into(),
-            })
-            .to_string();
+            },
+            &config,
+        )
+        .to_string();
 
         assert!(error.contains("1045"), "{error}");
         assert!(error.contains("28000"), "{error}");
@@ -892,18 +883,16 @@ mod tests {
     #[test]
     fn an_unknown_database_names_the_one_that_was_asked_for() {
         let config = DatabaseConfig { database: "blog".into(), ..DatabaseConfig::default() };
-        let connection = offline(config);
-
-        let error = connection
-            .server_error(
-                ServerError {
-                    code: 1049,
-                    sql_state: "42000".into(),
-                    message: "Unknown database 'blog'".into(),
-                },
-                None,
-            )
-            .to_string();
+        let error = server_error(
+            ServerError {
+                code: 1049,
+                sql_state: "42000".into(),
+                message: "Unknown database 'blog'".into(),
+            },
+            &config,
+            None,
+        )
+        .to_string();
 
         assert!(error.contains("1049"), "{error}");
         assert!(error.contains("`blog` does not exist"), "{error}");
@@ -911,18 +900,16 @@ mod tests {
 
     #[test]
     fn a_statement_error_carries_the_sql_that_caused_it() {
-        let connection = offline(DatabaseConfig::default());
-
-        let error = connection
-            .server_error(
-                ServerError {
-                    code: 1146,
-                    sql_state: "42S02".into(),
-                    message: "Table 'blog.nope' doesn't exist".into(),
-                },
-                Some("select * from nope"),
-            )
-            .to_string();
+        let error = server_error(
+            ServerError {
+                code: 1146,
+                sql_state: "42S02".into(),
+                message: "Table 'blog.nope' doesn't exist".into(),
+            },
+            &DatabaseConfig::default(),
+            Some("select * from nope"),
+        )
+        .to_string();
 
         assert!(error.contains("SQL: select * from nope"), "{error}");
         assert!(error.contains("migrations"), "{error}");

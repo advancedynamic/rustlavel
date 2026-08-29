@@ -62,6 +62,14 @@ impl Row {
         Ok(&self.values[index])
     }
 
+    /// The value at a position, for a result whose columns the database did
+    /// not name.
+    pub fn value_at(&self, index: usize) -> Result<&Value> {
+        self.values
+            .get(index)
+            .ok_or_else(|| Error::msg(format!("no column at index {index}")))
+    }
+
     pub fn has(&self, column: &str) -> bool {
         self.columns.iter().any(|name| name == column)
     }

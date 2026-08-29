@@ -142,6 +142,12 @@ pub trait Dialect: Send + Sync + std::fmt::Debug + 'static {
         "add column"
     }
 
+    /// The expression naming the schema this connection is working in.
+    ///
+    /// `information_schema` is standard; the way you ask "which schema am I in"
+    /// is not.
+    fn current_schema_expression(&self) -> &'static str;
+
     /// A query returning one row per table in the current schema, with the name
     /// in the first column.
     ///
@@ -264,6 +270,10 @@ impl Dialect for Postgres {
         true
     }
 
+    fn current_schema_expression(&self) -> &'static str {
+        "current_schema()"
+    }
+
     fn list_tables_sql(&self) -> &'static str {
         "select tablename from pg_tables where schemaname = current_schema()"
     }
@@ -363,6 +373,12 @@ impl Dialect for MySql {
 
     fn max_identifier_length(&self) -> usize {
         64
+    }
+
+    fn current_schema_expression(&self) -> &'static str {
+        // MySQL has no schemas separate from databases; the current database is
+        // the schema.
+        "database()"
     }
 
     fn list_tables_sql(&self) -> &'static str {
@@ -476,6 +492,10 @@ impl Dialect for SqlServer {
 
     fn add_column_clause(&self) -> &'static str {
         "add"
+    }
+
+    fn current_schema_expression(&self) -> &'static str {
+        "schema_name()"
     }
 
     fn list_tables_sql(&self) -> &'static str {
@@ -652,6 +672,13 @@ mod tests {
         let sqlserver = SqlServer.migrations_table_sql("rustlavel_migrations");
         assert!(sqlserver.starts_with("if object_id("));
         assert!(sqlserver.contains("identity(1,1)"));
+    }
+
+    #[test]
+    fn every_dialect_can_name_the_schema_it_is_in() {
+        assert_eq!(Postgres.current_schema_expression(), "current_schema()");
+        assert_eq!(MySql.current_schema_expression(), "database()");
+        assert_eq!(SqlServer.current_schema_expression(), "schema_name()");
     }
 
     #[test]

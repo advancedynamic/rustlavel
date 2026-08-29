@@ -12,12 +12,14 @@ pub mod dialect;
 pub mod driver;
 pub mod migration;
 pub mod model;
+pub mod mysql;
 pub mod pagination;
 pub mod pool;
 pub mod postgres;
 pub mod random;
 pub mod row;
 pub mod schema;
+pub mod sqlserver;
 pub mod value;
 
 pub use builder::{Direction, QueryBuilder};
@@ -26,10 +28,12 @@ pub use dialect::{ColumnType, Dialect, ReturningStyle};
 pub use driver::{Driver, DriverConnection, QueryResult};
 pub use migration::{Faker, Migration, Migrator, Seeder};
 pub use model::{Model, ModelExt, belongs_to, has_many};
+pub use mysql::{MySqlConnection, MySqlDriver};
 pub use pagination::{CursorPage, Page};
 pub use postgres::connection::{log_bindings, set_log_bindings};
 pub use pool::{Pool, PooledConnection};
 pub use schema::{Schema, Table};
+pub use sqlserver::{SqlServerConnection, SqlServerDriver};
 pub use row::{Row, rows_to_json};
 pub use value::{FromValue, Value};
 
@@ -43,6 +47,8 @@ use std::sync::Arc;
 fn driver_for(config: DatabaseConfig) -> Result<Arc<dyn Driver>> {
     match config.driver.as_str() {
         "postgres" => Ok(Arc::new(postgres::PostgresDriver::new(config))),
+        "mysql" => Ok(Arc::new(mysql::MySqlDriver::new(config))),
+        "sqlserver" => Ok(Arc::new(sqlserver::SqlServerDriver::new(config))),
         other => Err(Error::msg(format!(
             "the `{other}` driver is not available in this build. \
              Point DATABASE_URL at a database this build supports."
@@ -136,6 +142,28 @@ impl Database {
     pub async fn run(&self, sql: &str) -> Result<u64> {
         let mut connection = self.pool.acquire().await?;
         Ok(connection.simple_query(sql).await?.affected)
+    }
+
+    /// Run an insert and hand back the key the database generated.
+    ///
+    /// Three mechanisms, one method: PostgreSQL returns a row from `RETURNING`,
+    /// SQL Server from `OUTPUT`, and MySQL reports the id in the packet that
+    /// acknowledges the insert, with no row at all.
+    pub async fn insert_returning_key(
+        &self,
+        sql: &str,
+        params: &[Value],
+        column: &str,
+    ) -> Result<Option<Value>> {
+        let mut connection = self.pool.acquire().await?;
+        let result = connection.query(sql, params).await?;
+
+        if let Some(row) = result.rows.first() {
+            // Named lookup where the database labelled the column, positional
+            // where it did not.
+            return Ok(Some(row.value(column).or_else(|_| row.value_at(0))?.clone()));
+        }
+        Ok(result.last_insert_id.map(Value::Int))
     }
 
     /// Read a single value from the first column of the first row.

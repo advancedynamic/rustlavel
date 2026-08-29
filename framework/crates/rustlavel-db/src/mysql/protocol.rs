@@ -660,10 +660,7 @@ pub fn parse_text_row(payload: &[u8], columns: usize) -> Result<Vec<Option<Vec<u
     let mut values = Vec::with_capacity(columns);
 
     for _ in 0..columns {
-        values.push(match reader.lenenc_bytes_or_null()? {
-            Some(bytes) => Some(bytes.to_vec()),
-            None => None,
-        });
+        values.push(reader.lenenc_bytes_or_null()?.map(<[u8]>::to_vec));
     }
 
     Ok(values)
