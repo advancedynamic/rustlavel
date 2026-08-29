@@ -1,4 +1,4 @@
-//! rustlavel-auth: sessions, password hashing, CSRF, signed URLs, encryption.
+//! rustlavel-auth: sessions, API tokens, password hashing, CSRF, signed URLs.
 //!
 //! Everything an application needs to know who is talking to it and to trust
 //! what they send. Like every rustlavel package it is opt-in: an application
@@ -38,6 +38,7 @@ pub mod random;
 pub mod session;
 pub mod signed_url;
 pub mod store;
+pub mod tokens;
 
 pub use csrf::Csrf;
 pub use encryption::Encrypter;
@@ -48,6 +49,10 @@ pub use middleware::{SessionExt, SessionHandle, SessionManager};
 pub use session::Session;
 pub use signed_url::{SignatureError, UrlSigner};
 pub use store::{FileStore, MemoryStore, SessionStore, SharedStore};
+pub use tokens::{
+    MemoryTokenStore, NewToken, PlainTextToken, RequireApiToken, RequireScope, Scopes,
+    SharedTokenStore, Token, TokenError, TokenExt, TokenStore,
+};
 
 pub use rustlavel_core::{Error, Result};
 
@@ -59,6 +64,10 @@ pub mod prelude {
         hash_password, verify_password,
     };
     pub use crate::{FileStore, MemoryStore, SessionStore};
+    pub use crate::{
+        MemoryTokenStore, NewToken, PlainTextToken, RequireApiToken, RequireScope, Scopes, Token,
+        TokenError, TokenExt, TokenStore,
+    };
 }
 
 /// Compare two byte strings without leaking where they first differ.
