@@ -1,0 +1,10 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head><title th:text="${title}">Benchmark</title></head>
+<body>
+<h1 th:text="${title}">Benchmark</h1>
+<table>
+<tr th:each="row : ${rows}"><td th:text="${row.id}">0</td><td th:text="${row.name}">name</td></tr>
+</table>
+</body>
+</html>

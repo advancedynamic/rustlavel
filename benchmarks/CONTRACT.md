@@ -146,3 +146,22 @@ them: `json-big`, `template`, and the two database endpoints.
 
 Read a four-way tie there as "no measurable difference on this machine", never
 as "identical".
+
+## Where the apps legitimately differ
+
+Two differences were found while building the comparison apps and are left in
+place rather than filed down, because filing them down would mean writing
+unidiomatic code in somebody else's framework:
+
+- **`score` in `/json-big` is a float.** `serde_json` renders `3.0` as `3.0`;
+  Rustlavel's own JSON writer collapses an integral float to `3`. Same JSON
+  number, roughly 100 bytes apart on an 8.4 KB body — under 1%, and the
+  direction favours whichever app writes fewer bytes. Worth knowing when
+  reading the `json-big` row, and not worth distorting either app over.
+- **`Content-Type` charsets.** Axum appends `; charset=utf-8` to `text/plain`
+  and `text/html`; others may not. The header is not part of the fixed body.
+
+The `/json-big` sample object in this document is also internally inconsistent —
+it shows `"id":1` with `"active":true`, while the stated rule `id % 2 == 0`
+makes id 1 `false`. **The rule is what every app implements**; the sample is
+wrong and is left here so nobody "fixes" an app to match it.

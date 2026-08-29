@@ -42,6 +42,7 @@ CASES=(
 # The start command is run from the app's own directory.
 declare -a APPS=(
     "rustlavel|apps/rustlavel|./target/release/bench-rustlavel|target/release/bench-rustlavel"
+    "axum|apps/axum|./target/release/bench-axum|target/release/bench-axum"
 )
 
 log()  { printf '\033[38;5;68m%s\033[0m\n' "$*"; }
