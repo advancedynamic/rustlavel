@@ -9,11 +9,10 @@ use std::io::Read;
 pub fn bytes(length: usize) -> Vec<u8> {
     let mut buffer = vec![0u8; length];
 
-    if let Ok(mut source) = std::fs::File::open("/dev/urandom") {
-        if source.read_exact(&mut buffer).is_ok() {
+    if let Ok(mut source) = std::fs::File::open("/dev/urandom")
+        && source.read_exact(&mut buffer).is_ok() {
             return buffer;
         }
-    }
 
     // Fallback for a system without /dev/urandom: seed from the clock and the
     // address of a fresh allocation, then run a counter-based mixer. Weaker,

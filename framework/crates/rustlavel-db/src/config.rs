@@ -121,16 +121,14 @@ impl DatabaseConfig {
 
     /// Read from the application config, falling back to `DATABASE_URL`.
     pub fn from_app_config(config: &Config) -> Result<Self> {
-        if let Some(url) = config.get("database.url").and_then(|v| v.as_str().map(str::to_string)) {
-            if !url.is_empty() {
+        if let Some(url) = config.get("database.url").and_then(|v| v.as_str().map(str::to_string))
+            && !url.is_empty() {
                 return DatabaseConfig::from_url(&url);
             }
-        }
-        if let Ok(url) = std::env::var("DATABASE_URL") {
-            if !url.is_empty() {
+        if let Ok(url) = std::env::var("DATABASE_URL")
+            && !url.is_empty() {
                 return DatabaseConfig::from_url(&url);
             }
-        }
 
         let mut settings = DatabaseConfig {
             host: config.string("database.host", "127.0.0.1"),
@@ -164,13 +162,12 @@ fn decode(value: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut index = 0;
     while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            if let Ok(byte) = u8::from_str_radix(&value[index + 1..index + 3], 16) {
+        if bytes[index] == b'%' && index + 2 < bytes.len()
+            && let Ok(byte) = u8::from_str_radix(&value[index + 1..index + 3], 16) {
                 out.push(byte);
                 index += 3;
                 continue;
             }
-        }
         out.push(bytes[index]);
         index += 1;
     }

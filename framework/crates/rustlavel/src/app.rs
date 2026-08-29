@@ -91,6 +91,12 @@ impl App {
         self
     }
 
+    /// Register the template engine, so handlers can call `req.view(...)`.
+    #[cfg(feature = "view")]
+    pub fn views(self, engine: rustlavel_view::Engine) -> Self {
+        self.state(engine)
+    }
+
     /// Replace the default 404 handler.
     pub fn fallback(mut self, handler: impl Handler) -> Self {
         self.router.fallback(handler);
@@ -118,6 +124,14 @@ impl App {
             && self.router.routes().iter().all(|route| route.pattern != "/{path:*}") {
                 self.router.fallback(Files::new(dir));
             }
+
+        // A `resources/views` directory is enough to turn views on, the way a
+        // `public` directory turns on static files.
+        #[cfg(feature = "view")]
+        if self.root.join(self.config.string("view.root", rustlavel_view::DEFAULT_ROOT)).is_dir() {
+            let engine = crate::view::engine_from_config(&self.config, &self.root);
+            self.context = Some(self.context.take().expect("context builder").state(engine));
+        }
 
         let context = self.context.take().expect("context builder").build();
         (self.router, context)

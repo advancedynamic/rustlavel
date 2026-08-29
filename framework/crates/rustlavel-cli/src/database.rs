@@ -277,6 +277,6 @@ mod tests {
         assert_eq!(stamp.len(), "2026_08_29_143000".len());
         assert!(stamp.starts_with("20"));
         // Sorting strings must sort dates: an earlier day compares smaller.
-        assert!("2026_08_28_235959".to_string() < stamp);
+        assert!(*"2026_08_28_235959" < *stamp);
     }
 }

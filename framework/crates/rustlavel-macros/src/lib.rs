@@ -73,6 +73,14 @@ fn expand(parsed: Struct) -> Result<TokenStream, String> {
         .collect::<Vec<_>>()
         .join(", ");
 
+    // Only fall back to `Default` when some fields are skipped; emitting it
+    // unconditionally makes clippy complain at every derive site.
+    let rest = if stored.len() == fields.len() {
+        String::new()
+    } else {
+        "            ..::core::default::Default::default()\n".to_string()
+    };
+
     let from_row = stored
         .iter()
         .map(|field| {
@@ -109,8 +117,7 @@ impl ::rustlavel_db::model::Model for {name} {{
     fn from_row(row: &::rustlavel_db::Row) -> ::rustlavel_db::Result<Self> {{
         Ok({name} {{
 {from_row}
-            ..::core::default::Default::default()
-        }})
+{rest}        }})
     }}
 
     fn key(&self) -> Self::Key {{
@@ -157,16 +164,18 @@ fn pluralize(word: &str) -> String {
     if word.ends_with('s') && !word.ends_with("us") && !word.ends_with("ss") {
         return word.to_string();
     }
-    if let Some(stem) = word.strip_suffix('y') {
-        if !stem.ends_with(['a', 'e', 'i', 'o', 'u']) {
+    if let Some(stem) = word.strip_suffix('y')
+        && !stem.ends_with(['a', 'e', 'i', 'o', 'u']) {
             return format!("{stem}ies");
         }
-    }
     if word.ends_with(['s', 'x', 'z']) || word.ends_with("ch") || word.ends_with("sh") {
         return format!("{word}es");
     }
     format!("{word}s")
 }
+
+// Silence the unused warning for a field the expansion reads through helpers.
+const _: Option<&Attributes> = None;
 
 // The parser and helpers are unit-tested here; the generated code is exercised
 // by integration tests in rustlavel-db, which is the only place it can compile.
@@ -182,6 +191,3 @@ mod tests {
         assert_eq!(pluralize(&snake_case("Address")), "addresses");
     }
 }
-
-// Silence the unused warning for a field the expansion reads through helpers.
-const _: Option<&Attributes> = None;

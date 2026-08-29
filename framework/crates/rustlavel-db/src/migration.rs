@@ -342,11 +342,10 @@ pub fn pluralize(word: &str) -> String {
     if lower.ends_with('s') && !lower.ends_with("us") && !lower.ends_with("ss") {
         return word.to_string();
     }
-    if let Some(stem) = lower.strip_suffix('y') {
-        if !stem.ends_with(['a', 'e', 'i', 'o', 'u']) {
+    if let Some(stem) = lower.strip_suffix('y')
+        && !stem.ends_with(['a', 'e', 'i', 'o', 'u']) {
             return format!("{}ies", &word[..word.len() - 1]);
         }
-    }
     if lower.ends_with(['s', 'x', 'z']) || lower.ends_with("ch") || lower.ends_with("sh") {
         return format!("{word}es");
     }
@@ -382,7 +381,7 @@ impl Faker {
     }
 
     pub fn boolean(&mut self) -> bool {
-        self.next() % 2 == 0
+        self.next().is_multiple_of(2)
     }
 
     pub fn pick<'a, T>(&mut self, options: &'a [T]) -> &'a T {

@@ -66,16 +66,18 @@ Model publish: satu repo banyak crate (seperti `laravel/framework` berisi `illum
 - [x] CLI: `make:model`, `make:migration`, `make:seeder` + registry yang di-generate otomatis
 - [x] 13 test integrasi melawan PostgreSQL 16 sungguhan (via Docker)
 
-## Fase 0.3 — Web esensial
+## Fase 0.3 — Web esensial (sebagian selesai)
 
-- [ ] Validation: `required|email` style + versi type-safe via derive
-- [ ] Templating gaya Blade (`rustlavel-view`): `@extends/@section/@foreach`, compile-time check, XSS escaping otomatis, reload tanpa recompile saat dev
-- [ ] Auth (`rustlavel-auth`): session, argon2, guard, middleware `auth`; starter kit `--auth` (login/register/reset); passkey/WebAuthn
+- [x] Validation (`rustlavel-validation`): 25 rule, sintaks `required|email|max:255` + builder bertipe, pesan bisa di-override, respons 422 gaya Laravel, `?` langsung jalan di handler
+- [x] Templating gaya Blade (`rustlavel-view`): `@extends/@section/@yield/@include/@if/@foreach`, escaping XSS otomatis, reload tanpa recompile saat dev, error menunjuk file:baris:kolom
+- [x] `IntoResponse` digeneralisasi: setiap tipe error menentukan sendiri bentuk responsnya (422 untuk validasi, error page untuk error framework)
+- [x] Feature flag di meta-crate: `db`, `view`, `validation`, `full`
+- [ ] Auth (`rustlavel-auth`): session, argon2, guard, middleware `auth`; starter kit `--auth`; passkey/WebAuthn
 - [ ] Session & Cache: driver file / in-memory / Redis
 - [ ] CSRF otomatis, signed URLs, `encrypt()`/`decrypt()`
 - [ ] Rate limiting & CORS default
 - [ ] Pagination nyambung query builder + view
-- [ ] Testing helpers: `get("/users").assert_ok()`, DB transaksi rollback per test, `Mail::fake()`, `Queue::fake()`, `Http::fake()`, time travel
+- [ ] Testing fakes: `Mail::fake()`, `Queue::fake()`, `Http::fake()`, DB transaksi rollback per test, time travel
 
 ## Fase 0.4 — AI & DX era agent
 

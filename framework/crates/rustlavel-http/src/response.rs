@@ -188,14 +188,33 @@ impl<T: IntoResponse> IntoResponse for Option<T> {
     }
 }
 
-/// An `Err` is carried into the response so the error page (in development) or
-/// a generic 500 (in production) can render it.
-impl<T: IntoResponse, E: Into<Error>> IntoResponse for Result<T, E> {
+/// A framework error renders as the development error page, or a generic 500
+/// in production.
+impl IntoResponse for Error {
+    fn into_response(self) -> Response {
+        crate::error_page::response_for(&self)
+    }
+}
+
+/// `?` in a handler works for any error that knows how to become a response.
+///
+/// This is what lets validation return a 422 with its own JSON body while a
+/// framework error still reaches the error page: each error type decides how it
+/// is rendered, rather than everything collapsing into a 500.
+impl<T: IntoResponse, E: IntoResponse> IntoResponse for Result<T, E> {
     fn into_response(self) -> Response {
         match self {
             Ok(value) => value.into_response(),
-            Err(error) => crate::error_page::response_for(&error.into()),
+            Err(error) => error.into_response(),
         }
+    }
+}
+
+/// An I/O failure in a handler is a server error; carried separately because
+/// `std::io::Error` cannot implement a foreign trait here.
+impl IntoResponse for std::io::Error {
+    fn into_response(self) -> Response {
+        crate::error_page::response_for(&Error::Io(self))
     }
 }
 

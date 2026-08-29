@@ -13,8 +13,19 @@
 //! never compiled.
 
 mod app;
+#[cfg(feature = "view")]
+mod view;
 
 pub use app::App;
+
+#[cfg(feature = "db")]
+pub use rustlavel_db as db;
+#[cfg(feature = "validation")]
+pub use rustlavel_validation as validation;
+#[cfg(feature = "view")]
+pub use rustlavel_view as views;
+#[cfg(feature = "view")]
+pub use view::{Views, engine_from_config};
 
 pub use rustlavel_core::{Config, Context, Error, Event, Json, Result, config, env, events, json, log};
 pub use rustlavel_http::{
@@ -31,6 +42,15 @@ pub mod prelude {
         Cookie, IntoResponse, Method, Middleware, Next, Request, Response, Router, Status,
     };
     pub use rustlavel_core::{debug, error, info, warn};
+
+    #[cfg(feature = "db")]
+    pub use rustlavel_db::prelude::*;
+    #[cfg(feature = "validation")]
+    pub use rustlavel_validation::{Errors, Rule, Validated, validate};
+    #[cfg(feature = "view")]
+    pub use crate::Views;
+    #[cfg(feature = "view")]
+    pub use rustlavel_view::{Context as ViewContext, Engine};
 }
 
 /// Helpers for writing application tests.

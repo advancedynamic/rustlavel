@@ -185,7 +185,10 @@ name = "rustlavel"
 version = "0.1.0"
 dependencies = [
  "rustlavel-core",
+ "rustlavel-db",
  "rustlavel-http",
+ "rustlavel-validation",
+ "rustlavel-view",
  "tokio",
 ]
 

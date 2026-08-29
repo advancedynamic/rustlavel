@@ -10,13 +10,19 @@ repository.workspace = true
 [dependencies]
 rustlavel-core.workspace = true
 rustlavel-http.workspace = true
+# Opt-in packages. What is not enabled is never compiled.
+rustlavel-db = { workspace = true, optional = true }
+rustlavel-view = { workspace = true, optional = true }
+rustlavel-validation = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+rustlavel-view.workspace = true
 
 [features]
 default = []
-# Opt-in packages land here as they are built, e.g.:
-# db = ["dep:rustlavel-db"]
-# ai = ["dep:rustlavel-ai"]
-# telescope = ["dep:rustlavel-telescope"]
+db = ["dep:rustlavel-db"]
+view = ["dep:rustlavel-view"]
+validation = ["dep:rustlavel-validation"]
+# Everything the framework currently ships, for trying it out.
+full = ["db", "view", "validation"]

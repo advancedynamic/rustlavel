@@ -67,7 +67,7 @@ async fn round_trips_every_supported_type() {
         .unwrap()
         .expect("one row");
 
-    assert_eq!(row.get::<bool>("flag").unwrap(), true);
+    assert!(row.get::<bool>("flag").unwrap());
     assert_eq!(row.get::<i64>("count").unwrap(), 9_000_000_000);
     assert_eq!(row.get::<f64>("ratio").unwrap(), 1.5);
     assert_eq!(row.get::<String>("label").unwrap(), "hello");

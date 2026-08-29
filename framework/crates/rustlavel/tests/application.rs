@@ -90,3 +90,54 @@ async fn unknown_paths_and_methods_are_reported_distinctly() {
     client.get("/nowhere").await.assert_not_found();
     client.delete("/users").await.assert_status(405).assert_header("allow", "POST");
 }
+
+/// Validation reaching a handler through `?`, which is what the generalised
+/// `IntoResponse for Result` in the HTTP crate exists to allow.
+#[cfg(feature = "validation")]
+mod validation {
+    use super::*;
+    use rustlavel::validation::validate;
+
+    fn app() -> App {
+        App::bare().routes(|r| {
+            r.post("/register", |mut req: Request| async move {
+                let data = validate(
+                    &mut req,
+                    &[("email", "required|email"), ("age", "required|integer|min:18")],
+                )
+                .await?;
+
+                Ok::<_, rustlavel::validation::Errors>(
+                    (201, Json::object([("email", Json::from(data.string("email").unwrap_or_default()))]))
+                        .into_response(),
+                )
+            });
+        })
+    }
+
+    #[tokio::test]
+    async fn valid_input_reaches_the_handler() {
+        app()
+            .test_client()
+            .post_json(
+                "/register",
+                Json::object([("email", "ada@example.com".into()), ("age", 36.into())]),
+            )
+            .await
+            .assert_status(201)
+            .assert_json("email", "ada@example.com");
+    }
+
+    #[tokio::test]
+    async fn invalid_input_becomes_a_422_before_the_handler_body_runs() {
+        let response = app()
+            .test_client()
+            .post_json("/register", Json::object([("email", "not-an-email".into()), ("age", 12.into())]))
+            .await
+            .assert_status(422);
+
+        let body = response.json();
+        assert!(body.get("errors.email").is_some(), "email should be rejected: {}", response.body());
+        assert!(body.get("errors.age").is_some(), "age should be rejected: {}", response.body());
+    }
+}
