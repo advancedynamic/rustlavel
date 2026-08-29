@@ -8,6 +8,8 @@
 pub mod base64;
 pub mod builder;
 pub mod config;
+pub mod dialect;
+pub mod driver;
 pub mod migration;
 pub mod model;
 pub mod pagination;
@@ -20,6 +22,8 @@ pub mod value;
 
 pub use builder::{Direction, QueryBuilder};
 pub use config::DatabaseConfig;
+pub use dialect::{ColumnType, Dialect, ReturningStyle};
+pub use driver::{Driver, DriverConnection, QueryResult};
 pub use migration::{Faker, Migration, Migrator, Seeder};
 pub use model::{Model, ModelExt, belongs_to, has_many};
 pub use pagination::{CursorPage, Page};

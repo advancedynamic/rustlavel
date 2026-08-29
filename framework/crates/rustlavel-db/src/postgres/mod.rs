@@ -5,4 +5,4 @@ pub mod connection;
 pub mod protocol;
 pub mod types;
 
-pub use connection::{Connection, QueryResult};
+pub use connection::{Connection, PostgresDriver};

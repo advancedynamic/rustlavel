@@ -7,6 +7,7 @@ use crate::config::DatabaseConfig;
 use crate::random;
 use crate::row::{Columns, Row};
 use crate::value::Value;
+use crate::driver::{BoxFuture, Driver, DriverConnection, QueryResult};
 use rustlavel_core::events::Event;
 use rustlavel_core::{Error, Result};
 use std::sync::Arc;
@@ -29,14 +30,6 @@ pub fn set_log_bindings(enabled: bool) {
 
 pub fn log_bindings() -> bool {
     LOG_BINDINGS.load(Ordering::Relaxed)
-}
-
-/// What a statement returned.
-#[derive(Debug, Default)]
-pub struct QueryResult {
-    pub rows: Vec<Row>,
-    /// Rows affected, parsed from the command tag (`INSERT 0 3` → 3).
-    pub affected: u64,
 }
 
 pub struct Connection {
@@ -363,6 +356,72 @@ impl Connection {
         buffer.terminate();
         let _ = self.write(buffer).await;
         let _ = self.stream.shutdown().await;
+    }
+}
+
+/// Opens PostgreSQL connections.
+///
+/// The reference implementation of [`Driver`]: everything above the driver line
+/// is written once, and this is what that line looks like from below.
+pub struct PostgresDriver {
+    config: DatabaseConfig,
+    dialect: Arc<dyn crate::dialect::Dialect>,
+}
+
+impl PostgresDriver {
+    pub fn new(config: DatabaseConfig) -> Self {
+        PostgresDriver { config, dialect: Arc::new(crate::dialect::Postgres) }
+    }
+
+    pub fn config(&self) -> &DatabaseConfig {
+        &self.config
+    }
+}
+
+impl Driver for PostgresDriver {
+    fn dialect(&self) -> Arc<dyn crate::dialect::Dialect> {
+        Arc::clone(&self.dialect)
+    }
+
+    fn connect(&self) -> BoxFuture<'_, Result<Box<dyn DriverConnection>>> {
+        Box::pin(async move {
+            let connection = Connection::connect(&self.config).await?;
+            Ok(Box::new(connection) as Box<dyn DriverConnection>)
+        })
+    }
+
+    fn describe(&self) -> String {
+        self.config.redacted_url()
+    }
+
+    fn max_connections(&self) -> usize {
+        self.config.max_connections
+    }
+}
+
+impl DriverConnection for Connection {
+    fn query<'a>(
+        &'a mut self,
+        sql: &'a str,
+        params: &'a [Value],
+    ) -> BoxFuture<'a, Result<QueryResult>> {
+        Box::pin(Connection::query(self, sql, params))
+    }
+
+    fn simple_query<'a>(&'a mut self, sql: &'a str) -> BoxFuture<'a, Result<QueryResult>> {
+        Box::pin(Connection::simple_query(self, sql))
+    }
+
+    fn is_broken(&self) -> bool {
+        Connection::is_broken(self)
+    }
+
+    fn in_transaction(&self) -> bool {
+        Connection::in_transaction(self)
+    }
+
+    fn close(self: Box<Self>) -> BoxFuture<'static, ()> {
+        Box::pin(async move { Connection::close(*self).await })
     }
 }
 
