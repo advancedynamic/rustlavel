@@ -10,6 +10,7 @@ pub mod builder;
 pub mod config;
 pub mod migration;
 pub mod model;
+pub mod pagination;
 pub mod pool;
 pub mod postgres;
 pub mod random;
@@ -21,6 +22,7 @@ pub use builder::{Direction, QueryBuilder};
 pub use config::DatabaseConfig;
 pub use migration::{Faker, Migration, Migrator, Seeder};
 pub use model::{Model, ModelExt, belongs_to, has_many};
+pub use pagination::{CursorPage, Page};
 pub use pool::{Pool, PooledConnection};
 pub use schema::{Schema, Table};
 pub use row::{Row, rows_to_json};
@@ -36,7 +38,7 @@ pub mod prelude {
     pub use crate::migration::{Faker, Migrator, Seeder};
     pub use crate::model::{ModelExt, belongs_to, has_many};
     pub use crate::schema::{Schema, Table};
-    pub use crate::{Database, Model, QueryBuilder, Row, Value};
+    pub use crate::{CursorPage, Database, Model, Page, QueryBuilder, Row, Value};
     pub use rustlavel_core::{Error, Json, Result};
 }
 

@@ -5,8 +5,10 @@
 //! `queue:work`) are forwarded to the project's own binary, because in a
 //! compiled language the application is the only thing that knows its routes.
 
+mod build;
 mod console;
 mod database;
+mod doctor;
 mod make;
 mod naming;
 mod new;
@@ -29,6 +31,10 @@ fn main() {
     let result = match command {
         "new" => new::run(rest),
         "serve" => serve::run(rest),
+        "doctor" => doctor::run(),
+        "build" => build::run(rest),
+        "make:docker" => Project::discover().and_then(|p| build::make_docker(&p)),
+        "key:generate" => key_generate(),
         "help" | "--help" | "-h" => {
             help();
             Ok(())
@@ -87,6 +93,9 @@ fn help() {
     row("migrate:fresh", "Drop every table and migrate from scratch");
     row("migrate:status", "Show which migrations have run");
     row("db:seed", "Run the seeders");
+    row("doctor", "Diagnose why the app will not start");
+    row("build", "Build the single deployable binary");
+    row("key:generate", "Generate APP_KEY into .env");
     println!();
 
     println!("{}", console::bold("GENERATORS"));
@@ -95,12 +104,69 @@ fn help() {
     row("make:model <Name>", "Create a model");
     row("make:migration <name>", "Create a migration");
     row("make:seeder <Name>", "Create a seeder");
+    row("make:docker", "Create a two-stage Dockerfile");
     println!();
 
     println!("{}", console::bold("OPTIONS"));
     row("--port <port>", "Port for `serve` (default 8000)");
     row("--no-watch", "Run `serve` without the file watcher");
     println!();
+}
+
+/// Write a fresh `APP_KEY` into `.env`, creating the line if it is absent.
+///
+/// The key seeds encryption and session signing, so it is generated from OS
+/// entropy and never derived from anything guessable.
+fn key_generate() -> Result<(), String> {
+    let project = Project::discover()?;
+    let path = project.root.join(".env");
+
+    let mut bytes = [0u8; 32];
+    {
+        use std::io::Read;
+        let mut source = std::fs::File::open("/dev/urandom")
+            .map_err(|e| format!("cannot read system entropy: {e}"))?;
+        source.read_exact(&mut bytes).map_err(|e| format!("cannot read system entropy: {e}"))?;
+    }
+    let key = base64(&bytes);
+
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let updated = if existing.lines().any(|line| line.trim_start().starts_with("APP_KEY=")) {
+        existing
+            .lines()
+            .map(|line| {
+                if line.trim_start().starts_with("APP_KEY=") {
+                    format!("APP_KEY={key}")
+                } else {
+                    line.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n"
+    } else {
+        format!("{existing}APP_KEY={key}\n")
+    };
+
+    std::fs::write(&path, updated).map_err(|e| format!("cannot write .env: {e}"))?;
+    console::success("APP_KEY written to .env.");
+    Ok(())
+}
+
+fn base64(input: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
+
+    for chunk in input.chunks(3) {
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let bits = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        out.push(ALPHABET[(bits >> 18 & 0x3f) as usize] as char);
+        out.push(ALPHABET[(bits >> 12 & 0x3f) as usize] as char);
+        out.push(if chunk.len() > 1 { ALPHABET[(bits >> 6 & 0x3f) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { ALPHABET[(bits & 0x3f) as usize] as char } else { '=' });
+    }
+    out
 }
 
 fn row(command: &str, description: &str) {

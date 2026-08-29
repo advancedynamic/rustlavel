@@ -426,3 +426,54 @@ async fn the_pool_reuses_connections() {
 
     assert!(db.pool().idle_count().await >= 1, "a connection should have returned to the pool");
 }
+
+#[tokio::test]
+async fn pagination_walks_a_table_both_ways() {
+    let db = database!();
+    let table = fresh_table(&db, "paging").await;
+
+    Schema::new(&db)
+        .create(&table, |t| {
+            t.id();
+            t.string("title");
+        })
+        .await
+        .unwrap();
+
+    for index in 1..=25 {
+        db.table(&table)
+            .insert_without_id(&db, &[("title", Value::from(format!("post {index}")))])
+            .await
+            .unwrap();
+    }
+
+    // Page numbers: familiar, and it knows the total.
+    let second = db.table(&table).paginate(&db, 2, 10).await.unwrap();
+    assert_eq!(second.total, 25);
+    assert_eq!(second.rows.len(), 10);
+    assert_eq!(second.last_page(), 3);
+    assert_eq!(second.from(), Some(11));
+    assert!(second.has_more());
+
+    let last = db.table(&table).paginate(&db, 3, 10).await.unwrap();
+    assert_eq!(last.rows.len(), 5);
+    assert!(!last.has_more());
+
+    // Cursors: no count, no offset, and stable while rows are inserted.
+    let mut seen = 0;
+    let mut cursor: Option<String> = None;
+    loop {
+        let page = db
+            .table(&table)
+            .cursor_paginate(&db, "id", cursor.as_deref(), 10)
+            .await
+            .unwrap();
+        seen += page.rows.len();
+
+        match page.next_cursor {
+            Some(next) => cursor = Some(next),
+            None => break,
+        }
+    }
+    assert_eq!(seen, 25);
+}
