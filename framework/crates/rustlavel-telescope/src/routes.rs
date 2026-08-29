@@ -143,6 +143,9 @@ mod tests {
         store
     }
 
+    /// Every test here makes a request, and the router dispatches an
+    /// `http.request` event for each one — so they all have to take the bus
+    /// lock, or they will land in a subscriber another test is asserting on.
     fn client(store: Store) -> TestClient {
         let mut router = Router::new();
         register(&mut router, store, options());
@@ -151,6 +154,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_dashboard_route_returns_html_showing_what_was_recorded() {
+        let _guard = crate::test_support::exclusive_async().await;
         client(seeded())
             .get("/telescope")
             .await
@@ -165,11 +169,13 @@ mod tests {
 
     #[tokio::test]
     async fn a_trailing_slash_reaches_the_dashboard_too() {
+        let _guard = crate::test_support::exclusive_async().await;
         client(seeded()).get("/telescope/").await.assert_ok().assert_see("Telescope");
     }
 
     #[tokio::test]
     async fn the_listing_endpoint_returns_entries_newest_first() {
+        let _guard = crate::test_support::exclusive_async().await;
         client(seeded())
             .get("/telescope/api/entries")
             .await
@@ -183,6 +189,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_listing_endpoint_filters_by_kind() {
+        let _guard = crate::test_support::exclusive_async().await;
         let response = client(seeded()).get("/telescope/api/entries?kind=db.query").await.assert_ok();
 
         assert_eq!(response.json().get("entries").unwrap().as_array().unwrap().len(), 1);
@@ -191,6 +198,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_listing_endpoint_polls_incrementally_with_after() {
+        let _guard = crate::test_support::exclusive_async().await;
         let response = client(seeded()).get("/telescope/api/entries?after=1").await.assert_ok();
 
         assert_eq!(response.json().get("entries").unwrap().as_array().unwrap().len(), 1);
@@ -199,6 +207,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_listing_endpoint_honours_a_limit() {
+        let _guard = crate::test_support::exclusive_async().await;
         let response = client(seeded()).get("/telescope/api/entries?limit=1").await.assert_ok();
 
         assert_eq!(response.json().get("entries").unwrap().as_array().unwrap().len(), 1);
@@ -206,6 +215,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_detail_endpoint_returns_one_entry_with_what_it_caused() {
+        let _guard = crate::test_support::exclusive_async().await;
         client(seeded())
             .get("/telescope/api/entries/2")
             .await
@@ -217,6 +227,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_detail_endpoint_404s_for_an_unknown_id() {
+        let _guard = crate::test_support::exclusive_async().await;
         let client = client(seeded());
 
         client.get("/telescope/api/entries/9999").await.assert_not_found().assert_see("no such entry");
@@ -226,6 +237,7 @@ mod tests {
 
     #[tokio::test]
     async fn deleting_the_collection_clears_the_buffer() {
+        let _guard = crate::test_support::exclusive_async().await;
         let store = seeded();
         let client = client(store.clone());
 
@@ -236,6 +248,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_kind_counts_the_filter_bar_needs_come_with_the_listing() {
+        let _guard = crate::test_support::exclusive_async().await;
         client(seeded())
             .get("/telescope/api/entries")
             .await

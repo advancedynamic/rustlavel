@@ -313,6 +313,28 @@ async fn a_wrong_password_is_reported_with_somewhere_to_look() {
 }
 
 #[tokio::test]
+async fn an_empty_max_column_does_not_shift_the_columns_after_it() {
+    let db = database!();
+
+    // A zero-length `(max)` value is the shape most likely to desynchronise a
+    // chunked decoder, so the columns after it are what prove it did not.
+    let row = db
+        .select_one(
+            "select cast('' as nvarchar(max)) as empty_text, 42 as after_text, \
+             cast(0x as varbinary(max)) as empty_blob, 7 as after_blob",
+            &[],
+        )
+        .await
+        .unwrap()
+        .expect("one row");
+
+    assert_eq!(row.get::<String>("empty_text").unwrap(), "");
+    assert_eq!(row.get::<i64>("after_text").unwrap(), 42);
+    assert_eq!(row.get::<Vec<u8>>("empty_blob").unwrap(), Vec::<u8>::new());
+    assert_eq!(row.get::<i64>("after_blob").unwrap(), 7);
+}
+
+#[tokio::test]
 async fn a_statement_larger_than_one_packet_is_split_and_reassembled() {
     let db = database!();
 

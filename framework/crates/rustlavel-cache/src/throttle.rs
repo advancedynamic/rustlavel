@@ -224,13 +224,27 @@ mod tests {
 
     #[tokio::test]
     async fn the_allowance_comes_back_when_the_window_passes() {
-        let client = client(Throttle::with_driver(store(), 1, Duration::from_millis(100)));
+        // A short window, and only one request inside it. Asserting the 429
+        // here too would need both requests to land inside 100ms, which a busy
+        // machine cannot promise — that is covered separately, with a window
+        // long enough that timing cannot enter into it.
+        let window = Duration::from_millis(200);
+        let client = client(Throttle::with_driver(store(), 1, window));
 
         client.send(from("10.0.0.7", "/api/search")).await.assert_ok();
-        client.send(from("10.0.0.7", "/api/search")).await.assert_status(429);
 
-        tokio::time::sleep(Duration::from_millis(220)).await;
+        tokio::time::sleep(window * 3).await;
         client.send(from("10.0.0.7", "/api/search")).await.assert_ok();
+    }
+
+    #[tokio::test]
+    async fn the_second_request_inside_the_window_is_refused() {
+        // A minute-long window, so the two requests are inside it whatever else
+        // the machine is doing.
+        let client = client(Throttle::with_driver(store(), 1, Duration::from_secs(60)));
+
+        client.send(from("10.0.0.8", "/api/search")).await.assert_ok();
+        client.send(from("10.0.0.8", "/api/search")).await.assert_status(429);
     }
 
     #[tokio::test]

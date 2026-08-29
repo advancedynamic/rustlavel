@@ -72,13 +72,24 @@ pub use store::{Filter, Store};
 /// error page tests use for the process-wide debug flag.
 #[cfg(test)]
 pub(crate) mod test_support {
-    use std::sync::{Mutex, MutexGuard};
+    use tokio::sync::{Mutex, MutexGuard};
 
-    static BUS: Mutex<()> = Mutex::new(());
+    /// A tokio mutex rather than a std one, because the async tests hold it
+    /// across an `.await` — which a std guard must never do.
+    static BUS: Mutex<()> = Mutex::const_new(());
 
-    /// A poisoned guard still grants exclusive access: one failing test should
-    /// not cascade into every other test in the crate failing too.
+    /// For a synchronous test. Panics inside a runtime, which is exactly where
+    /// it should not be used.
     pub fn exclusive() -> MutexGuard<'static, ()> {
-        BUS.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        BUS.blocking_lock()
+    }
+
+    /// For an async test.
+    ///
+    /// Any test that reaches the event bus needs this — including one that only
+    /// makes a request through `TestClient`, because the router dispatches an
+    /// `http.request` event for every request it handles.
+    pub async fn exclusive_async() -> MutexGuard<'static, ()> {
+        BUS.lock().await
     }
 }

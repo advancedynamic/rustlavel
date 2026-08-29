@@ -379,8 +379,10 @@ fn read_chunked(reader: &mut Reader<'_>) -> Result<Option<Vec<u8>>> {
     };
 
     loop {
-        // A zero-length total is written with no chunks at all by some servers,
-        // so an exhausted reader ends the value just as the terminator does.
+        // A live SQL Server does send the terminator even for a zero-length
+        // value, so this only guards against one that does not — and it can
+        // only fire when the value is the last thing in the message, where
+        // reading a chunk length would fail anyway.
         if total == 0 && reader.remaining() < 4 {
             return Ok(Some(out));
         }

@@ -335,25 +335,22 @@ mod tests {
 
     #[tokio::test]
     async fn a_mounted_telescope_records_and_serves_what_it_recorded() {
-        // The bus lock is released before the HTTP assertions: the router's
-        // handlers hold the store directly, so they no longer need the
-        // subscriber registry, and holding a blocking lock across an `await`
-        // would be wrong even in a test.
-        let router = {
-            let _guard = crate::test_support::exclusive();
-            events::clear_subscribers();
+        // Held for the whole test, not just the setup: the requests below go
+        // through the router, which dispatches an `http.request` event for each
+        // one. Releasing early would leak those onto the bus for whichever test
+        // is subscribed next.
+        let _guard = crate::test_support::exclusive_async().await;
+        events::clear_subscribers();
 
-            let mut router = Router::new();
-            Telescope::new().install(&mut router, &config_for("local")).expect("mounted");
-            Event::new("http.request")
-                .with("method", "GET")
-                .with("path", "/orders")
-                .with("status", 200)
-                .dispatch();
+        let mut router = Router::new();
+        Telescope::new().install(&mut router, &config_for("local")).expect("mounted");
+        Event::new("http.request")
+            .with("method", "GET")
+            .with("path", "/orders")
+            .with("status", 200)
+            .dispatch();
 
-            events::clear_subscribers();
-            router
-        };
+        events::clear_subscribers();
 
         let client = TestClient::new(router);
         client.get("/telescope").await.assert_ok().assert_see("GET /orders");
