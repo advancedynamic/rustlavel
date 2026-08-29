@@ -13,10 +13,12 @@
 //! never compiled.
 
 mod app;
+mod console;
 #[cfg(feature = "view")]
 mod view;
 
 pub use app::App;
+pub use console::Console;
 
 #[cfg(feature = "ai")]
 pub use rustlavel_ai as ai;

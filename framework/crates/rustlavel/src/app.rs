@@ -23,6 +23,17 @@ pub struct App {
     /// Where the generated API document is served, when it is enabled.
     #[cfg(feature = "openapi")]
     openapi: Option<(rustlavel_openapi::Info, String)>,
+    /// The migration list the CLI generated, so `rustlavel migrate` can run it.
+    #[cfg(feature = "db")]
+    migrations: Vec<&'static dyn rustlavel_db::Migration>,
+    #[cfg(feature = "db")]
+    seeders: Vec<&'static dyn rustlavel_db::Seeder>,
+    #[cfg(feature = "queue")]
+    queue: Option<std::sync::Arc<dyn rustlavel_queue::Queue>>,
+    #[cfg(feature = "queue")]
+    jobs: Option<std::sync::Arc<rustlavel_queue::JobRegistry>>,
+    #[cfg(feature = "queue")]
+    scheduler: Option<rustlavel_queue::Scheduler>,
 }
 
 impl App {
@@ -45,6 +56,16 @@ impl App {
             root,
             #[cfg(feature = "openapi")]
             openapi: None,
+            #[cfg(feature = "db")]
+            migrations: Vec::new(),
+            #[cfg(feature = "db")]
+            seeders: Vec::new(),
+            #[cfg(feature = "queue")]
+            queue: None,
+            #[cfg(feature = "queue")]
+            jobs: None,
+            #[cfg(feature = "queue")]
+            scheduler: None,
         })
     }
 
@@ -59,6 +80,16 @@ impl App {
             public: None,
             #[cfg(feature = "openapi")]
             openapi: None,
+            #[cfg(feature = "db")]
+            migrations: Vec::new(),
+            #[cfg(feature = "db")]
+            seeders: Vec::new(),
+            #[cfg(feature = "queue")]
+            queue: None,
+            #[cfg(feature = "queue")]
+            jobs: None,
+            #[cfg(feature = "queue")]
+            scheduler: None,
         }
     }
 
@@ -68,6 +99,33 @@ impl App {
 
     pub fn root(&self) -> &std::path::Path {
         &self.root
+    }
+
+    #[cfg(feature = "db")]
+    pub(crate) fn registered_migrations(&self) -> Vec<&'static dyn rustlavel_db::Migration> {
+        self.migrations.clone()
+    }
+
+    #[cfg(feature = "db")]
+    pub(crate) fn registered_seeders(&self) -> Vec<&'static dyn rustlavel_db::Seeder> {
+        self.seeders.clone()
+    }
+
+    #[cfg(feature = "queue")]
+    pub(crate) fn registered_queue(&self) -> Option<std::sync::Arc<dyn rustlavel_queue::Queue>> {
+        self.queue.clone()
+    }
+
+    #[cfg(feature = "queue")]
+    pub(crate) fn registered_jobs(&self) -> Option<std::sync::Arc<rustlavel_queue::JobRegistry>> {
+        self.jobs.clone()
+    }
+
+    /// Takes the scheduler, because running it consumes it — and nothing else
+    /// wants it afterwards.
+    #[cfg(feature = "queue")]
+    pub(crate) fn take_scheduler(&mut self) -> Option<rustlavel_queue::Scheduler> {
+        self.scheduler.take()
     }
 
     /// Register routes — this is what loads `routes/web.rs`.
@@ -112,6 +170,42 @@ impl App {
     #[cfg(feature = "openapi")]
     pub fn openapi(mut self, info: rustlavel_openapi::Info) -> Self {
         self.openapi = Some((info, "/openapi.json".to_string()));
+        self
+    }
+
+    /// Register the migrations `rustlavel migrate` should run.
+    ///
+    /// A compiled program cannot list a directory into types, so the CLI keeps
+    /// this list generated beside the migration files: `database::migrations::all()`.
+    #[cfg(feature = "db")]
+    pub fn migrations(mut self, migrations: Vec<&'static dyn rustlavel_db::Migration>) -> Self {
+        self.migrations = migrations;
+        self
+    }
+
+    #[cfg(feature = "db")]
+    pub fn seeders(mut self, seeders: Vec<&'static dyn rustlavel_db::Seeder>) -> Self {
+        self.seeders = seeders;
+        self
+    }
+
+    /// The queue `rustlavel queue:work` should drain.
+    #[cfg(feature = "queue")]
+    pub fn queue(mut self, queue: impl rustlavel_queue::Queue + 'static) -> Self {
+        self.queue = Some(std::sync::Arc::new(queue));
+        self
+    }
+
+    /// The registry that turns a job name back into something runnable.
+    #[cfg(feature = "queue")]
+    pub fn jobs(mut self, registry: rustlavel_queue::JobRegistry) -> Self {
+        self.jobs = Some(std::sync::Arc::new(registry));
+        self
+    }
+
+    #[cfg(feature = "queue")]
+    pub fn schedule(mut self, scheduler: rustlavel_queue::Scheduler) -> Self {
+        self.scheduler = Some(scheduler);
         self
     }
 
@@ -180,9 +274,12 @@ impl App {
                 print_route_table(&router);
                 Ok(())
             }
-            Some(other) => Err(rustlavel_core::Error::msg(format!(
-                "unknown command `{other}`. Run `rustlavel help` to see what is available."
-            ))),
+            // Everything else the CLI forwards is answered by the console,
+            // which is where the commands needing the application itself live.
+            Some(other) => {
+                let rest: Vec<String> = args.iter().skip(1).cloned().collect();
+                crate::console::Console::dispatch(self, other, &rest).await
+            }
         }
     }
 
