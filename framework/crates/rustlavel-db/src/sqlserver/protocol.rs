@@ -95,9 +95,17 @@ impl PacketHeader {
 /// Only the final packet carries the end-of-message bit, which is how the peer
 /// knows a login or a statement longer than one packet is complete. The packet
 /// id restarts at one for every message, exactly as MS-TDS requires.
-pub fn split_message(kind: u8, payload: &[u8], packet_size: usize) -> Vec<u8> {
+///
+/// Each packet comes back as its own buffer rather than one concatenated block,
+/// and that is not a stylistic choice. **Over an encrypted connection SQL Server
+/// expects one TDS packet per TLS record**: give it a record holding two
+/// packets and it drops the connection without a word — a live server confirmed
+/// it, at exactly the payload size where a second packet appears, and only when
+/// encryption was on. Writing each packet separately puts each in its own
+/// record, which is what every working TDS client does.
+pub fn split_message(kind: u8, payload: &[u8], packet_size: usize) -> Vec<Vec<u8>> {
     let capacity = packet_size.max(HEADER_LEN + 1) - HEADER_LEN;
-    let mut out = Vec::with_capacity(payload.len() + HEADER_LEN * 2);
+    let mut packets = Vec::with_capacity(payload.len() / capacity + 1);
     let mut id: u8 = 1;
 
     // An empty payload is still a message, so the loop runs at least once.
@@ -107,6 +115,7 @@ pub fn split_message(kind: u8, payload: &[u8], packet_size: usize) -> Vec<u8> {
         let chunk = &payload[offset..end];
         let last = end == payload.len();
 
+        let mut packet = Vec::with_capacity(HEADER_LEN + chunk.len());
         PacketHeader {
             kind,
             status: if last { status::END_OF_MESSAGE } else { status::NORMAL },
@@ -115,14 +124,15 @@ pub fn split_message(kind: u8, payload: &[u8], packet_size: usize) -> Vec<u8> {
             id,
             window: 0,
         }
-        .write_into(&mut out);
-        out.extend_from_slice(chunk);
+        .write_into(&mut packet);
+        packet.extend_from_slice(chunk);
+        packets.push(packet);
 
         if last {
-            return out;
+            return packets;
         }
         offset = end;
-        id = id.wrapping_add(1).max(1);
+        id = id.wrapping_add(1);
     }
 }
 
@@ -266,7 +276,7 @@ pub fn login7(login: &Login7<'_>) -> Vec<u8> {
     // Strings live after the fixed part; each is referenced by an offset from
     // the start of the payload and a length counted in *characters*, not bytes.
     let mut data: Vec<u8> = Vec::new();
-    let mut place = |data: &mut Vec<u8>, text: &str| -> [u8; 4] {
+    let place = |data: &mut Vec<u8>, text: &str| -> [u8; 4] {
         let offset = (LOGIN7_FIXED_LEN + data.len()) as u16;
         let mut characters = 0u16;
         for unit in text.encode_utf16() {
@@ -563,7 +573,11 @@ impl<'a> TokenStream<'a> {
         &self.columns
     }
 
-    pub fn next(&mut self) -> Result<Option<Token>> {
+    /// The next token, or `None` at the end of the message.
+    ///
+    /// Not an `Iterator`: a token can fail to parse, and a stream that hides
+    /// that behind `None` would silently truncate a result set.
+    pub fn next_token(&mut self) -> Result<Option<Token>> {
         if self.reader.is_empty() {
             return Ok(None);
         }
@@ -825,48 +839,47 @@ mod tests {
 
     #[test]
     fn a_payload_that_fits_becomes_one_packet_marked_final() {
-        let framed = split_message(packet::SQL_BATCH, b"hello", DEFAULT_PACKET_SIZE);
-        let header = PacketHeader::parse(&framed).unwrap();
+        let packets = split_message(packet::SQL_BATCH, b"hello", DEFAULT_PACKET_SIZE);
+        assert_eq!(packets.len(), 1);
 
+        let header = PacketHeader::parse(&packets[0]).unwrap();
         assert_eq!(header.kind, packet::SQL_BATCH);
-        assert_eq!(header.length as usize, framed.len());
+        assert_eq!(header.length as usize, packets[0].len());
         assert_eq!(header.id, 1);
         assert!(header.is_end_of_message());
-        assert_eq!(&framed[HEADER_LEN..], b"hello");
+        assert_eq!(&packets[0][HEADER_LEN..], b"hello");
     }
 
     #[test]
     fn a_payload_larger_than_the_packet_size_is_split_and_only_the_last_ends_it() {
         // Three packets: 8 bytes of header leaves 24 bytes of room in each.
         let payload: Vec<u8> = (0..60u8).collect();
-        let framed = split_message(packet::SQL_BATCH, &payload, 32);
+        let packets = split_message(packet::SQL_BATCH, &payload, 32);
 
-        let mut at = 0;
-        let mut rebuilt = Vec::new();
-        let mut headers = Vec::new();
-        while at < framed.len() {
-            let header = PacketHeader::parse(&framed[at..]).unwrap();
-            let end = at + header.length as usize;
-            rebuilt.extend_from_slice(&framed[at + HEADER_LEN..end]);
-            headers.push(header);
-            at = end;
-        }
+        assert_eq!(packets.len(), 3);
 
-        assert_eq!(headers.len(), 3);
+        let headers: Vec<PacketHeader> =
+            packets.iter().map(|p| PacketHeader::parse(p).unwrap()).collect();
         assert_eq!(headers.iter().map(|h| h.id).collect::<Vec<_>>(), vec![1, 2, 3]);
         assert!(!headers[0].is_end_of_message());
         assert!(!headers[1].is_end_of_message());
         assert!(headers[2].is_end_of_message());
+        // None exceeds the negotiated size, header included.
+        assert!(packets.iter().all(|p| p.len() <= 32));
+
         // Split and reassembled, the payload is unchanged.
+        let rebuilt: Vec<u8> =
+            packets.iter().flat_map(|p| p[HEADER_LEN..].iter().copied()).collect();
         assert_eq!(rebuilt, payload);
     }
 
     #[test]
     fn an_empty_payload_is_still_one_end_of_message_packet() {
-        let framed = split_message(packet::PRE_LOGIN, &[], DEFAULT_PACKET_SIZE);
+        let packets = split_message(packet::PRE_LOGIN, &[], DEFAULT_PACKET_SIZE);
 
-        assert_eq!(framed.len(), HEADER_LEN);
-        assert!(PacketHeader::parse(&framed).unwrap().is_end_of_message());
+        assert_eq!(packets.len(), 1);
+        assert_eq!(packets[0].len(), HEADER_LEN);
+        assert!(PacketHeader::parse(&packets[0]).unwrap().is_end_of_message());
     }
 
     #[test]
@@ -995,7 +1008,7 @@ mod tests {
         body.extend_from_slice(&fields);
 
         let mut stream = TokenStream::new(&body);
-        let error = match stream.next().unwrap().unwrap() {
+        let error = match stream.next_token().unwrap().unwrap() {
             Token::Error(error) => error,
             other => panic!("expected an error token, got {other:?}"),
         };
@@ -1019,7 +1032,7 @@ mod tests {
         body.extend_from_slice(&3u64.to_le_bytes());
 
         let mut stream = TokenStream::new(&body);
-        let done = match stream.next().unwrap().unwrap() {
+        let done = match stream.next_token().unwrap().unwrap() {
             Token::Done(done) => done,
             other => panic!("expected a done token, got {other:?}"),
         };
@@ -1039,7 +1052,7 @@ mod tests {
         body.extend_from_slice(&99u64.to_le_bytes());
 
         let mut stream = TokenStream::new(&body);
-        match stream.next().unwrap().unwrap() {
+        match stream.next_token().unwrap().unwrap() {
             // The count is still on the wire; `has_count` is what says to trust it.
             Token::Done(done) => assert!(!done.has_count()),
             other => panic!("expected a done token, got {other:?}"),
@@ -1062,13 +1075,13 @@ mod tests {
         body.extend_from_slice(&ended);
 
         let mut stream = TokenStream::new(&body);
-        match stream.next().unwrap().unwrap() {
+        match stream.next_token().unwrap().unwrap() {
             Token::EnvChange(EnvChange::BeginTransaction(descriptor)) => {
                 assert_eq!(descriptor, 0x0102_0304_0506_0708)
             }
             other => panic!("expected a transaction to begin, got {other:?}"),
         }
-        match stream.next().unwrap().unwrap() {
+        match stream.next_token().unwrap().unwrap() {
             Token::EnvChange(EnvChange::CommitTransaction) => {}
             other => panic!("expected a commit, got {other:?}"),
         }
@@ -1085,7 +1098,7 @@ mod tests {
         body.extend_from_slice(&change);
 
         let mut stream = TokenStream::new(&body);
-        match stream.next().unwrap().unwrap() {
+        match stream.next_token().unwrap().unwrap() {
             Token::EnvChange(EnvChange::PacketSize(size)) => assert_eq!(size, 8192),
             other => panic!("expected a packet size change, got {other:?}"),
         }
@@ -1104,7 +1117,7 @@ mod tests {
         body.extend_from_slice(&fields);
 
         let mut stream = TokenStream::new(&body);
-        match stream.next().unwrap().unwrap() {
+        match stream.next_token().unwrap().unwrap() {
             Token::LoginAck(ack) => {
                 assert_eq!(ack.program, "mssq");
                 assert_eq!(ack.version, (16, 0, 0x0FA0));
@@ -1116,13 +1129,13 @@ mod tests {
 
     #[test]
     fn an_unknown_token_stops_the_stream_rather_than_guessing() {
-        let error = TokenStream::new(&[0x42]).next().unwrap_err().to_string();
+        let error = TokenStream::new(&[0x42]).next_token().unwrap_err().to_string();
         assert!(error.contains("0x42"), "{error}");
     }
 
     #[test]
     fn an_empty_message_yields_no_tokens() {
-        assert!(TokenStream::new(&[]).next().unwrap().is_none());
+        assert!(TokenStream::new(&[]).next_token().unwrap().is_none());
     }
 
     #[test]
@@ -1131,7 +1144,7 @@ mod tests {
         let mut body = vec![token::DONE];
         body.extend_from_slice(&[0, 0, 0, 0, 1, 2]);
 
-        assert!(TokenStream::new(&body).next().is_err());
+        assert!(TokenStream::new(&body).next_token().is_err());
     }
 
     #[test]
