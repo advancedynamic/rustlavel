@@ -16,6 +16,9 @@ pub fn run(command: &str, args: &[String]) -> Result<(), String> {
     match command {
         "make:controller" => controller(&project, name),
         "make:middleware" => middleware(&project, name),
+        "make:model" => crate::database::model(&project, name),
+        "make:migration" => crate::database::migration(&project, name),
+        "make:seeder" => crate::database::seeder(&project, name),
         other => Err(format!("unknown generator `{other}`")),
     }
 }

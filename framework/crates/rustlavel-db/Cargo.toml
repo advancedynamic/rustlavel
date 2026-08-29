@@ -1,0 +1,19 @@
+[package]
+name = "rustlavel-db"
+description = "Rustlavel database layer: PostgreSQL driver, query builder, migrations, and ORM"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-macros.workspace = true
+tokio.workspace = true
+# Authentication only. Everything else in this crate is written from scratch;
+# hand-rolling the primitives behind SCRAM would be a security risk, not a
+# feature.
+sha2 = "0.10"
+hmac = "0.12"
+md-5 = "0.10"

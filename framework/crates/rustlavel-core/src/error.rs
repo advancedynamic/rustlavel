@@ -15,6 +15,11 @@ pub enum Error {
     Config { file: String, line: usize, message: String },
     /// A JSON document could not be parsed.
     Json { line: usize, column: usize, message: String },
+    /// A template could not be parsed or rendered.
+    ///
+    /// Carries the position because a view is written by hand, often by
+    /// someone who is not the person reading the stack trace.
+    Template { file: String, line: usize, column: usize, message: String },
     /// A malformed HTTP request reached the parser.
     Protocol(String),
     /// Anything raised by application code.
@@ -40,6 +45,7 @@ impl Error {
             Error::Io(_) => "I/O Error",
             Error::Config { .. } => "Configuration Error",
             Error::Json { .. } => "JSON Error",
+            Error::Template { .. } => "Template Error",
             Error::Protocol(_) => "Protocol Error",
             Error::Message(_) => "Application Error",
         }
@@ -54,6 +60,10 @@ impl Error {
             Error::Json { .. } => {
                 Some("Verify the payload is valid JSON — trailing commas are not allowed.".into())
             }
+            Error::Template { file, line, .. } => Some(format!(
+                "Look at `{file}` around line {line}. Every `@if`, `@foreach` and `@section` \
+                 needs its matching `@end...`."
+            )),
             Error::Io(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 Some("The file does not exist. Did you run `rustlavel new` in this directory?".into())
             }
@@ -74,6 +84,9 @@ impl fmt::Display for Error {
             }
             Error::Json { line, column, message } => {
                 write!(f, "invalid JSON at line {line}, column {column}: {message}")
+            }
+            Error::Template { file, line, column, message } => {
+                write!(f, "{file}:{line}:{column}: {message}")
             }
             Error::Protocol(m) => write!(f, "malformed request: {m}"),
             Error::Message(m) => f.write_str(m),

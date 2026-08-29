@@ -1,0 +1,15 @@
+[package]
+name = "rustlavel-macros"
+description = "Derive macros for Rustlavel, notably #[derive(Model)]"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+proc-macro = true
+
+# No syn, no quote: the token stream is parsed by hand so the framework stays
+# dependency-free and compile times stay honest.
+[dependencies]

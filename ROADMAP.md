@@ -49,14 +49,22 @@ Model publish: satu repo banyak crate (seperti `laravel/framework` berisi `illum
 - [x] Static file serving `public/` dengan proteksi path traversal
 - [x] Health check `/up`, structured logging JSON untuk production, event bus instrumentation
 
-## Fase 0.2 — Database (`rustlavel-db`)
+## Fase 0.2 — Database ✅ selesai
 
-- [ ] Connection pool + driver wire protocol sendiri (mulai dari Postgres ATAU MySQL, satu dulu)
-- [ ] Query builder: `DB::table("users").where(...).get()`
-- [ ] Migrations + schema builder: `Schema::create("users", |t| { t.id(); t.string("name"); })`
-- [ ] `rustlavel make:migration`, `migrate`, `migrate:rollback`, `migrate:fresh` (registry di-generate CLI)
-- [ ] Seeder & factory: `rustlavel db:seed`, `User::factory().count(3).create()`
-- [ ] ORM gaya Eloquent via `#[derive(Model)]`: relasi (has_many, belongs_to), eager loading anti N+1
+- [x] Driver PostgreSQL from scratch di atas protokol wire v3 (startup, extended query, chunked reads)
+- [x] Autentikasi: SCRAM-SHA-256 (terverifikasi vektor RFC 7677) + MD5 + cleartext; verifikasi signature server
+- [x] Connection pool dengan semaphore; koneksi rusak / masih dalam transaksi dibuang, tidak dikembalikan
+- [x] Query builder: filter/or/in/null/between/like, group bersarang, join, order, group by, paging, count/exists
+- [x] Keamanan: parameter selalu terikat ($1..), identifier divalidasi + di-quote, operator pakai allowlist
+- [x] Penjaga: `update`/`delete` tanpa filter ditolak; `delete_all` harus eksplisit
+- [x] Transaksi bergaya guard (`begin`/`commit`/`rollback`), savepoint, rollback otomatis saat drop
+- [x] Schema builder: create/alter/drop/rename, `foreign_id`, timestamps, soft deletes, index & unique komposit
+- [x] Migrations: batch tracking, idempotent, rollback per batch, `fresh` (ditolak di production), status
+- [x] Seeder + `Faker` deterministik
+- [x] ORM: `#[derive(Model)]` (proc-macro tulis tangan, tanpa syn/quote) — find/all/insert/update/delete/to_json
+- [x] Relasi anti N+1: `has_many` dan `belongs_to` — dua query, berapa pun jumlah parent-nya
+- [x] CLI: `make:model`, `make:migration`, `make:seeder` + registry yang di-generate otomatis
+- [x] 13 test integrasi melawan PostgreSQL 16 sungguhan (via Docker)
 
 ## Fase 0.3 — Web esensial
 

@@ -6,6 +6,7 @@
 //! compiled language the application is the only thing that knows its routes.
 
 mod console;
+mod database;
 mod make;
 mod naming;
 mod new;
@@ -81,11 +82,19 @@ fn help() {
     row("new <name>", "Create a new application");
     row("serve", "Run the app, reloading when files change");
     row("route:list", "Show the registered routes");
+    row("migrate", "Run pending migrations");
+    row("migrate:rollback", "Undo the last batch of migrations");
+    row("migrate:fresh", "Drop every table and migrate from scratch");
+    row("migrate:status", "Show which migrations have run");
+    row("db:seed", "Run the seeders");
     println!();
 
     println!("{}", console::bold("GENERATORS"));
     row("make:controller <Name>", "Create a controller");
     row("make:middleware <name>", "Create a middleware function");
+    row("make:model <Name>", "Create a model");
+    row("make:migration <name>", "Create a migration");
+    row("make:seeder <Name>", "Create a seeder");
     println!();
 
     println!("{}", console::bold("OPTIONS"));
