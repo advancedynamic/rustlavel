@@ -1,0 +1,16 @@
+[package]
+name = "bench-rustlavel"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rustlavel = { path = "../../../framework/crates/rustlavel", features = ["db", "view"] }
+tokio = { version = "1", features = ["full"] }
+
+# The comparison is between release builds, and a benchmark of a debug build is
+# a benchmark of nothing.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
