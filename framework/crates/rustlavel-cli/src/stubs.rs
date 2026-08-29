@@ -379,3 +379,93 @@ cargo test               # the whole suite
 
 Run `cargo test` and `cargo clippy --all-targets`. Both should be clean.
 "#;
+
+pub const JOB_STUB: &str = r#"use rustlavel::prelude::*;
+
+/// Runs in the background. Register it so a worker can find it by name:
+///
+/// ```ignore
+/// let mut jobs = JobRegistry::new();
+/// jobs.register::<{{class}}>();
+/// ```
+#[derive(Debug, Clone)]
+pub struct {{class}} {
+    pub id: i64,
+}
+
+impl Job for {{class}} {
+    const NAME: &'static str = "{{name}}";
+
+    fn payload(&self) -> Json {
+        Json::object([("id", Json::from(self.id))])
+    }
+
+    fn from_payload(payload: &Json) -> Result<Self> {
+        Ok({{class}} {
+            id: payload
+                .get("id")
+                .and_then(Json::as_i64)
+                .ok_or_else(|| Error::msg("{{name}} needs an `id` in its payload"))?,
+        })
+    }
+
+    async fn handle(&self) -> Result<()> {
+        info!("running {{name}} for {}", self.id);
+        Ok(())
+    }
+}
+"#;
+
+pub const MAIL_STUB: &str = r#"use rustlavel::mail::Mailable;
+use rustlavel::prelude::*;
+
+/// Rendered from `resources/views/mail/{{view}}.rl.html`.
+pub struct {{class}} {
+    pub name: String,
+}
+
+impl Mailable for {{class}} {
+    fn subject(&self) -> String {
+        "{{title}}".to_string()
+    }
+
+    fn view(&self) -> &str {
+        "mail/{{view}}"
+    }
+
+    fn context(&self) -> ViewContext {
+        ViewContext::new().with("name", self.name.clone())
+    }
+}
+"#;
+
+pub const NOTIFICATION_STUB: &str = r#"use rustlavel::mail::{Message, Notification, Recipient, channel};
+use rustlavel::prelude::*;
+
+/// Delivered over every channel it names, from this one definition.
+pub struct {{class}} {
+    pub subject: String,
+}
+
+impl Notification for {{class}} {
+    fn name(&self) -> &str {
+        "{{name}}"
+    }
+
+    fn channels(&self) -> Vec<&'static str> {
+        vec![channel::MAIL, channel::DATABASE]
+    }
+
+    /// The recipient is addressed by the notifier; this only writes the body.
+    fn to_mail(&self, _recipient: &Recipient) -> Result<Message> {
+        Ok(Message::new()
+            .subject(&self.subject)
+            .text("Write the plain-text body here.")
+            .html("<p>Write the HTML body here.</p>"))
+    }
+
+    fn to_database(&self, _recipient: &Recipient) -> Result<Json> {
+        Ok(Json::object([("subject", Json::from(self.subject.as_str()))]))
+    }
+}
+"#;
