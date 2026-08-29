@@ -1,0 +1,21 @@
+[package]
+name = "rustlavel-storage"
+description = "Rustlavel file storage: local disk and S3-compatible object stores"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-client.workspace = true
+rustlavel-http.workspace = true
+tokio.workspace = true
+# Signing only: AWS SigV4 is HMAC-SHA256 over a canonical request. The
+# signing scheme is written here; the hash primitives are not.
+sha2 = "0.10"
+hmac = "0.12"
+
+[dev-dependencies]
+tokio = { workspace = true }

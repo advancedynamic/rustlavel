@@ -460,6 +460,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustlavel-ai"
+version = "0.1.0"
+dependencies = [
+ "rustlavel-client",
+ "rustlavel-core",
+ "rustlavel-http",
+ "tokio",
+]
+
+[[package]]
 name = "rustlavel-auth"
 version = "0.1.0"
 dependencies = [
@@ -523,8 +533,62 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustlavel-i18n"
+version = "0.1.0"
+dependencies = [
+ "rustlavel-core",
+ "rustlavel-http",
+ "tokio",
+]
+
+[[package]]
 name = "rustlavel-macros"
 version = "0.1.0"
+
+[[package]]
+name = "rustlavel-mail"
+version = "0.1.0"
+dependencies = [
+ "rustlavel-client",
+ "rustlavel-core",
+ "rustlavel-view",
+ "rustls",
+ "tokio",
+ "tokio-rustls",
+ "webpki-roots 0.26.11",
+]
+
+[[package]]
+name = "rustlavel-mcp"
+version = "0.1.0"
+dependencies = [
+ "rustlavel-client",
+ "rustlavel-core",
+ "rustlavel-http",
+ "tokio",
+]
+
+[[package]]
+name = "rustlavel-queue"
+version = "0.1.0"
+dependencies = [
+ "rustlavel-core",
+ "rustlavel-db",
+ "rustlavel-http",
+ "tokio",
+]
+
+[[package]]
+name = "rustlavel-storage"
+version = "0.1.0"
+dependencies = [
+ "hmac",
+ "rustlavel-client",
+ "rustlavel-core",
+ "rustlavel-http",
+ "sha2",
+ "tokio",
+]
 
 [[package]]
 name = "rustlavel-telescope"
