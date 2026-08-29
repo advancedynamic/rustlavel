@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Advance Dynamic Software"]
+repository = "https://github.com/advancedynamic/rustlavel"
+
+[workspace.dependencies]
+rustlavel-core = { path = "crates/rustlavel-core", version = "0.1.0" }
+rustlavel-http = { path = "crates/rustlavel-http", version = "0.1.0" }
+tokio = { version = "1", features = ["full"] }

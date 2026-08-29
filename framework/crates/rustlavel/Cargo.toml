@@ -1,0 +1,22 @@
+[package]
+name = "rustlavel"
+description = "A Laravel-inspired full-stack web framework for Rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-http.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[features]
+default = []
+# Opt-in packages land here as they are built, e.g.:
+# db = ["dep:rustlavel-db"]
+# ai = ["dep:rustlavel-ai"]
+# telescope = ["dep:rustlavel-telescope"]

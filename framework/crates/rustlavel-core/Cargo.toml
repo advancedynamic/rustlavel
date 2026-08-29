@@ -1,0 +1,10 @@
+[package]
+name = "rustlavel-core"
+description = "Rustlavel application lifecycle, config, .env, and internal instrumentation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]

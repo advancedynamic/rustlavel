@@ -1,0 +1,12 @@
+[package]
+name = "rustlavel-http"
+description = "Rustlavel HTTP server, router, middleware pipeline, request/response"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+tokio.workspace = true

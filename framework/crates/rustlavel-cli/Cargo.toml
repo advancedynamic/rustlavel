@@ -1,0 +1,14 @@
+[package]
+name = "rustlavel-cli"
+description = "The rustlavel command-line tool: new, serve, make:*"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "rustlavel"
+path = "src/main.rs"
+
+[dependencies]
