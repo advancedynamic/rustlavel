@@ -1,0 +1,36 @@
+# Octane's own Caddyfile stub, minus two things it does that no other app in
+# the comparison does: an access-log line per request, and `encode zstd br
+# gzip`. Both are perfectly reasonable in production and both would be measured
+# as if they were Laravel. Everything else — the worker file, the worker count,
+# the `php_server` routing — is Octane's stub unchanged, and the {$VARIABLES}
+# are the ones Octane passes in the FrankenPHP process environment.
+#
+# Used via `octane:start --caddyfile=deploy/Caddyfile.octane`.
+{
+	{$CADDY_GLOBAL_OPTIONS}
+
+	admin {$CADDY_SERVER_ADMIN_HOST}:{$CADDY_SERVER_ADMIN_PORT}
+
+	# Do not write a copy of the running config into ~/Library/Application
+	# Support/Caddy; the benchmark app owns nothing outside its directory.
+	persist_config off
+
+	frankenphp {
+		worker {
+			file "{$APP_PUBLIC_PATH}/frankenphp-worker.php"
+			{$CADDY_SERVER_WORKER_DIRECTIVE}
+		}
+	}
+}
+
+{$CADDY_SERVER_SERVER_NAME} {
+	route {
+		root * "{$APP_PUBLIC_PATH}"
+
+		php_server {
+			index frankenphp-worker.php
+			try_files {path} frankenphp-worker.php
+			resolve_root_symlink
+		}
+	}
+}

@@ -1,0 +1,31 @@
+# Caddy in front of PHP-FPM over a unix socket — the classic "boot the
+# framework once per request" deployment. `run-fpm.sh` substitutes
+# __APP_ROOT__ and __PORT__ and writes the result to run/Caddyfile.
+#
+# nginx was the brief's first choice, but there is no nginx on this machine and
+# Homebrew is broken here (`brew` aborts loading sorbet-runtime), so it cannot
+# be installed. The system Apache at /usr/sbin/httpd cannot be used either: it
+# is refused access to this external volume by macOS ("Operation not
+# permitted", TCC). Caddy's `php_fastcgi` is the same thing as nginx's
+# `fastcgi_pass` — an event-driven front end handing every .php request to a
+# fixed pool of PHP-FPM children over a unix socket — and it runs here.
+{
+	admin off
+	auto_https off
+	persist_config off
+	log {
+		output file __APP_ROOT__/run/caddy.log
+		level ERROR
+	}
+}
+
+:__PORT__ {
+	root * __APP_ROOT__/public
+
+	# No access log: none of the other apps in the comparison writes a line
+	# to disk per request.
+
+	php_fastcgi unix/__APP_ROOT__/run/php-fpm.sock
+
+	file_server
+}

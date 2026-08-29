@@ -1,0 +1,33 @@
+; PHP-FPM pool for the benchmark. `run-fpm.sh` substitutes __APP_ROOT__ and
+; writes the result to run/php-fpm.conf.
+
+[global]
+pid = __APP_ROOT__/run/php-fpm.pid
+error_log = __APP_ROOT__/run/php-fpm.log
+log_level = warning
+daemonize = no
+emergency_restart_threshold = 0
+process_control_timeout = 10s
+
+[www]
+listen = __APP_ROOT__/run/php-fpm.sock
+listen.backlog = 4096
+listen.mode = 0666
+
+; Static, sixteen children. PHP has no connection pool: each resident worker
+; holds its own PDO handle, so sixteen workers is the closest thing to the
+; sixteen-connection pool benchmarks/CONTRACT.md asks every app for. `static`
+; rather than `dynamic` so the harness is never measuring FPM forking a new
+; child in the middle of a run.
+pm = static
+pm.max_children = 16
+pm.max_requests = 0
+pm.status_path = /fpm-status
+
+request_terminate_timeout = 30s
+catch_workers_output = yes
+decorate_workers_output = no
+clear_env = no
+
+; Access logging is off: none of the other apps in the comparison write a line
+; to disk per request, so neither should this one.
