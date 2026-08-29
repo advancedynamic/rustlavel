@@ -36,9 +36,14 @@ rustlavel/
         ├── rustlavel-ai/         # Anthropic / OpenAI / Ollama
         ├── rustlavel-mcp/        # MCP server + client
         ├── rustlavel-telescope/  # dashboard debugging
+        ├── rustlavel-metrics/    # Prometheus, dari event bus
+        ├── rustlavel-openapi/    # dokumentasi API dari route
         ├── rustlavel-queue/      # background jobs + scheduler
+        ├── rustlavel-ws/         # WebSocket + broadcasting
         └── rustlavel-mail/       # SMTP + notifications
 ```
+
+Di luar `framework/` ada `examples/blog/` — aplikasi contoh lengkap (model, migration, controller, validasi, template, test) yang jalan melawan PostgreSQL sungguhan. Workspace-nya sendiri.
 
 Model publish: satu repo banyak crate (seperti `laravel/framework` berisi `illuminate/*`), tiap crate dipublish terpisah ke crates.io.
 
@@ -81,6 +86,7 @@ Model publish: satu repo banyak crate (seperti `laravel/framework` berisi `illum
 - [x] Pagination nyambung query builder
 - [x] Testing: test client + cookie jar, `Http::fake()`
 - [ ] Passkey/WebAuthn; starter kit `--auth` (login/register/reset) — belum
+- [ ] Form HTML yang gagal validasi belum di-render ulang dengan pesan error; sekarang 422 teks polos (klien JSON sudah dapat bentuk Laravel)
 
 ## Fase 0.4 — AI & DX era agent ✅ selesai
 
@@ -94,7 +100,8 @@ Model publish: satu repo banyak crate (seperti `laravel/framework` berisi `illum
 - [x] `rustlavel-telescope`: rekam request, query, log, jobs, panggilan AI/MCP; dashboard `/telescope`; ditolak di production; redaksi field sensitif
 - [x] Structured logging JSON untuk production
 - [x] `rustlavel doctor` — diagnosa toolchain, .env, APP_KEY, port, database, layout, build
-- [ ] OpenTelemetry / metrics Prometheus — belum
+- [x] `rustlavel-metrics`: endpoint Prometheus dari event bus; request dilabeli pola route (bukan path) agar kardinalitas tidak meledak
+- [ ] OpenTelemetry export — belum
 
 ## Fase 0.6 — Kelas berat ✅ sebagian
 
@@ -104,16 +111,18 @@ Model publish: satu repo banyak crate (seperti `laravel/framework` berisi `illum
 - [x] Single binary deploy: `rustlavel build`, `make:docker`, cross-compile
 - [x] `rustlavel-queue`: jobs, worker, retry, dead-letter, scheduler dengan parser cron sendiri
 - [x] `rustlavel-mail`: SMTP from scratch, MIME, Mailable, `Mail::fake()`, notifications multi-channel
+- [x] OpenAPI di-generate dari route: `.describe()/.tag()/.param()/.responds()` + halaman docs
+- [x] Generator: `make:job`, `make:mail`, `make:notification`, `make:mcp-tool`
+- [x] Perintah aplikasi: `migrate`, `migrate:rollback/fresh/status`, `db:seed`, `queue:work`, `queue:failed`, `schedule:run`
+- [ ] Broadcasting/WebSocket ala Echo+Reverb — sedang dikerjakan
 - [ ] Feature flags ala Pennant — belum
-- [ ] Broadcasting/WebSocket ala Echo+Reverb — belum
-- [ ] OpenAPI auto-generate dari route typed — belum
 - [ ] `make:crud`, `tinker` — belum
 
-## Fase 1.0+ — Ekosistem (belum)
+## Fase 1.0+ — Ekosistem (sebagian)
 
+- [x] Contoh app resmi: `examples/blog`
 - [ ] Situs dokumentasi + cookbook
 - [ ] `rustlavel make:package` — scaffold package pihak ketiga
-- [ ] Contoh app resmi (blog / todo / mini e-commerce)
 - [ ] Komponen reaktif server-side ala Livewire
 
 ---
