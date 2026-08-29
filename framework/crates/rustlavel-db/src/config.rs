@@ -18,6 +18,13 @@ pub struct DatabaseConfig {
     pub connect_timeout: Duration,
     /// How long a query may run before the driver gives up on it.
     pub query_timeout: Duration,
+    /// Whether to encrypt the connection, and how much of the certificate to
+    /// believe. See [`crate::tls::TlsMode`] — the default asks for encryption
+    /// but accepts a server that declines, which guarantees nothing.
+    pub tls_mode: crate::tls::TlsMode,
+    /// A PEM file of trust anchors, for `verify-ca` and `verify-full` against a
+    /// private CA. `None` uses the public roots.
+    pub tls_root_certificate: Option<String>,
 }
 
 impl Default for DatabaseConfig {
@@ -33,6 +40,8 @@ impl Default for DatabaseConfig {
             max_connections: 10,
             connect_timeout: Duration::from_secs(10),
             query_timeout: Duration::from_secs(30),
+            tls_mode: crate::tls::TlsMode::default(),
+            tls_root_certificate: None,
         }
     }
 }
@@ -131,6 +140,15 @@ impl DatabaseConfig {
                     if let Ok(seconds) = value.parse() {
                         config.connect_timeout = Duration::from_secs(seconds);
                     }
+                }
+                // An unreadable sslmode is an error rather than a shrug: the
+                // silent fallback would be a weaker mode than the one asked
+                // for, which is the wrong way round for a security setting.
+                "sslmode" | "ssl-mode" | "ssl_mode" => {
+                    config.tls_mode = crate::tls::TlsMode::parse(&decode(value))?
+                }
+                "sslrootcert" | "ssl-ca" | "ssl_ca" => {
+                    config.tls_root_certificate = Some(decode(value))
                 }
                 _ => {}
             }

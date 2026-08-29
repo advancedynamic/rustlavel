@@ -11,8 +11,10 @@
 //!
 //! MySQL 8 authenticates with `caching_sha2_password`, whose fast path needs
 //! the account to already be in the server's cache. A container that has never
-//! seen the account will demand the full path, which needs TLS this driver does
-//! not speak — connect once with the official client to warm it:
+//! seen the account demands the full path, which sends the password itself and
+//! so needs an encrypted connection — add `?sslmode=require` to `MYSQL_URL` and
+//! the driver takes that path happily. Warming the cache with the official
+//! client also works, and is what this was before the driver spoke TLS:
 //!
 //! ```text
 //! IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' rustlavel-mysql)
@@ -521,6 +523,10 @@ async fn a_wrong_password_under_caching_sha2_explains_the_secure_channel_it_need
 
     let mut config = MySqlDriver::from_url(&url).unwrap().config().clone();
     config.password = "definitely-not-the-password".into();
+    // The point of this test is the refusal to send a password in the clear, so
+    // it has to be in the clear — `MYSQL_URL` may well ask for TLS, and with a
+    // tunnel the driver takes the full path and the server simply says no.
+    config.tls_mode = rustlavel_db::tls::TlsMode::Disable;
 
     let error = match MySqlConnection::connect(&config).await {
         Err(error) => error.to_string(),
@@ -552,6 +558,10 @@ async fn a_wrong_password_under_native_password_names_the_error_code() {
 
     let mut config = MySqlDriver::from_url(&url).unwrap().config().clone();
     config.password = "definitely-not-the-password".into();
+    // The point of this test is the refusal to send a password in the clear, so
+    // it has to be in the clear — `MYSQL_URL` may well ask for TLS, and with a
+    // tunnel the driver takes the full path and the server simply says no.
+    config.tls_mode = rustlavel_db::tls::TlsMode::Disable;
 
     let error = match MySqlConnection::connect(&config).await {
         Err(error) => error.to_string(),

@@ -197,6 +197,22 @@ impl Buffer {
         self
     }
 
+    /// The `SSLRequest` packet: the first 32 bytes of a handshake response, and
+    /// nothing else.
+    ///
+    /// It is deliberately the same prefix as [`Buffer::handshake_response`],
+    /// because that is what the protocol says it is — the server reads this
+    /// much, sees `CLIENT_SSL`, and starts a TLS handshake instead of reading
+    /// on. The credentials then go inside the tunnel, in a second packet that
+    /// repeats these 32 bytes and continues past them.
+    pub fn ssl_request(&mut self, capabilities: u32) -> &mut Self {
+        self.u32(capabilities | CLIENT_SSL);
+        self.u32(MAX_PACKET_SIZE);
+        self.u8(CHARSET_UTF8MB4);
+        self.raw(&[0u8; 23]);
+        self
+    }
+
     /// The reply to the server's handshake: capabilities, then credentials.
     pub fn handshake_response(
         &mut self,
@@ -981,6 +997,50 @@ mod tests {
         assert_eq!(values[0].as_deref(), Some(&b"ada"[..]));
         assert_eq!(values[1], None);
         assert_eq!(values[2].as_deref(), Some(&b""[..]));
+    }
+
+    #[test]
+    fn an_ssl_request_is_exactly_thirty_two_bytes() {
+        // The server reads a fixed 32 bytes and then starts the TLS handshake.
+        // One byte too many or too few and it is reading TLS as MySQL, which
+        // shows up as a connection that closes with no error at all.
+        let mut buffer = Buffer::new();
+        buffer.ssl_request(CLIENT_PROTOCOL_41);
+        let bytes = buffer.into_bytes();
+
+        assert_eq!(bytes.len(), 32);
+        assert_eq!(&bytes[9..32], &[0u8; 23], "the 23-byte filler must be zeroed");
+    }
+
+    #[test]
+    fn an_ssl_request_sets_the_ssl_flag_whatever_it_was_given() {
+        let mut buffer = Buffer::new();
+        buffer.ssl_request(CLIENT_PROTOCOL_41);
+        let flags = u32::from_le_bytes(buffer.into_bytes()[0..4].try_into().unwrap());
+
+        assert!(flags & CLIENT_SSL != 0, "without this the server never starts a handshake");
+        assert!(flags & CLIENT_PROTOCOL_41 != 0, "and it must not drop what it was given");
+    }
+
+    #[test]
+    fn an_ssl_request_is_the_prefix_of_the_handshake_response() {
+        // The protocol defines it that way, and the second packet repeats these
+        // bytes inside the tunnel. If they ever disagree, the server sees two
+        // different sets of capabilities and rejects the login.
+        let mut request = Buffer::new();
+        request.ssl_request(CLIENT_PROTOCOL_41 | CLIENT_SSL);
+
+        let mut full = Buffer::new();
+        full.handshake_response(
+            CLIENT_PROTOCOL_41 | CLIENT_SSL,
+            "someone",
+            b"digest",
+            None,
+            "caching_sha2_password",
+            &[],
+        );
+
+        assert_eq!(request.into_bytes(), full.into_bytes()[..32]);
     }
 
     #[test]

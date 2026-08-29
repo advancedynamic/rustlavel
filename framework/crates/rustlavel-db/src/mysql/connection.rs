@@ -11,7 +11,6 @@ use rustlavel_core::events::Event;
 use rustlavel_core::{Error, Result};
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 /// MySQL's default port, which [`DatabaseConfig::from_url`] applies to a
@@ -22,7 +21,7 @@ pub const DEFAULT_PORT: u16 = 3306;
 pub const DRIVER_NAME: &str = "mysql";
 
 pub struct MySqlConnection {
-    stream: TcpStream,
+    stream: crate::tls::DbStream,
     /// Bytes read from the socket but not yet consumed as a packet.
     buffer: Vec<u8>,
     config: DatabaseConfig,
@@ -66,7 +65,7 @@ impl MySqlConnection {
         let _ = stream.set_nodelay(true);
 
         let mut connection = MySqlConnection {
-            stream,
+            stream: crate::tls::DbStream::Plain(stream),
             buffer: Vec::with_capacity(8 * 1024),
             config: config.clone(),
             connection_id: 0,
@@ -113,6 +112,52 @@ impl MySqlConnection {
 
     /// The handshake: read the server's greeting, answer it, and follow the
     /// authentication plugin wherever it goes.
+    /// Whether this connection is encrypted.
+    pub fn is_encrypted(&self) -> bool {
+        self.stream.is_encrypted()
+    }
+
+    /// Ask MySQL to encrypt the connection, and return the capabilities to
+    /// carry forward.
+    ///
+    /// MySQL has no separate "please encrypt" message the way PostgreSQL does.
+    /// The request *is* the first 32 bytes of the handshake response with
+    /// `CLIENT_SSL` set: the server reads that much, sees the flag, and expects
+    /// a TLS handshake next instead of the rest of the packet. The credentials
+    /// then go inside the tunnel.
+    ///
+    /// The packet sequence number keeps counting across the boundary — it is
+    /// not reset by the upgrade — which [`Self::write_packet`] already does,
+    /// and getting it wrong makes the server drop the connection without
+    /// saying why.
+    async fn negotiate_tls(&mut self, capabilities: u32, server: u32) -> Result<u32> {
+        let mode = self.config.tls_mode;
+        if !mode.wants_tls() {
+            return Ok(capabilities);
+        }
+
+        if server & protocol::CLIENT_SSL == 0 {
+            if mode.demands_tls() {
+                self.broken = true;
+                return Err(Error::msg(format!(
+                    "sslmode is `{mode}` but this MySQL does not offer TLS: it did not advertise                      CLIENT_SSL in its handshake. The server was built or configured without a                      certificate — set `ssl_cert` and `ssl_key` on it, or set sslmode=prefer to                      accept a connection in clear text."
+                )));
+            }
+            // Nothing to ask for, so the connection stays as it is.
+            return Ok(capabilities);
+        }
+
+        let mut request = Buffer::new();
+        request.ssl_request(capabilities);
+        self.write_packet(request).await?;
+
+        let plain = self.stream.take_plain()?;
+        let encrypted = crate::tls::upgrade(plain, &self.config.host, &self.config).await?;
+        self.stream = crate::tls::DbStream::Tls(Box::new(encrypted));
+
+        Ok(capabilities | protocol::CLIENT_SSL)
+    }
+
     async fn handshake(&mut self) -> Result<()> {
         let greeting = self.read_packet().await?;
         if protocol::is_err(&greeting) {
@@ -133,7 +178,11 @@ impl MySqlConnection {
         if !self.config.database.is_empty() {
             capabilities |= protocol::CLIENT_CONNECT_WITH_DB;
         }
-        self.capabilities = capabilities;
+        // Before the credentials, and after the capabilities are settled: the
+        // server has to be told we want TLS in the same field that tells it
+        // everything else about the connection.
+        self.capabilities = self.negotiate_tls(capabilities, handshake.capabilities).await?;
+        let capabilities = self.capabilities;
 
         // Default to the SHA-1 plugin only when the server named nothing, which
         // is what a pre-4.1 greeting looks like.
@@ -195,6 +244,20 @@ impl MySqlConnection {
                     match auth::fast_auth_status(&data)? {
                         // Nothing to send: the OK packet is already on its way.
                         FastAuth::Succeeded => continue,
+                        // The password itself, and only ever inside the
+                        // tunnel. This is what MySQL's own client does, and
+                        // the check is on the stream rather than on the
+                        // configured mode: `prefer` against a server that
+                        // declined leaves the mode saying "tls" and the socket
+                        // saying otherwise, and the socket is the one telling
+                        // the truth.
+                        FastAuth::FullAuthRequired if self.stream.is_encrypted() => {
+                            let mut reply = Buffer::new();
+                            reply.auth_response(&auth::cleartext_password(
+                                &self.config.password,
+                            ));
+                            self.write_packet(reply).await?;
+                        }
                         FastAuth::FullAuthRequired => {
                             self.broken = true;
                             return Err(auth::full_auth_error(
@@ -947,7 +1010,9 @@ mod tests {
         stream.set_nonblocking(true).expect("non-blocking");
 
         MySqlConnection {
-            stream: TcpStream::from_std(stream).expect("a tokio stream"),
+            stream: crate::tls::DbStream::Plain(
+                TcpStream::from_std(stream).expect("a tokio stream"),
+            ),
             buffer: Vec::new(),
             config,
             connection_id: 0,

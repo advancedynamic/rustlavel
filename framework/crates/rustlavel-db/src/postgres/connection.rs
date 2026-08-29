@@ -1,7 +1,9 @@
 //! A single PostgreSQL connection.
 
 use super::auth::{self, Scram};
-use super::protocol::{Authentication, Backend, Buffer, Field, ServerError, TransactionStatus};
+use super::protocol::{
+    self, Authentication, Backend, Buffer, Field, ServerError, TransactionStatus,
+};
 use super::types;
 use crate::config::DatabaseConfig;
 use crate::random;
@@ -13,7 +15,6 @@ use rustlavel_core::{Error, Result};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 /// Whether query parameters are included in the `db.query` event.
@@ -33,7 +34,7 @@ pub fn log_bindings() -> bool {
 }
 
 pub struct Connection {
-    stream: TcpStream,
+    stream: crate::tls::DbStream,
     /// Bytes read from the socket but not yet consumed as a message.
     buffer: Vec<u8>,
     config: DatabaseConfig,
@@ -66,7 +67,7 @@ impl Connection {
         let _ = stream.set_nodelay(true);
 
         let mut connection = Connection {
-            stream,
+            stream: crate::tls::DbStream::Plain(stream),
             buffer: Vec::with_capacity(8 * 1024),
             config: config.clone(),
             process_id: 0,
@@ -75,6 +76,10 @@ impl Connection {
             broken: false,
         };
 
+        // Before the startup packet, because the startup packet carries the
+        // user name and the database, and after it the password follows. All
+        // of that has to be inside the tunnel, not in front of it.
+        connection.negotiate_tls().await?;
         connection.startup().await?;
         Ok(connection)
     }
@@ -87,6 +92,83 @@ impl Connection {
     /// connection that would leak one.
     pub fn in_transaction(&self) -> bool {
         self.status != TransactionStatus::Idle
+    }
+
+    /// Whether this connection is encrypted.
+    pub fn is_encrypted(&self) -> bool {
+        self.stream.is_encrypted()
+    }
+
+    /// Ask PostgreSQL to encrypt the connection, per the SSLRequest exchange in
+    /// the protocol's message formats.
+    ///
+    /// It is eight bytes — a length and a magic number where a normal packet
+    /// would carry its version — and the reply is a single byte outside the
+    /// usual message framing: `S` for yes, `N` for no. That is the whole
+    /// negotiation, and it happens before anything identifying has been sent.
+    async fn negotiate_tls(&mut self) -> Result<()> {
+        let mode = self.config.tls_mode;
+        if !mode.wants_tls() {
+            return Ok(());
+        }
+
+        let mut request = Vec::with_capacity(8);
+        request.extend_from_slice(&8i32.to_be_bytes());
+        request.extend_from_slice(&protocol::SSL_REQUEST_CODE.to_be_bytes());
+        if let Err(e) = self.stream.write_all(&request).await {
+            self.broken = true;
+            return Err(Error::Io(e));
+        }
+        if let Err(e) = self.stream.flush().await {
+            self.broken = true;
+            return Err(Error::Io(e));
+        }
+
+        let mut answer = [0u8; 1];
+        match self.stream.read(&mut answer).await {
+            Ok(1) => {}
+            Ok(_) => {
+                self.broken = true;
+                return Err(Error::msg(
+                    "the server closed the connection when asked about TLS. A PostgreSQL older                      than 8.0 does not understand SSLRequest; set sslmode=disable if that is                      what this is.",
+                ));
+            }
+            Err(e) => {
+                self.broken = true;
+                return Err(Error::Io(e));
+            }
+        }
+
+        match answer[0] {
+            b'S' => {
+                let plain = self.stream.take_plain()?;
+                let encrypted =
+                    crate::tls::upgrade(plain, &self.config.host, &self.config).await?;
+                self.stream = crate::tls::DbStream::Tls(Box::new(encrypted));
+                Ok(())
+            }
+            // The server is willing to talk, but not privately. Under `prefer`
+            // that is accepted; under anything stronger it is the whole point.
+            b'N' if !mode.demands_tls() => Ok(()),
+            b'N' => {
+                self.broken = true;
+                Err(Error::msg(format!(
+                    "sslmode is `{mode}` but this PostgreSQL refused to encrypt the connection.                      Either the server was built without SSL support or `ssl` is off in                      postgresql.conf. Turn it on, or set sslmode=prefer to accept a connection                      in clear text."
+                )))
+            }
+            b'E' => {
+                self.broken = true;
+                Err(Error::msg(
+                    "the server reported an error in response to SSLRequest. This usually means                      it is not actually PostgreSQL.",
+                ))
+            }
+            other => {
+                self.broken = true;
+                Err(Error::msg(format!(
+                    "the server answered SSLRequest with {other:?}, which is not `S` or `N`.                      Whatever is on this port, it is not speaking the PostgreSQL protocol."
+                )))
+            }
+        }
     }
 
     async fn startup(&mut self) -> Result<()> {

@@ -8,6 +8,13 @@ use rustlavel_core::{Error, Result};
 /// The protocol version in the startup packet: major 3, minor 0.
 pub const PROTOCOL_VERSION: i32 = 196_608;
 
+/// The version field of an `SSLRequest`: 1234 in the high half, 5679 in the low.
+///
+/// PostgreSQL has no message type for "please encrypt". It reuses the startup
+/// packet's shape and puts a number there that no real protocol version can
+/// be, which is why this reads as a magic constant — because it is one.
+pub const SSL_REQUEST_CODE: i32 = 80_877_103;
+
 /// A frontend message under construction.
 #[derive(Default)]
 pub struct Buffer {
@@ -411,6 +418,21 @@ impl<'a> Reader<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_ssl_request_code_is_the_one_postgresql_looks_for() {
+        // 1234 in the high half, 5679 in the low. Written out because a typo
+        // here produces a server that simply closes the connection.
+        assert_eq!(SSL_REQUEST_CODE, (1234 << 16) | 5679);
+        assert_eq!(SSL_REQUEST_CODE.to_be_bytes(), [0x04, 0xd2, 0x16, 0x2f]);
+    }
+
+    #[test]
+    fn an_ssl_request_cannot_be_mistaken_for_a_startup_packet() {
+        // The two share a shape, and the version field is the only thing that
+        // tells them apart.
+        assert_ne!(SSL_REQUEST_CODE, PROTOCOL_VERSION);
+    }
 
     #[test]
     fn builds_a_startup_packet() {

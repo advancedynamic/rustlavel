@@ -173,6 +173,31 @@ Decisions worth recording:
   endpoint; the lifetime is short, and the limitation is a named test rather than a footnote.
 - **Not done: passkeys/WebAuthn**, which is the remaining gap in `rustlavel-auth`.
 
+## Phase 0.9 — TLS for PostgreSQL and MySQL ✅ done
+
+Both drivers opened their connections in clear text — the password during authentication and
+every row after it. That was the framework's largest security gap; it is closed.
+
+- [x] `SSLRequest` for PostgreSQL: eight bytes and a one-byte answer, sent *before* the
+      startup packet, so the user name, database and password are all inside the tunnel
+- [x] `CLIENT_SSL` for MySQL: the first 32 bytes of the handshake response, with the packet
+      sequence continuing across the TLS boundary rather than restarting
+- [x] `sslmode` with all five modes — `disable`, `prefer`, `require`, `verify-ca`,
+      `verify-full` — spelled the way PostgreSQL and MySQL spell them, plus `sslrootcert`
+      for a private CA. An unreadable value is an error, never a silent downgrade
+- [x] One shared `DbStream` and one TLS setup for both drivers; SQL Server keeps its own,
+      because it tunnels the handshake inside TDS rather than over the raw socket
+- [x] `rustlavel doctor` reports what the connection is actually protected by, separately
+      from whether it is reachable
+- [x] Nine integration tests against a real PostgreSQL 16 and MySQL 8.4 with TLS enabled,
+      asking the *server* whether it considers the connection encrypted rather than trusting
+      the driver's own opinion
+
+One thing this unlocked: MySQL's `caching_sha2_password` full path sends the password
+itself, and the driver refused it outright because there was no private channel. There is
+now, so it works — which matters because that is MySQL 8's default plugin, and the old error
+told people to downgrade their account to `mysql_native_password` instead.
+
 ## Phase 1.0+ — Ecosystem (partly)
 
 - [x] A worked example: `examples/blog`
@@ -183,17 +208,18 @@ Decisions worth recording:
 
 ## Known gaps, stated plainly
 
-- **The PostgreSQL and MySQL drivers do not speak TLS.** Neither implements
-  PostgreSQL's `SSLRequest` nor MySQL's `CLIENT_SSL` capability flag, so a connection to
-  either travels in clear text: the password on the wire during authentication, and every
-  row afterwards. That is safe over a loopback or a private network segment and unsafe
-  anywhere else, and there is currently no configuration that changes it. The SQL Server
-  driver *is* encrypted, because TDS negotiates it inside the pre-login exchange and there
-  was no way to write that driver without it. This is the largest security gap in the
-  framework and it outranks anything else on this list.
+- **`sslmode` defaults to `prefer`, which guarantees nothing.** It asks for encryption and
+  accepts a server that declines, so an attacker able to read the connection is also able to
+  answer "no TLS" and keep reading. The default matches libpq so nothing surprising breaks,
+  and `rustlavel doctor` names it out loud rather than letting it pass as encrypted. Anything
+  crossing a network you do not own wants `sslmode=verify-full`.
+- **`verify-full` cannot work against a stock MySQL.** Its auto-generated certificate carries
+  no `subjectAltName` at all, so no hostname matches it. Use `verify-ca` with `sslrootcert`,
+  or install a certificate that names the server.
 - **Passkeys / WebAuthn** — the remaining gap in `rustlavel-auth`.
 - **SQL Server connections get no post-quantum protection.** TDS pins them to TLS 1.2 and
-  the hybrid key exchange is TLS 1.3 only.
+  the hybrid key exchange is TLS 1.3 only. PostgreSQL and MySQL both negotiate TLS 1.3, so
+  they do get it.
 - **Inbound TLS is not ours.** `rustlavel-http` serves plain HTTP and expects a reverse
   proxy in front, so the post-quantum posture users see is that proxy's to configure.
 
@@ -205,7 +231,7 @@ Decisions worth recording:
 |---|---|
 | Reference | Laravel 13 (the slim 11+ structure, AI SDK, passkeys) |
 | Foundation | From scratch; only Tokio plus cryptography crates (argon2, sha2, hmac, aes-gcm, rustls) |
-| Databases | PostgreSQL, MySQL, SQL Server — each wire protocol written here. Oracle deliberately excluded. |
+| Databases | PostgreSQL, MySQL, SQL Server — each wire protocol written here, TLS included. Oracle deliberately excluded. |
 | Distribution | The `rustlavel` meta-crate with feature flags; one crate per feature |
 | Enabling a package | Explicit `.plugin(...)`; no runtime auto-discovery |
 | Transactions | A guard (`begin`/`commit`), not a closure — a closure returning a future that borrows its argument cannot express the lifetime it needs |

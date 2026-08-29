@@ -78,7 +78,7 @@ App::new()?
 | `rustlavel-core` | Config, `.env`, JSON, typed context, instrumentation bus, events |
 | `rustlavel-http` | HTTP/1.1 server, router, middleware, dev error page, test client |
 | `rustlavel-cli` | The `rustlavel` binary — `new`, `serve`, `make:*`, `migrate`, `doctor`, `build` |
-| `rustlavel-db` | Drivers for PostgreSQL, MySQL and SQL Server; query builder, schema, migrations, ORM, pagination |
+| `rustlavel-db` | Drivers for PostgreSQL, MySQL and SQL Server with TLS; query builder, schema, migrations, ORM, pagination |
 | `rustlavel-view` | Blade-shaped template engine |
 | `rustlavel-validation` | Laravel-style rules and 422 responses |
 | `rustlavel-auth` | Password hashing, encryption, sessions, CSRF, signed URLs, guards, API tokens |

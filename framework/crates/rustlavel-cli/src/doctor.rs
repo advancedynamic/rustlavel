@@ -59,6 +59,7 @@ pub fn run() -> Result<(), String> {
         check_app_key(&env),
         check_port(&env),
         check_database(&env),
+        check_database_encryption(&env),
         check_directories(&project.root),
         check_build(&project.root),
     ];
@@ -140,6 +141,73 @@ fn check_port(env: &std::collections::BTreeMap<String, String>) -> Check {
             "Server port",
             format!("{address} is unavailable ({e})"),
             format!("Something else is listening. Stop it, or run `rustlavel serve --port {}`.", port.parse::<u16>().unwrap_or(8000) + 1),
+        ),
+    }
+}
+
+/// Report what the database connection is actually protected by.
+///
+/// Separate from reachability because it is a different question with a
+/// different answer: a database can be perfectly reachable and perfectly
+/// readable by anyone on the path. `prefer`, the default, is the case worth
+/// naming out loud — it asks for encryption and accepts a refusal, so an
+/// attacker who can read the connection can also just say "no TLS here" and
+/// keep reading it.
+fn check_database_encryption(env: &std::collections::BTreeMap<String, String>) -> Check {
+    let Some(url) = env.get("DATABASE_URL").filter(|u| !u.is_empty()) else {
+        return Check::pass("Database encryption", "not configured (no DATABASE_URL)");
+    };
+
+    let scheme = url.split("://").next().unwrap_or("").to_ascii_lowercase();
+    if matches!(scheme.as_str(), "sqlserver" | "mssql") {
+        return Check::pass("Database encryption", "SQL Server always encrypts (TDS negotiates it)");
+    }
+
+    let mode = url
+        .split_once('?')
+        .map(|(_, query)| query)
+        .into_iter()
+        .flat_map(|query| query.split('&'))
+        .filter_map(|pair| pair.split_once('='))
+        .find(|(key, _)| matches!(*key, "sslmode" | "ssl-mode" | "ssl_mode"))
+        .map(|(_, value)| value.to_ascii_lowercase().replace('_', "-"))
+        .unwrap_or_else(|| "prefer".to_string());
+
+    let production = env
+        .get("APP_ENV")
+        .map(|value| value.eq_ignore_ascii_case("production"))
+        .unwrap_or(false);
+
+    match mode.as_str() {
+        "verify-full" | "verify-identity" => {
+            Check::pass("Database encryption", "verify-full: encrypted and the server is verified")
+        }
+        "verify-ca" => Check::pass(
+            "Database encryption",
+            "verify-ca: encrypted, certificate checked, hostname not",
+        ),
+        "require" | "required" if !production => {
+            Check::pass("Database encryption", "require: encrypted, certificate not checked")
+        }
+        "require" | "required" => Check::warn(
+            "Database encryption",
+            "require: encrypted, but the certificate is not checked",
+            "An attacker who can intercept the connection can present their own certificate. \
+             Use sslmode=verify-full and point sslrootcert at the CA.",
+        ),
+        "disable" | "disabled" | "off" | "false" => Check::warn(
+            "Database encryption",
+            "disable: the connection is in clear text, password included",
+            "Anyone on the network path can read every query and the credentials. \
+             Use sslmode=require at minimum, or verify-full if the server has a certificate \
+             you can verify.",
+        ),
+        _ => Check::warn(
+            "Database encryption",
+            format!("{mode}: encryption is requested but not required"),
+            "`prefer` accepts a server that declines to encrypt, so it guarantees nothing \
+             against an active attacker — they answer \"no TLS\" and read on. \
+             Set sslmode=verify-full for anything crossing a network you do not own.",
         ),
     }
 }
@@ -318,6 +386,70 @@ mod tests {
 
         assert!(check.outcome == Outcome::Warn);
         assert!(check.advice.unwrap().contains("key:generate"));
+    }
+
+    #[test]
+    fn an_unencrypted_database_url_is_a_warning_not_a_pass() {
+        let mut env = std::collections::BTreeMap::new();
+        env.insert(
+            "DATABASE_URL".to_string(),
+            "postgres://u:p@db.example.com:5432/app?sslmode=disable".to_string(),
+        );
+
+        let check = check_database_encryption(&env);
+        assert!(check.outcome == Outcome::Warn);
+        assert!(check.detail.contains("clear text"), "got {}", check.detail);
+    }
+
+    #[test]
+    fn the_default_of_prefer_is_reported_as_guaranteeing_nothing() {
+        // No sslmode at all: the case almost every application will be in, and
+        // the one most likely to be mistaken for "encrypted".
+        let mut env = std::collections::BTreeMap::new();
+        env.insert("DATABASE_URL".to_string(), "mysql://u:p@db:3306/app".to_string());
+
+        let check = check_database_encryption(&env);
+        assert!(check.outcome == Outcome::Warn);
+        assert!(
+            check.advice.unwrap_or_default().contains("verify-full"),
+            "the advice must name the fix"
+        );
+    }
+
+    #[test]
+    fn verifying_modes_pass() {
+        for mode in ["verify-full", "verify-ca"] {
+            let mut env = std::collections::BTreeMap::new();
+            env.insert(
+                "DATABASE_URL".to_string(),
+                format!("postgres://u:p@db:5432/app?sslmode={mode}"),
+            );
+            assert!(check_database_encryption(&env).outcome == Outcome::Ok, "{mode}");
+        }
+    }
+
+    #[test]
+    fn require_is_only_flagged_in_production() {
+        // Encryption without verification is a reasonable development setting
+        // and a poor production one, so the verdict follows APP_ENV.
+        let url = "postgres://u:p@db:5432/app?sslmode=require".to_string();
+
+        let mut development = std::collections::BTreeMap::new();
+        development.insert("DATABASE_URL".to_string(), url.clone());
+        assert!(check_database_encryption(&development).outcome == Outcome::Ok);
+
+        let mut production = std::collections::BTreeMap::new();
+        production.insert("DATABASE_URL".to_string(), url);
+        production.insert("APP_ENV".to_string(), "production".to_string());
+        assert!(check_database_encryption(&production).outcome == Outcome::Warn);
+    }
+
+    #[test]
+    fn sql_server_is_not_nagged_about_a_setting_it_does_not_have() {
+        let mut env = std::collections::BTreeMap::new();
+        env.insert("DATABASE_URL".to_string(), "sqlserver://u:p@db:1433/app".to_string());
+
+        assert!(check_database_encryption(&env).outcome == Outcome::Ok);
     }
 
     #[test]

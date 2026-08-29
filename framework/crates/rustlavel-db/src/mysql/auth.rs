@@ -107,21 +107,23 @@ pub fn cleartext_password(password: &str) -> Vec<u8> {
 /// The full `caching_sha2_password` path needs a secure channel, and there is
 /// none.
 ///
-/// Rather than fail with "authentication failed" — which sends the developer
-/// hunting for a typo in a password that is perfectly correct — say exactly
-/// what happened and list the three ways out of it.
+/// Reached only when the connection is *not* encrypted — with TLS the driver
+/// takes the full path happily, which is what MySQL's own client does. Rather
+/// than fail with "authentication failed" — which sends the developer hunting
+/// for a typo in a password that is perfectly correct — say exactly what
+/// happened and lead with the fix that is now one query parameter away.
 pub fn full_auth_error(user: &str, host: &str) -> Error {
     Error::msg(format!(
         "the server wants full caching_sha2_password authentication for `{user}`, which sends the \
          password itself and so needs a channel nobody can read. This connection to {host} is \
-         plain TCP, and this driver does not implement TLS or the RSA key exchange, so it will not \
-         send the password in the clear.\n  \
+         plain TCP, so the driver will not send the password in the clear.\n  \
          Any of these fixes it:\n  \
-         1. Connect once with the `mysql` client (over a socket or with --get-server-public-key); \
+         1. Encrypt the connection: add `?sslmode=require` to DATABASE_URL — this is the one you \
+         want, and it is why sslmode exists.\n  \
+         2. Connect once with the `mysql` client (over a socket or with --get-server-public-key); \
          the server then caches the account and this driver's fast path works.\n  \
-         2. ALTER USER '{user}'@'%' IDENTIFIED WITH mysql_native_password BY '…' — available up to \
-         MySQL 8.0, and removed in 8.4.\n  \
-         3. Point DATABASE_URL at a server reached over a private network you already trust."
+         3. ALTER USER '{user}'@'%' IDENTIFIED WITH mysql_native_password BY '…' — available up to \
+         MySQL 8.0, and removed in 8.4."
     ))
 }
 

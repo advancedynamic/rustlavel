@@ -20,6 +20,7 @@ pub mod random;
 pub mod row;
 pub mod schema;
 pub mod sqlserver;
+pub mod tls;
 pub mod value;
 
 pub use builder::{Direction, QueryBuilder};
