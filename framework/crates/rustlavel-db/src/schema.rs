@@ -417,7 +417,11 @@ pub fn alter_statements(
     let mut statements = Vec::new();
 
     for column in &definition.columns {
-        statements.push(format!("alter table {quoted} add column {}", column.to_sql(dialect)?));
+        statements.push(format!(
+            "alter table {quoted} {} {}",
+            dialect.add_column_clause(),
+            column.to_sql(dialect)?
+        ));
     }
     for name in &definition.drops {
         validate_identifier(name, dialect.max_identifier_length())?;
@@ -545,6 +549,15 @@ mod tests {
 
         assert_eq!(statements[0], "alter table \"users\" add column \"nickname\" varchar(255)");
         assert_eq!(statements[1], "alter table \"users\" drop column \"legacy_flag\"");
+
+        // SQL Server rejects `add column` but requires `drop column`.
+        let sqlserver = alter_statements(&SqlServer, "users", |t| {
+            t.string("nickname").nullable();
+            t.drop_column("legacy_flag");
+        })
+        .unwrap();
+        assert_eq!(sqlserver[0], "alter table [users] add [nickname] nvarchar(255)");
+        assert_eq!(sqlserver[1], "alter table [users] drop column [legacy_flag]");
     }
 
     #[test]

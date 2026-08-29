@@ -133,6 +133,15 @@ pub trait Dialect: Send + Sync + std::fmt::Debug + 'static {
         )
     }
 
+    /// How a column is added in an `alter table`.
+    ///
+    /// PostgreSQL and MySQL say `add column`; SQL Server rejects the keyword on
+    /// `add` while requiring it on `drop`, which is asymmetric enough that
+    /// nobody guesses it right.
+    fn add_column_clause(&self) -> &'static str {
+        "add column"
+    }
+
     /// A query returning one row per table in the current schema, with the name
     /// in the first column.
     ///
@@ -461,6 +470,10 @@ impl Dialect for SqlServer {
         )
     }
 
+    fn add_column_clause(&self) -> &'static str {
+        "add"
+    }
+
     fn list_tables_sql(&self) -> &'static str {
         // `is_ms_shipped = 0` excludes the system tables SQL Server keeps in
         // some databases; without it, `migrate:fresh` pointed at `master` would
@@ -653,6 +666,15 @@ mod tests {
                 dialect.name()
             );
         }
+    }
+
+    #[test]
+    fn sql_server_adds_a_column_without_saying_column() {
+        // Confirmed against a live server: `add column` is a syntax error there,
+        // while `drop column` is required. The asymmetry is real.
+        assert_eq!(Postgres.add_column_clause(), "add column");
+        assert_eq!(MySql.add_column_clause(), "add column");
+        assert_eq!(SqlServer.add_column_clause(), "add");
     }
 
     #[test]
