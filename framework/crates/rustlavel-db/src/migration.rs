@@ -128,24 +128,23 @@ impl<'a> Migrator<'a> {
     /// The batch number is what makes `migrate:rollback` undo one deployment's
     /// worth of migrations rather than one migration.
     pub async fn prepare(&self) -> Result<()> {
-        self.db
-            .run(&format!(
-                "create table if not exists \"{}\" (\n  \
-                 id bigserial primary key,\n  \
-                 name varchar(255) not null unique,\n  \
-                 batch integer not null,\n  \
-                 ran_at timestamptz not null default now()\n)",
-                self.table
-            ))
-            .await?;
+        // The DDL comes from the dialect: SQL Server has no `if not exists`,
+        // and the key column is spelled three different ways.
+        let sql = self.db.dialect().migrations_table_sql(&self.table);
+        self.db.run(&sql).await?;
         Ok(())
+    }
+
+    /// The tracking table, quoted for the database in use.
+    fn quoted_table(&self) -> String {
+        self.db.dialect().quote(&self.table)
     }
 
     /// Names already applied, in the order they ran.
     pub async fn applied(&self) -> Result<Vec<String>> {
         let rows = self
             .db
-            .select(&format!("select name from \"{}\" order by id", self.table), &[])
+            .select(&format!("select name from {} order by id", self.quoted_table()), &[])
             .await?;
         rows.iter().map(|row| row.get::<String>("name")).collect()
     }
@@ -164,7 +163,10 @@ impl<'a> Migrator<'a> {
     async fn next_batch(&self) -> Result<i64> {
         let highest = self
             .db
-            .scalar::<Option<i64>>(&format!("select max(batch) from \"{}\"", self.table), &[])
+            .scalar::<Option<i64>>(
+                &format!("select max(batch) from {}", self.quoted_table()),
+                &[],
+            )
             .await?
             .flatten();
         Ok(highest.unwrap_or(0) + 1)
@@ -193,8 +195,10 @@ impl<'a> Migrator<'a> {
                     self.db
                         .execute(
                             &format!(
-                                "insert into \"{}\" (name, batch) values ($1, $2)",
-                                self.table
+                                "insert into {} (name, batch) values ({}, {})",
+                                self.quoted_table(),
+                                self.db.dialect().placeholder(1),
+                                self.db.dialect().placeholder(2)
                             ),
                             &[Value::from(migration.name()), Value::from(batch)],
                         )
@@ -222,7 +226,10 @@ impl<'a> Migrator<'a> {
 
         let batch = self
             .db
-            .scalar::<Option<i64>>(&format!("select max(batch) from \"{}\"", self.table), &[])
+            .scalar::<Option<i64>>(
+                &format!("select max(batch) from {}", self.quoted_table()),
+                &[],
+            )
             .await?
             .flatten();
 
@@ -232,8 +239,9 @@ impl<'a> Migrator<'a> {
             .db
             .select(
                 &format!(
-                    "select name from \"{}\" where batch = $1 order by id desc",
-                    self.table
+                    "select name from {} where batch = {} order by id desc",
+                    self.quoted_table(),
+                    self.db.dialect().placeholder(1)
                 ),
                 &[Value::from(batch)],
             )
@@ -256,7 +264,11 @@ impl<'a> Migrator<'a> {
                 Ok(()) => {
                     self.db
                         .execute(
-                            &format!("delete from \"{}\" where name = $1", self.table),
+                            &format!(
+                                "delete from {} where name = {}",
+                                self.quoted_table(),
+                                self.db.dialect().placeholder(1)
+                            ),
                             &[Value::from(name.as_str())],
                         )
                         .await?;
@@ -289,14 +301,7 @@ impl<'a> Migrator<'a> {
             ));
         }
 
-        self.db
-            .run(
-                "do $$ declare r record; begin \
-                 for r in (select tablename from pg_tables where schemaname = current_schema()) loop \
-                 execute 'drop table if exists ' || quote_ident(r.tablename) || ' cascade'; \
-                 end loop; end $$",
-            )
-            .await?;
+        self.db.run(&self.db.dialect().drop_all_tables_sql()).await?;
 
         self.run().await
     }

@@ -34,6 +34,21 @@ pub use row::{Row, rows_to_json};
 pub use value::{FromValue, Value};
 
 pub use rustlavel_core::{Error, Result};
+use std::sync::Arc;
+
+/// Build the driver a configuration asks for.
+///
+/// A driver that is not compiled into this build says so by name, rather than
+/// failing later with something about a connection.
+fn driver_for(config: DatabaseConfig) -> Result<Arc<dyn Driver>> {
+    match config.driver.as_str() {
+        "postgres" => Ok(Arc::new(postgres::PostgresDriver::new(config))),
+        other => Err(Error::msg(format!(
+            "the `{other}` driver is not available in this build. \
+             Point DATABASE_URL at a database this build supports."
+        ))),
+    }
+}
 
 /// `#[derive(Model)]`.
 pub use rustlavel_macros::Model;
@@ -54,6 +69,7 @@ pub mod prelude {
 #[derive(Clone)]
 pub struct Database {
     pool: Pool,
+    dialect: Arc<dyn Dialect>,
 }
 
 impl Database {
@@ -64,15 +80,30 @@ impl Database {
 
     /// Connect using explicit settings, verifying the connection works.
     pub async fn with_config(config: DatabaseConfig) -> Result<Database> {
-        let pool = Pool::new(config);
-        pool.verify().await?;
-        Ok(Database { pool })
+        let database = Database::lazy(config)?;
+        database.pool.verify().await?;
+        Ok(database)
     }
 
     /// Build a handle without touching the network. Useful when the process
     /// should start even if the database is briefly down.
-    pub fn lazy(config: DatabaseConfig) -> Database {
-        Database { pool: Pool::new(config) }
+    pub fn lazy(config: DatabaseConfig) -> Result<Database> {
+        Ok(Database::with_driver(driver_for(config)?))
+    }
+
+    /// Use a driver directly — how a database this crate does not know about
+    /// would be plugged in.
+    pub fn with_driver(driver: Arc<dyn Driver>) -> Database {
+        let dialect = driver.dialect();
+        Database { pool: Pool::new(driver), dialect }
+    }
+
+    /// What SQL this connection speaks.
+    ///
+    /// The query and schema builders take it, which is how one builder produces
+    /// correct SQL for three different databases.
+    pub fn dialect(&self) -> &dyn Dialect {
+        self.dialect.as_ref()
     }
 
     pub fn pool(&self) -> &Pool {

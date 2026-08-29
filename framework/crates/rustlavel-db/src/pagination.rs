@@ -242,7 +242,7 @@ mod tests {
             .clone()
             .order_by("id", Direction::Asc)
             .limit(11)
-            .to_sql()
+            .to_sql(&crate::dialect::Postgres)
             .unwrap();
 
         assert!(sql.ends_with("order by \"id\" asc limit 11"));

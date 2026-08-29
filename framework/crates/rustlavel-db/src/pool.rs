@@ -1,20 +1,23 @@
 //! The connection pool.
 //!
-//! Opening a PostgreSQL connection costs a TCP handshake plus authentication,
-//! which is far too much to pay per request. The pool keeps a small set alive
-//! and hands them out, discarding any that broke or that a handler left inside
-//! a transaction.
+//! Opening a connection costs a TCP handshake plus authentication, whatever the
+//! database, which is far too much to pay per request. The pool keeps a small
+//! set alive and hands them out, discarding any that broke or that a handler
+//! left inside a transaction.
+//!
+//! It knows nothing about any particular database: it holds a [`Driver`], and
+//! the driver knows the protocol.
 
-use crate::config::DatabaseConfig;
-use crate::postgres::Connection;
+use crate::dialect::Dialect;
+use crate::driver::{Driver, DriverConnection};
 use rustlavel_core::{Error, Result};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Semaphore};
 
 struct Inner {
-    config: DatabaseConfig,
-    idle: Mutex<VecDeque<Connection>>,
+    driver: Arc<dyn Driver>,
+    idle: Mutex<VecDeque<Box<dyn DriverConnection>>>,
     /// Bounds how many connections exist at once, including those in use.
     permits: Arc<Semaphore>,
 }
@@ -27,15 +30,9 @@ pub struct Pool {
 impl Pool {
     /// Create a pool. No connection is opened until one is needed, so an
     /// application still boots when the database is briefly unavailable.
-    pub fn new(config: DatabaseConfig) -> Self {
-        let permits = Arc::new(Semaphore::new(config.max_connections));
-        Pool {
-            inner: Arc::new(Inner {
-                config,
-                idle: Mutex::new(VecDeque::new()),
-                permits,
-            }),
-        }
+    pub fn new(driver: Arc<dyn Driver>) -> Self {
+        let permits = Arc::new(Semaphore::new(driver.max_connections().max(1)));
+        Pool { inner: Arc::new(Inner { driver, idle: Mutex::new(VecDeque::new()), permits }) }
     }
 
     /// Open one connection immediately, so a misconfiguration is reported at
@@ -46,8 +43,12 @@ impl Pool {
         Ok(())
     }
 
-    pub fn config(&self) -> &DatabaseConfig {
-        &self.inner.config
+    pub fn driver(&self) -> &Arc<dyn Driver> {
+        &self.inner.driver
+    }
+
+    pub fn dialect(&self) -> Arc<dyn Dialect> {
+        self.inner.driver.dialect()
     }
 
     /// Take a connection, opening one if none is idle.
@@ -65,7 +66,7 @@ impl Pool {
             });
         }
 
-        let connection = Connection::connect(&self.inner.config).await?;
+        let connection = self.inner.driver.connect().await?;
         Ok(PooledConnection {
             connection: Some(connection),
             pool: Arc::clone(&self.inner),
@@ -89,23 +90,23 @@ impl Pool {
 
 /// A connection borrowed from the pool, returned when dropped.
 pub struct PooledConnection {
-    connection: Option<Connection>,
+    connection: Option<Box<dyn DriverConnection>>,
     pool: Arc<Inner>,
     /// Held for the lifetime of the borrow; releasing it lets another caller in.
     _permit: tokio::sync::OwnedSemaphorePermit,
 }
 
 impl std::ops::Deref for PooledConnection {
-    type Target = Connection;
+    type Target = dyn DriverConnection;
 
-    fn deref(&self) -> &Connection {
-        self.connection.as_ref().expect("connection is present until drop")
+    fn deref(&self) -> &(dyn DriverConnection + 'static) {
+        self.connection.as_deref().expect("connection is present until drop")
     }
 }
 
 impl std::ops::DerefMut for PooledConnection {
-    fn deref_mut(&mut self) -> &mut Connection {
-        self.connection.as_mut().expect("connection is present until drop")
+    fn deref_mut(&mut self) -> &mut (dyn DriverConnection + 'static) {
+        self.connection.as_deref_mut().expect("connection is present until drop")
     }
 }
 
@@ -130,16 +131,51 @@ impl Drop for PooledConnection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dialect::Postgres;
+    use crate::driver::BoxFuture;
+
+    /// A driver that refuses to connect, so the pool can be tested with no
+    /// database anywhere near it.
+    struct Unreachable;
+
+    impl Driver for Unreachable {
+        fn dialect(&self) -> Arc<dyn Dialect> {
+            Arc::new(Postgres)
+        }
+
+        fn connect(&self) -> BoxFuture<'_, Result<Box<dyn DriverConnection>>> {
+            Box::pin(async { Err(Error::msg("nothing is listening")) })
+        }
+
+        fn describe(&self) -> String {
+            "test://unreachable".into()
+        }
+
+        fn max_connections(&self) -> usize {
+            3
+        }
+    }
 
     #[tokio::test]
     async fn a_pool_opens_nothing_until_it_is_used() {
-        let pool = Pool::new(DatabaseConfig { port: 1, ..DatabaseConfig::default() });
+        let pool = Pool::new(Arc::new(Unreachable));
         assert_eq!(pool.idle_count().await, 0);
     }
 
     #[tokio::test]
-    async fn acquiring_reports_a_connection_failure() {
-        let pool = Pool::new(DatabaseConfig { port: 1, ..DatabaseConfig::default() });
-        assert!(pool.acquire().await.is_err());
+    async fn acquiring_reports_the_drivers_failure() {
+        let pool = Pool::new(Arc::new(Unreachable));
+
+        let error = match pool.acquire().await {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("this driver cannot connect"),
+        };
+        assert!(error.contains("nothing is listening"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn the_pool_carries_its_drivers_dialect() {
+        let pool = Pool::new(Arc::new(Unreachable));
+        assert_eq!(pool.dialect().name(), "postgres");
     }
 }

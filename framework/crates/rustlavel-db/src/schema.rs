@@ -12,18 +12,32 @@
 //! Every identifier is validated, so a migration cannot smuggle statements in
 //! through a column name.
 
-use crate::{Database, quote_identifier, validate_identifier};
+use crate::dialect::{ColumnType, Dialect, quote_qualified, validate_identifier};
+use crate::Database;
 use rustlavel_core::Result;
+
+/// A column's default value.
+///
+/// `Now` and `Uuid` stay symbolic until the statement is rendered, because only
+/// then is it known whether the expression is `now()`, `current_timestamp(6)`
+/// or `sysutcdatetime()`.
+#[derive(Debug, Clone)]
+enum Default {
+    /// Already rendered, including any quoting.
+    Literal(String),
+    Now,
+    Uuid,
+}
 
 /// A column being defined.
 #[derive(Debug, Clone)]
 pub struct Column {
     name: String,
-    sql_type: String,
+    kind: ColumnType,
     nullable: bool,
     unique: bool,
     primary: bool,
-    default: Option<String>,
+    default: Option<Default>,
     /// `(table, column)` for a foreign key.
     references: Option<(String, String)>,
     on_delete: Option<&'static str>,
@@ -31,10 +45,10 @@ pub struct Column {
 }
 
 impl Column {
-    fn new(name: &str, sql_type: impl Into<String>) -> Self {
+    fn new(name: &str, kind: ColumnType) -> Self {
         Column {
             name: name.to_string(),
-            sql_type: sql_type.into(),
+            kind,
             nullable: false,
             unique: false,
             primary: false,
@@ -70,24 +84,32 @@ impl Column {
     /// A literal default. Strings are quoted; use [`Column::default_raw`] for
     /// an expression such as `now()`.
     pub fn default(&mut self, value: &str) -> &mut Self {
-        self.default = Some(format!("'{}'", value.replace('\'', "''")));
+        self.default = Some(Default::Literal(format!("'{}'", value.replace('\'', "''"))));
         self
     }
 
     pub fn default_int(&mut self, value: i64) -> &mut Self {
-        self.default = Some(value.to_string());
+        self.default = Some(Default::Literal(value.to_string()));
         self
     }
 
+    /// MySQL and SQL Server store a boolean as a number, so `true` is written
+    /// as `1` where `true` would not parse.
     pub fn default_bool(&mut self, value: bool) -> &mut Self {
-        self.default = Some(if value { "true".into() } else { "false".into() });
+        self.default = Some(Default::Literal(if value { "TRUE_LITERAL" } else { "FALSE_LITERAL" }.into()));
+        self
+    }
+
+    /// Default to the current time, in whatever the database calls it.
+    pub fn default_now(&mut self) -> &mut Self {
+        self.default = Some(Default::Now);
         self
     }
 
     /// A default expression, written verbatim. Only migration authors reach
     /// this, never user input.
     pub fn default_raw(&mut self, expression: &str) -> &mut Self {
-        self.default = Some(expression.to_string());
+        self.default = Some(Default::Literal(expression.to_string()));
         self
     }
 
@@ -108,9 +130,9 @@ impl Column {
         self
     }
 
-    fn to_sql(&self) -> Result<String> {
-        validate_identifier(&self.name)?;
-        let mut sql = format!("\"{}\" {}", self.name, self.sql_type);
+    fn to_sql(&self, dialect: &dyn Dialect) -> Result<String> {
+        validate_identifier(&self.name, dialect.max_identifier_length())?;
+        let mut sql = format!("{} {}", dialect.quote(&self.name), dialect.column_type(&self.kind));
 
         if self.primary {
             sql.push_str(" primary key");
@@ -123,14 +145,36 @@ impl Column {
         }
 
         if let Some(default) = &self.default {
-            sql.push_str(&format!(" default {default}"));
+            let rendered = match default {
+                Default::Now => dialect.now().to_string(),
+                Default::Uuid => match dialect.uuid_default() {
+                    Some(expression) => expression.to_string(),
+                    // MySQL has no portable one, so the application supplies
+                    // the value rather than the schema pretending otherwise.
+                    None => return Err(rustlavel_core::Error::msg(format!(
+                        "`{}` cannot default a uuid column: {} has no expression for it. \
+                         Generate the id in the application instead.",
+                        self.name,
+                        dialect.name()
+                    ))),
+                },
+                Default::Literal(literal) if literal == "TRUE_LITERAL" => {
+                    if dialect.booleans_are_integers() { "1".into() } else { "true".into() }
+                }
+                Default::Literal(literal) if literal == "FALSE_LITERAL" => {
+                    if dialect.booleans_are_integers() { "0".into() } else { "false".into() }
+                }
+                Default::Literal(literal) => literal.clone(),
+            };
+            sql.push_str(&format!(" default {rendered}"));
         }
 
         if let Some((table, column)) = &self.references {
-            validate_identifier(column)?;
+            validate_identifier(column, dialect.max_identifier_length())?;
             sql.push_str(&format!(
-                " references {} (\"{column}\")",
-                quote_identifier(table)?
+                " references {} ({})",
+                quote_qualified(dialect, table)?,
+                dialect.quote(column)
             ));
             if let Some(action) = self.on_delete {
                 sql.push_str(&format!(" on delete {action}"));
@@ -158,70 +202,70 @@ impl Table {
 
     /// `id bigserial primary key` — the conventional key every table gets.
     pub fn id(&mut self) -> &mut Column {
-        let mut column = Column::new("id", "bigserial");
+        let mut column = Column::new("id", ColumnType::Id);
         column.primary = true;
         self.add(column)
     }
 
     /// A UUID primary key, for tables whose ids are exposed publicly.
     pub fn uuid_id(&mut self) -> &mut Column {
-        let mut column = Column::new("id", "uuid");
+        let mut column = Column::new("id", ColumnType::UuidId);
         column.primary = true;
-        column.default = Some("gen_random_uuid()".into());
+        column.default = Some(Default::Uuid);
         self.add(column)
     }
 
     pub fn string(&mut self, name: &str) -> &mut Column {
-        self.add(Column::new(name, "varchar(255)"))
+        self.add(Column::new(name, ColumnType::String { length: 255 }))
     }
 
     pub fn string_with(&mut self, name: &str, length: u32) -> &mut Column {
-        self.add(Column::new(name, format!("varchar({length})")))
+        self.add(Column::new(name, ColumnType::String { length }))
     }
 
     pub fn text(&mut self, name: &str) -> &mut Column {
-        self.add(Column::new(name, "text"))
+        self.add(Column::new(name, ColumnType::Text))
     }
 
     pub fn integer(&mut self, name: &str) -> &mut Column {
-        self.add(Column::new(name, "integer"))
+        self.add(Column::new(name, ColumnType::Integer))
     }
 
     pub fn big_integer(&mut self, name: &str) -> &mut Column {
-        self.add(Column::new(name, "bigint"))
+        self.add(Column::new(name, ColumnType::BigInteger))
     }
 
     pub fn float(&mut self, name: &str) -> &mut Column {
-        self.add(Column::new(name, "double precision"))
+        self.add(Column::new(name, ColumnType::Float))
     }
 
     /// An exact decimal — money belongs here, never in a float.
     pub fn decimal(&mut self, name: &str, precision: u32, scale: u32) -> &mut Column {
-        self.add(Column::new(name, format!("numeric({precision}, {scale})")))
+        self.add(Column::new(name, ColumnType::Decimal { precision, scale }))
     }
 
     pub fn boolean(&mut self, name: &str) -> &mut Column {
-        self.add(Column::new(name, "boolean"))
+        self.add(Column::new(name, ColumnType::Boolean))
     }
 
     pub fn json(&mut self, name: &str) -> &mut Column {
-        self.add(Column::new(name, "jsonb"))
+        self.add(Column::new(name, ColumnType::Json))
     }
 
     pub fn uuid(&mut self, name: &str) -> &mut Column {
-        self.add(Column::new(name, "uuid"))
+        self.add(Column::new(name, ColumnType::Uuid))
     }
 
     pub fn date(&mut self, name: &str) -> &mut Column {
-        self.add(Column::new(name, "date"))
+        self.add(Column::new(name, ColumnType::Date))
     }
 
     pub fn timestamp(&mut self, name: &str) -> &mut Column {
-        self.add(Column::new(name, "timestamptz"))
+        self.add(Column::new(name, ColumnType::Timestamp))
     }
 
     pub fn binary(&mut self, name: &str) -> &mut Column {
-        self.add(Column::new(name, "bytea"))
+        self.add(Column::new(name, ColumnType::Binary))
     }
 
     /// A foreign key column named after the table it points at:
@@ -229,21 +273,24 @@ impl Table {
     pub fn foreign_id(&mut self, singular: &str) -> &mut Column {
         let name = format!("{singular}_id");
         let table = crate::migration::pluralize(singular);
-        let mut column = Column::new(&name, "bigint");
+        let mut column = Column::new(&name, ColumnType::BigInteger);
         column.references = Some((table, "id".to_string()));
         column.index = true;
         self.add(column)
     }
 
     /// `created_at` and `updated_at`, both defaulting to now.
+    ///
+    /// The expression is filled in when the statements are rendered, because
+    /// only then is the database known.
     pub fn timestamps(&mut self) {
-        self.add(Column::new("created_at", "timestamptz")).default_raw("now()");
-        self.add(Column::new("updated_at", "timestamptz")).default_raw("now()");
+        self.add(Column::new("created_at", ColumnType::Timestamp)).default_now();
+        self.add(Column::new("updated_at", ColumnType::Timestamp)).default_now();
     }
 
     /// A nullable `deleted_at`, for soft deletes.
     pub fn soft_deletes(&mut self) {
-        self.add(Column::new("deleted_at", "timestamptz")).nullable();
+        self.add(Column::new("deleted_at", ColumnType::Timestamp)).nullable();
     }
 
     /// An index across several columns.
@@ -273,7 +320,7 @@ impl<'a> Schema<'a> {
 
     /// Create a table.
     pub async fn create(&self, table: &str, define: impl FnOnce(&mut Table)) -> Result<()> {
-        for statement in create_statements(table, define)? {
+        for statement in create_statements(self.db.dialect(), table, define)? {
             self.db.run(&statement).await?;
         }
         Ok(())
@@ -281,14 +328,23 @@ impl<'a> Schema<'a> {
 
     /// Add or drop columns on an existing table.
     pub async fn alter(&self, table: &str, define: impl FnOnce(&mut Table)) -> Result<()> {
-        for statement in alter_statements(table, define)? {
+        for statement in alter_statements(self.db.dialect(), table, define)? {
             self.db.run(&statement).await?;
         }
         Ok(())
     }
 
     pub async fn drop(&self, table: &str) -> Result<()> {
-        self.db.run(&format!("drop table if exists {} cascade", quote_identifier(table)?)).await?;
+        let dialect = self.db.dialect();
+        let quoted = quote_qualified(dialect, table)?;
+        // `cascade` is PostgreSQL's; the others drop dependent constraints on
+        // their own terms.
+        let sql = match dialect.name() {
+            "postgres" => format!("drop table if exists {quoted} cascade"),
+            "sqlserver" => format!("drop table if exists {quoted}"),
+            _ => format!("drop table if exists {quoted}"),
+        };
+        self.db.run(&sql).await?;
         Ok(())
     }
 
@@ -296,8 +352,8 @@ impl<'a> Schema<'a> {
         self.db
             .run(&format!(
                 "alter table {} rename to {}",
-                quote_identifier(from)?,
-                quote_identifier(to)?
+                quote_qualified(self.db.dialect(), from)?,
+                quote_qualified(self.db.dialect(), to)?
             ))
             .await?;
         Ok(())
@@ -330,61 +386,84 @@ impl<'a> Schema<'a> {
 }
 
 /// The statements a `create` produces: the table, then its indexes.
-pub fn create_statements(table: &str, define: impl FnOnce(&mut Table)) -> Result<Vec<String>> {
+pub fn create_statements(
+    dialect: &dyn Dialect,
+    table: &str,
+    define: impl FnOnce(&mut Table),
+) -> Result<Vec<String>> {
     let mut definition = Table::default();
     define(&mut definition);
 
-    let quoted = quote_identifier(table)?;
-    let columns: Result<Vec<String>> = definition.columns.iter().map(Column::to_sql).collect();
+    let quoted = quote_qualified(dialect, table)?;
+    let columns: Result<Vec<String>> =
+        definition.columns.iter().map(|column| column.to_sql(dialect)).collect();
 
     let mut statements =
         vec![format!("create table {quoted} (\n  {}\n)", columns?.join(",\n  "))];
-    statements.extend(index_statements(table, &definition)?);
+    statements.extend(index_statements(dialect, table, &definition)?);
     Ok(statements)
 }
 
 /// The statements an `alter` produces.
-pub fn alter_statements(table: &str, define: impl FnOnce(&mut Table)) -> Result<Vec<String>> {
+pub fn alter_statements(
+    dialect: &dyn Dialect,
+    table: &str,
+    define: impl FnOnce(&mut Table),
+) -> Result<Vec<String>> {
     let mut definition = Table::default();
     define(&mut definition);
 
-    let quoted = quote_identifier(table)?;
+    let quoted = quote_qualified(dialect, table)?;
     let mut statements = Vec::new();
 
     for column in &definition.columns {
-        statements.push(format!("alter table {quoted} add column {}", column.to_sql()?));
+        statements.push(format!("alter table {quoted} add column {}", column.to_sql(dialect)?));
     }
     for name in &definition.drops {
-        validate_identifier(name)?;
-        statements.push(format!("alter table {quoted} drop column \"{name}\""));
+        validate_identifier(name, dialect.max_identifier_length())?;
+        statements.push(format!("alter table {quoted} drop column {}", dialect.quote(name)));
     }
 
-    statements.extend(index_statements(table, &definition)?);
+    statements.extend(index_statements(dialect, table, &definition)?);
     Ok(statements)
 }
 
-fn index_statements(table: &str, definition: &Table) -> Result<Vec<String>> {
-    let quoted = quote_identifier(table)?;
+fn index_statements(
+    dialect: &dyn Dialect,
+    table: &str,
+    definition: &Table,
+) -> Result<Vec<String>> {
+    let quoted = quote_qualified(dialect, table)?;
+    // Only PostgreSQL understands `if not exists` on an index. Everywhere else
+    // a repeated create is an error — which is correct, since a migration runs
+    // exactly once.
+    let guard = if dialect.supports_if_not_exists_index() { "if not exists " } else { "" };
+    let limit = dialect.max_identifier_length();
     let mut statements = Vec::new();
 
     for column in definition.columns.iter().filter(|c| c.index) {
-        validate_identifier(&column.name)?;
+        validate_identifier(&column.name, limit)?;
+        let name = format!("{table}_{}_index", column.name);
+        validate_identifier(&name, limit)?;
         statements.push(format!(
-            "create index if not exists \"{table}_{}_index\" on {quoted} (\"{}\")",
-            column.name, column.name
+            "create index {guard}{} on {quoted} ({})",
+            dialect.quote(&name),
+            dialect.quote(&column.name)
         ));
     }
 
     for (columns, unique) in &definition.indexes {
         for column in columns {
-            validate_identifier(column)?;
+            validate_identifier(column, limit)?;
         }
-        let name = format!("{table}_{}_{}", columns.join("_"), if *unique { "unique" } else { "index" });
-        validate_identifier(&name)?;
-        let quoted_columns: Vec<String> = columns.iter().map(|c| format!("\"{c}\"")).collect();
+        let name =
+            format!("{table}_{}_{}", columns.join("_"), if *unique { "unique" } else { "index" });
+        validate_identifier(&name, limit)?;
+        let quoted_columns: Vec<String> = columns.iter().map(|c| dialect.quote(c)).collect();
         statements.push(format!(
-            "create {}index if not exists \"{name}\" on {quoted} ({})",
+            "create {}index {guard}{} on {quoted} ({})",
             if *unique { "unique " } else { "" },
+            dialect.quote(&name),
             quoted_columns.join(", ")
         ));
     }
@@ -395,10 +474,11 @@ fn index_statements(table: &str, definition: &Table) -> Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dialect::{MySql, Postgres, SqlServer};
 
     #[test]
     fn builds_a_create_table_statement() {
-        let statements = create_statements("users", |t| {
+        let statements = create_statements(&Postgres, "users", |t| {
             t.id();
             t.string("name");
             t.string("email").unique();
@@ -423,7 +503,7 @@ mod tests {
 
     #[test]
     fn a_foreign_id_points_at_the_pluralized_table_and_gets_an_index() {
-        let statements = create_statements("posts", |t| {
+        let statements = create_statements(&Postgres, "posts", |t| {
             t.id();
             t.foreign_id("user").cascade_on_delete();
         })
@@ -440,7 +520,7 @@ mod tests {
 
     #[test]
     fn composite_indexes_get_their_own_statements() {
-        let statements = create_statements("memberships", |t| {
+        let statements = create_statements(&Postgres, "memberships", |t| {
             t.id();
             t.integer("team_id");
             t.integer("user_id");
@@ -457,7 +537,7 @@ mod tests {
 
     #[test]
     fn alter_adds_and_drops_columns() {
-        let statements = alter_statements("users", |t| {
+        let statements = alter_statements(&Postgres, "users", |t| {
             t.string("nickname").nullable();
             t.drop_column("legacy_flag");
         })
@@ -469,7 +549,7 @@ mod tests {
 
     #[test]
     fn a_malicious_column_name_is_rejected() {
-        let error = create_statements("users", |t| {
+        let error = create_statements(&Postgres, "users", |t| {
             t.string("name\"; drop table users; --");
         })
         .unwrap_err();
@@ -479,7 +559,7 @@ mod tests {
 
     #[test]
     fn a_string_default_is_quoted_and_escaped() {
-        let statements = create_statements("t", |t| {
+        let statements = create_statements(&Postgres, "t", |t| {
             t.string("motto").default("it's fine");
         })
         .unwrap();
@@ -488,8 +568,65 @@ mod tests {
     }
 
     #[test]
+    fn one_schema_definition_produces_correct_ddl_for_every_database() {
+        let define = |t: &mut Table| {
+            t.id();
+            t.string("email").unique();
+            t.boolean("active").default_bool(true);
+            t.timestamps();
+        };
+
+        let postgres = create_statements(&Postgres, "users", define).unwrap();
+        assert!(postgres[0].contains("\"id\" bigserial primary key"), "{}", postgres[0]);
+        assert!(postgres[0].contains("\"active\" boolean not null default true"));
+        assert!(postgres[0].contains("default now()"));
+
+        let mysql = create_statements(&MySql, "users", define).unwrap();
+        assert!(
+            mysql[0].contains("`id` bigint unsigned not null auto_increment primary key"),
+            "{}",
+            mysql[0]
+        );
+        // MySQL stores a boolean as a number, so `true` would not parse.
+        assert!(mysql[0].contains("`active` tinyint(1) not null default 1"), "{}", mysql[0]);
+        assert!(mysql[0].contains("default current_timestamp(6)"));
+
+        let sqlserver = create_statements(&SqlServer, "users", define).unwrap();
+        assert!(sqlserver[0].contains("[id] bigint identity(1,1) primary key"), "{}", sqlserver[0]);
+        assert!(sqlserver[0].contains("[active] bit not null default 1"), "{}", sqlserver[0]);
+        assert!(sqlserver[0].contains("default sysutcdatetime()"));
+    }
+
+    #[test]
+    fn only_postgres_guards_an_index_with_if_not_exists() {
+        let define = |t: &mut Table| {
+            t.id();
+            t.integer("team_id").index();
+        };
+
+        assert!(create_statements(&Postgres, "m", define).unwrap()[1].contains("if not exists"));
+        // Elsewhere a repeated create is an error, which is correct: a
+        // migration runs exactly once.
+        assert!(!create_statements(&MySql, "m", define).unwrap()[1].contains("if not exists"));
+        assert!(!create_statements(&SqlServer, "m", define).unwrap()[1].contains("if not exists"));
+    }
+
+    #[test]
+    fn a_uuid_default_mysql_cannot_express_is_refused_rather_than_faked() {
+        let define = |t: &mut Table| {
+            t.uuid_id();
+        };
+
+        assert!(create_statements(&Postgres, "t", define).unwrap()[0].contains("gen_random_uuid()"));
+        assert!(create_statements(&SqlServer, "t", define).unwrap()[0].contains("newid()"));
+
+        let error = create_statements(&MySql, "t", define).unwrap_err().to_string();
+        assert!(error.contains("has no expression for it"), "{error}");
+    }
+
+    #[test]
     fn soft_deletes_add_a_nullable_timestamp() {
-        let statements = create_statements("posts", |t| {
+        let statements = create_statements(&Postgres, "posts", |t| {
             t.id();
             t.soft_deletes();
         })

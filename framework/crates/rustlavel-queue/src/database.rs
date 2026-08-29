@@ -383,7 +383,8 @@ mod tests {
 
     #[test]
     fn table_names_are_validated_once_at_construction() {
-        let db = Database::lazy(rustlavel_db::DatabaseConfig::default());
+        let db = Database::lazy(rustlavel_db::DatabaseConfig::default())
+            .expect("the default configuration names a driver that exists");
 
         assert!(DatabaseQueue::with_tables(db.clone(), "app_jobs", "app_failed").is_ok());
 
@@ -396,7 +397,14 @@ mod tests {
 
     #[test]
     fn the_jobs_table_has_the_columns_the_driver_reads() {
-        let jobs = rustlavel_db::schema::create_statements(JOBS_TABLE, define_jobs_table).unwrap();
+        // The tables assert PostgreSQL's spelling; the dialect layer covers the
+        // other databases.
+        let jobs = rustlavel_db::schema::create_statements(
+            &rustlavel_db::dialect::Postgres,
+            JOBS_TABLE,
+            define_jobs_table,
+        )
+        .unwrap();
 
         for column in [
             r#""id" bigserial primary key"#,
@@ -427,7 +435,11 @@ mod tests {
     #[test]
     fn the_failed_jobs_table_keeps_everything_needed_to_diagnose_a_job() {
         let failed =
-            rustlavel_db::schema::create_statements(FAILED_JOBS_TABLE, define_failed_jobs_table)
+            rustlavel_db::schema::create_statements(
+                &rustlavel_db::dialect::Postgres,
+                FAILED_JOBS_TABLE,
+                define_failed_jobs_table,
+            )
                 .unwrap();
 
         for column in [

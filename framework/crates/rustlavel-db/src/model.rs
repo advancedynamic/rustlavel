@@ -332,7 +332,8 @@ mod tests {
 
     #[test]
     fn a_query_targets_the_models_table() {
-        let (sql, _) = User::query().filter("name", "Ada").to_sql().unwrap();
+        let (sql, _) =
+            User::query().filter("name", "Ada").to_sql(&crate::dialect::Postgres).unwrap();
         assert_eq!(sql, r#"select * from "users" where "name" = $1"#);
     }
 
