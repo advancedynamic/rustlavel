@@ -297,6 +297,12 @@ impl<'a> Resolver<'a> {
 /// still far better than a secret in a file that gets committed, and it is what
 /// `DATABASE_URL=vault:…` means — but an application that can read its secrets
 /// through [`Resolver::config`] instead should.
+///
+/// # Panics in the wrong hands
+///
+/// This writes the process environment, which is only sound while nothing else
+/// is reading it. Call it once, before serving anything; never from a handler,
+/// a job, or anything else running alongside live requests.
 pub async fn resolve_env(source: &dyn SecretSource) -> Result<usize> {
     let mut pairs: BTreeMap<String, String> = std::env::vars()
         .filter(|(_, value)| SecretRef::is_reference(value))
@@ -307,9 +313,15 @@ pub async fn resolve_env(source: &dyn SecretSource) -> Result<usize> {
 
     let resolved = Resolver::new(source).pairs(&mut pairs).await?;
     for (key, value) in &pairs {
-        // SAFETY: called during single-threaded application boot, before any
-        // task that might read the environment concurrently — the same
-        // contract `rustlavel_core::env::load` is written to.
+        // SAFETY: the caller must not have started anything that reads the
+        // environment. This is a weaker guarantee than the one
+        // `rustlavel_core::env::load` gives, and the difference is worth being
+        // straight about: `load` is synchronous and runs before the runtime
+        // exists, whereas this is `async` and therefore runs on one, so
+        // "single-threaded boot" is not something this function can promise.
+        // The contract is on the caller — resolve before serving, never
+        // afterwards — which is why [`Resolver::config`] exists and is the
+        // recommended path.
         unsafe { std::env::set_var(key, value) };
     }
 
