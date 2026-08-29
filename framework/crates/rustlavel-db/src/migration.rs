@@ -301,7 +301,26 @@ impl<'a> Migrator<'a> {
             ));
         }
 
-        self.db.run(&self.db.dialect().drop_all_tables_sql()).await?;
+        // Enumerate, then drop. Only PostgreSQL has an anonymous block to put a
+        // loop in, and this shape works identically on all three.
+        let dialect = self.db.dialect();
+
+        if let Some(sql) = dialect.disable_foreign_keys_sql() {
+            self.db.run(sql).await?;
+        }
+
+        let rows = self.db.select(dialect.list_tables_sql(), &[]).await?;
+        let tables: Vec<String> =
+            rows.iter().map(|row| row.get_at::<String>(0)).collect::<Result<_>>()?;
+
+        for table in &tables {
+            let sql = dialect.drop_table_sql(table);
+            self.db.run(&sql).await?;
+        }
+
+        if let Some(sql) = dialect.enable_foreign_keys_sql() {
+            self.db.run(sql).await?;
+        }
 
         self.run().await
     }

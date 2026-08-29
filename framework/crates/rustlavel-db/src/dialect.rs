@@ -133,8 +133,28 @@ pub trait Dialect: Send + Sync + std::fmt::Debug + 'static {
         )
     }
 
-    /// The statement that drops every table, for `migrate:fresh`.
-    fn drop_all_tables_sql(&self) -> String;
+    /// A query returning one row per table in the current schema, with the name
+    /// in the first column.
+    ///
+    /// `migrate:fresh` enumerates and drops rather than running one clever
+    /// statement, because only PostgreSQL has an anonymous block to put a loop
+    /// in — and the enumerate-then-drop shape works identically everywhere.
+    fn list_tables_sql(&self) -> &'static str;
+
+    /// Turn off foreign key enforcement while tables are being dropped, so the
+    /// order they come back in does not matter.
+    fn disable_foreign_keys_sql(&self) -> Option<&'static str> {
+        None
+    }
+
+    fn enable_foreign_keys_sql(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// Drop one table, including anything depending on it.
+    fn drop_table_sql(&self, table: &str) -> String {
+        format!("drop table if exists {}", self.quote(table))
+    }
 }
 
 /// Quote a possibly-qualified name one part at a time.
@@ -235,12 +255,14 @@ impl Dialect for Postgres {
         true
     }
 
-    fn drop_all_tables_sql(&self) -> String {
-        "do $$ declare r record; begin \
-         for r in (select tablename from pg_tables where schemaname = current_schema()) loop \
-         execute 'drop table if exists ' || quote_ident(r.tablename) || ' cascade'; \
-         end loop; end $$"
-            .into()
+    fn list_tables_sql(&self) -> &'static str {
+        "select tablename from pg_tables where schemaname = current_schema()"
+    }
+
+    fn drop_table_sql(&self, table: &str) -> String {
+        // `cascade` also removes the foreign keys pointing at it, which is why
+        // PostgreSQL needs no enforcement switch.
+        format!("drop table if exists {} cascade", self.quote(table))
     }
 }
 
@@ -330,10 +352,17 @@ impl Dialect for MySql {
         64
     }
 
-    fn drop_all_tables_sql(&self) -> String {
-        // MySQL has no anonymous block, so the runner disables key checks and
-        // drops what it finds. The driver runs this as several statements.
-        "set foreign_key_checks = 0".into()
+    fn list_tables_sql(&self) -> &'static str {
+        "select table_name from information_schema.tables \
+         where table_schema = database() and table_type = 'BASE TABLE'"
+    }
+
+    fn disable_foreign_keys_sql(&self) -> Option<&'static str> {
+        Some("set foreign_key_checks = 0")
+    }
+
+    fn enable_foreign_keys_sql(&self) -> Option<&'static str> {
+        Some("set foreign_key_checks = 1")
     }
 }
 
@@ -432,10 +461,21 @@ impl Dialect for SqlServer {
         )
     }
 
-    fn drop_all_tables_sql(&self) -> String {
-        "exec sp_MSforeachtable 'alter table ? nocheck constraint all'; \
-         exec sp_MSforeachtable 'drop table ?'"
-            .into()
+    fn list_tables_sql(&self) -> &'static str {
+        // `is_ms_shipped = 0` excludes the system tables SQL Server keeps in
+        // some databases; without it, `migrate:fresh` pointed at `master` would
+        // try to drop Microsoft's own.
+        "select t.name from sys.tables t \
+         where t.is_ms_shipped = 0 and schema_name(t.schema_id) = schema_name()"
+    }
+
+    fn disable_foreign_keys_sql(&self) -> Option<&'static str> {
+        // Undocumented but long-standing: applies to every table at once.
+        Some("exec sp_MSforeachtable 'alter table ? nocheck constraint all'")
+    }
+
+    fn enable_foreign_keys_sql(&self) -> Option<&'static str> {
+        Some("exec sp_MSforeachtable 'alter table ? with check check constraint all'")
     }
 }
 
@@ -595,6 +635,46 @@ mod tests {
         let sqlserver = SqlServer.migrations_table_sql("rustlavel_migrations");
         assert!(sqlserver.starts_with("if object_id("));
         assert!(sqlserver.contains("identity(1,1)"));
+    }
+
+    #[test]
+    fn every_dialect_can_enumerate_its_own_tables() {
+        for dialect in all() {
+            let sql = dialect.list_tables_sql();
+
+            assert!(sql.starts_with("select "), "{}: {sql}", dialect.name());
+            // The query must be scoped to the current schema, or `migrate:fresh`
+            // would reach into someone else's database.
+            assert!(
+                sql.contains("current_schema()")
+                    || sql.contains("database()")
+                    || sql.contains("schema_name()"),
+                "{} does not scope its table list: {sql}",
+                dialect.name()
+            );
+        }
+    }
+
+    #[test]
+    fn sql_server_never_lists_microsofts_own_tables() {
+        // `master` ships system tables in dbo; dropping those is not what
+        // `migrate:fresh` is for.
+        assert!(SqlServer.list_tables_sql().contains("is_ms_shipped = 0"));
+    }
+
+    #[test]
+    fn dropping_a_table_takes_its_dependants_with_it() {
+        // PostgreSQL says so explicitly; the others need the enforcement
+        // switched off around the whole run instead.
+        assert!(Postgres.drop_table_sql("users").ends_with("cascade"));
+        assert!(Postgres.disable_foreign_keys_sql().is_none());
+
+        assert_eq!(MySql.drop_table_sql("users"), "drop table if exists `users`");
+        assert!(MySql.disable_foreign_keys_sql().is_some());
+        assert!(MySql.enable_foreign_keys_sql().is_some());
+
+        assert_eq!(SqlServer.drop_table_sql("users"), "drop table if exists [users]");
+        assert!(SqlServer.disable_foreign_keys_sql().is_some());
     }
 
     #[test]
