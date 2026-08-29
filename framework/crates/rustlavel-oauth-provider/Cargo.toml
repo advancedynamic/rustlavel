@@ -13,6 +13,10 @@ rustlavel-http.workspace = true
 rustlavel-auth.workspace = true
 rustlavel-oauth.workspace = true
 tokio.workspace = true
+# Every credential this crate stores is stored as a SHA-256 digest, and PKCE's
+# S256 challenge is the same hash. Hashing is the one thing the framework does
+# not write for itself: a hand-rolled digest looks correct from the first test
+# and is a vulnerability regardless.
 sha2 = "0.10"
 
 [dev-dependencies]
