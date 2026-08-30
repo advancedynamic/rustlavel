@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch cancels the first: the interesting answer is
+# always about the newest commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # A backtrace on a failing test is the difference between a fix and a guess.
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    # The database tests skip themselves when no server is configured, which
+    # keeps `cargo test` green on a laptop — and would keep them silently
+    # unrun here forever. Real servers, so they actually execute.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rustlavel
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: rustlavel_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U rustlavel"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: secret
+          MYSQL_DATABASE: rustlavel_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -psecret"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: framework
+
+      - name: Tests
+        working-directory: framework
+        env:
+          DATABASE_URL: postgres://rustlavel:secret@127.0.0.1:5432/rustlavel_test
+          MYSQL_URL: mysql://root:secret@127.0.0.1:3306/rustlavel_test?sslmode=require
+          REDIS_URL: redis://127.0.0.1:6379
+          # SQL Server is deliberately absent: its image needs more memory than
+          # a standard runner has, and those tests skip cleanly without it.
+        run: cargo test --workspace --all-features
+
+      - name: Clippy, with warnings as errors
+        working-directory: framework
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+
+  no-database:
+    name: Tests with no database
+    runs-on: ubuntu-latest
+    # The other job proves the integration tests pass. This one proves they
+    # skip — a contributor without Docker must still get a green suite, and
+    # that has broken before.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: framework
+      - name: Tests
+        working-directory: framework
+        run: cargo test --workspace --all-features
+
+  example:
+    name: The worked example builds
+    runs-on: ubuntu-latest
+    # examples/blog is its own workspace depending on the framework by path, so
+    # nothing above compiles it. It is also the closest thing to a user, and it
+    # is how an API break gets noticed.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: examples/blog
+      - working-directory: examples/blog
+        run: cargo build --locked || cargo build
+
+  publishable:
+    name: Every crate is publishable
+    runs-on: ubuntu-latest
+    # `cargo publish` refuses a crate whose path dependency carries no version,
+    # or whose metadata is incomplete — and it refuses at publish time, one
+    # crate into a twenty-four crate release. Better to hear it here.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: framework
+      - working-directory: framework
+        run: cargo package --workspace --allow-dirty --no-verify
