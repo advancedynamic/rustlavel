@@ -137,16 +137,19 @@ pub fn obfuscate_password(password: &str) -> Vec<u8> {
 /// Undo [`obfuscate_password`]. Only the tests need it — but a scheme whose
 /// inverse is never written is a scheme nobody has checked.
 pub fn deobfuscate_password(bytes: &[u8]) -> String {
-    let units: Vec<u16> = bytes
+    let plain: Vec<u8> = bytes
         .iter()
         .map(|byte| {
             let plain = byte ^ 0xA5;
             plain.rotate_left(4)
         })
-        .collect::<Vec<u8>>()
-        .chunks_exact(2)
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
         .collect();
+
+    // `as_chunks` rather than `chunks_exact(2)`: each pair arrives as a fixed
+    // `[u8; 2]`, so `from_le_bytes` needs no bounds check. A trailing odd byte
+    // is dropped either way — half a UTF-16 code unit is not a character.
+    let (pairs, _odd_trailing_byte) = plain.as_chunks::<2>();
+    let units: Vec<u16> = pairs.iter().copied().map(u16::from_le_bytes).collect();
 
     String::from_utf16_lossy(&units)
 }

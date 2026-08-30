@@ -1,0 +1,14 @@
+# Pinned so this project builds the same way everywhere.
+#
+# It is not pinned out of caution about the compiler — it is pinned because
+# `stable` means a different thing on a laptop that has not run `rustup update`
+# than it does on a CI runner that fetches the newest one every morning. That
+# drift cost two red builds here: clippy 1.98 refused two lints that clippy
+# 1.97.1 had never heard of, so the failures were invisible locally and looked
+# like flakiness remotely.
+#
+# Bumping this is a commit, which is the point: new lints arrive when somebody
+# chooses to deal with them, not when GitHub happens to roll a release.
+[toolchain]
+channel = "1.98.0"
+components = ["clippy", "rustfmt"]

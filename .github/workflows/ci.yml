@@ -56,8 +56,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # No version here on purpose: rust-toolchain.toml decides, so CI and a
+      # laptop cannot disagree about what "stable" means.
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.98.0
           components: clippy
 
       - uses: Swatinem/rust-cache@v2
@@ -86,7 +89,9 @@ jobs:
     # that has broken before.
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: framework
@@ -102,7 +107,9 @@ jobs:
     # is how an API break gets noticed.
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: examples/blog
@@ -117,7 +124,9 @@ jobs:
     # crate into a twenty-four crate release. Better to hear it here.
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: framework
