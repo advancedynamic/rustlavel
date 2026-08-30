@@ -1,5 +1,8 @@
 # Rustlavel
 
+[![Support via PayPal](https://img.shields.io/badge/PayPal-Support-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/abahido)
+[![Support via Lynk.id](https://img.shields.io/badge/Lynk.id-Support-FB6B35?style=for-the-badge&logo=kofi&logoColor=white)](https://lynk.id/abahido/s/z52m3ekew032)
+
 A Laravel-inspired web framework for Rust — built from scratch.
 
 > As comfortable as Laravel while you write it. As calm as Rust when you deploy it.
