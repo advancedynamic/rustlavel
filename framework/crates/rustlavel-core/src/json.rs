@@ -92,16 +92,43 @@ impl Json {
         out
     }
 
+    /// A rough byte count, so the buffer is sized once instead of grown.
+    ///
+    /// Deliberately an estimate: an exact count means walking the tree twice,
+    /// and being a little over or under costs one reallocation at worst, where
+    /// starting from nothing costs a dozen.
+    fn estimated_len(&self) -> usize {
+        match self {
+            Json::Null => 4,
+            Json::Bool(true) => 4,
+            Json::Bool(false) => 5,
+            // Enough for any i64, and most numbers are far shorter.
+            Json::Number(_) => 20,
+            // Two quotes, and room for a few escapes without regrowing.
+            Json::String(s) => s.len() + 8,
+            Json::Array(items) => {
+                2 + items.iter().map(Json::estimated_len).sum::<usize>() + items.len()
+            }
+            Json::Object(map) => {
+                2 + map
+                    .iter()
+                    .map(|(key, value)| key.len() + 4 + value.estimated_len())
+                    .sum::<usize>()
+                    + map.len()
+            }
+        }
+    }
+
     fn write(&self, out: &mut String, indent: Option<usize>, depth: usize) {
-        let (newline, pad, pad_close) = match indent {
-            Some(width) => (
-                "\n".to_string(),
-                " ".repeat(width * (depth + 1)),
-                " ".repeat(width * depth),
-            ),
-            None => (String::new(), String::new(), String::new()),
-        };
+        // Borrowed, not built. The compact form is the one every API response
+        // takes, and the old code allocated three Strings per node at every
+        // depth only to push them as empty.
+        let newline = if indent.is_some() { "\n" } else { "" };
         let colon = if indent.is_some() { ": " } else { ":" };
+        let (pad, pad_close) = match indent {
+            Some(width) => (" ".repeat(width * (depth + 1)), " ".repeat(width * depth)),
+            None => (String::new(), String::new()),
+        };
 
         match self {
             Json::Null => out.push_str("null"),
@@ -111,7 +138,7 @@ impl Json {
                 if n.is_finite() {
                     // Integral values render without a trailing ".0" so ids stay ids.
                     if n.fract() == 0.0 && n.abs() < 1e15 {
-                        let _ = write!(out, "{}", *n as i64);
+                        push_integer(out, *n as i64);
                     } else {
                         let _ = write!(out, "{n}");
                     }
@@ -130,11 +157,11 @@ impl Json {
                     if i > 0 {
                         out.push(',');
                     }
-                    out.push_str(&newline);
+                    out.push_str(newline);
                     out.push_str(&pad);
                     item.write(out, indent, depth + 1);
                 }
-                out.push_str(&newline);
+                out.push_str(newline);
                 out.push_str(&pad_close);
                 out.push(']');
             }
@@ -148,13 +175,13 @@ impl Json {
                     if i > 0 {
                         out.push(',');
                     }
-                    out.push_str(&newline);
+                    out.push_str(newline);
                     out.push_str(&pad);
                     escape_into(key, out);
                     out.push_str(colon);
                     value.write(out, indent, depth + 1);
                 }
-                out.push_str(&newline);
+                out.push_str(newline);
                 out.push_str(&pad_close);
                 out.push('}');
             }
@@ -177,32 +204,83 @@ impl Json {
 /// Compact JSON text. `to_string()` comes from here.
 impl std::fmt::Display for Json {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut out = String::new();
+        let mut out = String::with_capacity(self.estimated_len());
         self.write(&mut out, None, 0);
         f.write_str(&out)
     }
 }
 
+/// `\u0000` through `\u001f`, so a control character costs a lookup rather
+/// than a trip through the formatting machinery.
+const CONTROL_ESCAPES: [&str; 32] = [
+    "\\u0000", "\\u0001", "\\u0002", "\\u0003", "\\u0004", "\\u0005", "\\u0006", "\\u0007",
+    "\\u0008", "\\u0009", "\\u000a", "\\u000b", "\\u000c", "\\u000d", "\\u000e", "\\u000f",
+    "\\u0010", "\\u0011", "\\u0012", "\\u0013", "\\u0014", "\\u0015", "\\u0016", "\\u0017",
+    "\\u0018", "\\u0019", "\\u001a", "\\u001b", "\\u001c", "\\u001d", "\\u001e", "\\u001f",
+];
+
+/// Write a string as a JSON string literal.
+///
+/// Scans bytes and copies whole clean runs, rather than pushing one character
+/// at a time. Every byte that needs escaping is ASCII, and no byte of a
+/// multi-byte UTF-8 sequence is ASCII, so a byte scan cannot split a character
+/// — which is what makes the run-at-a-time copy safe as well as faster.
 fn escape_into(s: &str, out: &mut String) {
     out.push('"');
-    for ch in s.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{08}' => out.push_str("\\b"),
-            '\u{0c}' => out.push_str("\\f"),
-            // Escaping `<` and `/` keeps embedded JSON from closing a <script> tag.
-            '<' => out.push_str("\\u003c"),
-            c if (c as u32) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", c as u32);
-            }
-            c => out.push(c),
-        }
+
+    let bytes = s.as_bytes();
+    let mut clean_from = 0;
+
+    for (index, &byte) in bytes.iter().enumerate() {
+        let replacement: &str = match byte {
+            b'"' => "\\\"",
+            b'\\' => "\\\\",
+            b'\n' => "\\n",
+            b'\r' => "\\r",
+            b'\t' => "\\t",
+            0x08 => "\\b",
+            0x0c => "\\f",
+            // Escaping `<` keeps embedded JSON from closing a <script> tag.
+            b'<' => "\\u003c",
+            0x00..=0x1f => CONTROL_ESCAPES[byte as usize],
+            _ => continue,
+        };
+
+        out.push_str(&s[clean_from..index]);
+        out.push_str(replacement);
+        clean_from = index + 1;
     }
+
+    out.push_str(&s[clean_from..]);
     out.push('"');
+}
+
+/// Decimal digits without going through `core::fmt`.
+///
+/// Every id, count and timestamp in a JSON response comes through here, and
+/// `write!` costs far more than the arithmetic does.
+fn push_integer(out: &mut String, value: i64) {
+    if value == 0 {
+        out.push('0');
+        return;
+    }
+
+    let mut digits = [0u8; 20];
+    let mut index = digits.len();
+    // Unsigned, so i64::MIN does not overflow when its sign is removed.
+    let mut magnitude = value.unsigned_abs();
+
+    while magnitude > 0 {
+        index -= 1;
+        digits[index] = b'0' + (magnitude % 10) as u8;
+        magnitude /= 10;
+    }
+    if value < 0 {
+        index -= 1;
+        digits[index] = b'-';
+    }
+
+    out.push_str(std::str::from_utf8(&digits[index..]).unwrap_or("0"));
 }
 
 impl From<bool> for Json {

@@ -132,8 +132,24 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    /// The subscriber list is process-wide, so these tests cannot run beside
+    /// each other: one calls `clear_subscribers` while the other is waiting for
+    /// the event it just subscribed to, and the second sees nothing.
+    ///
+    /// Rule six in CLAUDE.md covers exactly this — serialise when the state
+    /// really is global. The race was always here; it only surfaced when an
+    /// unrelated change shifted the timing enough to lose the coin toss.
+    static BUS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// A poisoned guard is still a guard: a panic in one test must not turn
+    /// every later one into a different, more confusing failure.
+    fn exclusive() -> std::sync::MutexGuard<'static, ()> {
+        BUS.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     #[test]
     fn subscribers_receive_dispatched_events() {
+        let _guard = exclusive();
         clear_subscribers();
         let seen = Arc::new(AtomicUsize::new(0));
         let counter = Arc::clone(&seen);
@@ -151,6 +167,7 @@ mod tests {
 
     #[test]
     fn timed_records_a_duration() {
+        let _guard = exclusive();
         clear_subscribers();
         let millis = Arc::new(RwLock::new(None));
         let sink = Arc::clone(&millis);
