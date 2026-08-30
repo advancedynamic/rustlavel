@@ -293,6 +293,14 @@ cargo test --workspace --all-features
 Laravel 13 for the shape and the conventions, Loco.rs for showing this is worth
 doing in Rust, and Ignition for proving that a good error page is a feature.
 
+## Support
+
+Rustlavel is written and maintained in the open. If it is useful to you, or you
+would like it to keep going, you can help fund the work:
+
+[![Support via PayPal](https://img.shields.io/badge/PayPal-Support-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/abahido)
+[![Support via Lynk.id](https://img.shields.io/badge/Lynk.id-Support-FB6B35?style=for-the-badge&logo=kofi&logoColor=white)](https://lynk.id/abahido/s/z52m3ekew032)
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
