@@ -288,6 +288,16 @@ application calls `credentials.rotate(user, password)`; nothing here reaches for
 
 ## Known gaps, stated plainly
 
+- **JSON serialisation is behind serde, and the writer is not the reason.** The
+  benchmark put it 1.5x back. Tightening the writer — run-at-a-time escaping, digits
+  without `core::fmt`, a sized buffer — made *that part* 1.30x faster, verified
+  byte-identical. But `crates/rustlavel-core/examples/jsonsplit.rs` measures where the
+  time actually goes: **building the `Json` tree is 65% of the cost, writing it 35%**.
+  So the writer work buys under 10% end to end, and the rest is structural — serde goes
+  from a struct to bytes, while this goes from a struct to a `Json` tree (a `String` key
+  and a node allocated per field, plus the `BTreeMap` inserts) and only then to bytes.
+  Closing the gap means a serialisation trait that writes straight to a buffer without
+  the intermediate value, which is a design change rather than an optimisation.
 - **`sslmode` defaults to `prefer`, which guarantees nothing.** It asks for encryption and
   accepts a server that declines, so an attacker able to read the connection is also able to
   answer "no TLS" and keep reading. The default matches libpq so nothing surprising breaks,
