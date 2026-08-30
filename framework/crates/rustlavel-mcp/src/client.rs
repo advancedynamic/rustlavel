@@ -31,7 +31,9 @@ struct Pipe {
 }
 
 enum Transport {
-    Pipe(Pipe),
+    // Boxed because a `Pipe` carries two trait objects and a `Child`, which
+    // made every `Transport` — including the small HTTP one — 304 bytes.
+    Pipe(Box<Pipe>),
     Http { client: HttpClient, url: String },
 }
 
@@ -53,11 +55,11 @@ impl McpClient {
     ) -> Self {
         let boxed: Box<dyn AsyncRead + Send + Unpin> = Box::new(reader);
         McpClient {
-            transport: Transport::Pipe(Pipe {
+            transport: Transport::Pipe(Box::new(Pipe {
                 lines: BufReader::new(boxed).lines(),
                 writer: Box::new(writer),
                 child: None,
-            }),
+            })),
             client_info: default_client_info(),
             next_id: 1,
             server: None,

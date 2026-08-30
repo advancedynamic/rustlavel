@@ -797,10 +797,12 @@ impl<'a> Reader<'a> {
 
 /// Decode UTF-16LE, which TDS calls UCS-2 and uses for every string it sends.
 pub fn decode_ucs2(bytes: &[u8]) -> String {
-    let units: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-        .collect();
+    // `as_chunks` rather than `chunks_exact(2)`: the pair arrives as a fixed
+    // `[u8; 2]`, so `from_le_bytes` needs no bounds check and no copy. A
+    // trailing odd byte is dropped either way, which is right — half a UTF-16
+    // code unit is not a character.
+    let (pairs, _odd_trailing_byte) = bytes.as_chunks::<2>();
+    let units: Vec<u16> = pairs.iter().copied().map(u16::from_le_bytes).collect();
     String::from_utf16_lossy(&units)
 }
 
