@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rustlavel — a Laravel-inspired web framework for Rust</title>
+<meta name="description" content="Laravel's comfort, Rust's guarantees. An HTTP server, ORM, template engine and wire protocols all written from scratch.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site"><div class="wrap">
+  <strong>Rustlavel</strong>
+  <nav>
+    <a href="index.html" aria-current="page">Home</a>
+    <a href="guide.html">Guide</a>
+    <a href="packages.html">Packages</a>
+    <a href="https://docs.rs/rustlavel">API</a>
+    <a href="https://github.com/advancedynamic/rustlavel">GitHub</a>
+  </nav>
+</div></header>
+
+<main class="wrap">
+
+<h1>Laravel's comfort,<br>Rust's guarantees.</h1>
+<p class="tagline">As comfortable as Laravel while you write it. As calm as Rust when you deploy it.</p>
+
+<div class="badges">
+  <a href="https://crates.io/crates/rustlavel"><img alt="crates.io" src="https://img.shields.io/crates/v/rustlavel?style=for-the-badge&color=b7451f"></a>
+  <a href="https://docs.rs/rustlavel"><img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-rustlavel-blue?style=for-the-badge"></a>
+  <a href="https://github.com/advancedynamic/rustlavel/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/advancedynamic/rustlavel/ci.yml?style=for-the-badge"></a>
+</div>
+
+<p class="lede">Rustlavel takes what makes Laravel a pleasure to work in — conventions, an
+Artisan-style CLI, migrations, an Eloquent-shaped ORM, Blade-shaped templates, a debugging
+dashboard — and rebuilds it on Rust's terms.</p>
+
+<p>It is not a translation. Where Laravel resolves things at runtime through reflection,
+Rustlavel resolves them at compile time, so a renamed column or a typo'd service is a build
+error rather than a <code>null</code> in production.</p>
+
+<h2>From scratch means from scratch</h2>
+
+<p>The HTTP server, the router, the JSON parser, the <code>.env</code> loader, the
+PostgreSQL and MySQL and TDS wire protocols, the template engine, the derive macros — all
+written here. The only dependencies are Tokio for the async runtime and a small set of
+cryptography crates.</p>
+
+<div class="note">
+<p><strong>The cryptography is the exception, deliberately.</strong> argon2, sha2, hmac,
+aes-gcm and rustls come from the RustCrypto and rustls projects. Hand-rolling a cipher, a
+KDF or a TLS stack is a vulnerability, not an achievement.</p>
+</div>
+
+<h2>Getting started</h2>
+
+<pre><code>cargo install rustlavel-cli
+
+rustlavel new blog --with db,view,auth
+cd blog
+rustlavel serve</code></pre>
+
+<p>Or add it to a project you already have:</p>
+
+<pre><code>cargo add rustlavel --features db,view</code></pre>
+
+<p>The <a href="guide.html">guide</a> walks through a first application; the
+<a href="packages.html">packages page</a> lists what each feature flag turns on.</p>
+
+<h2>What a handler looks like</h2>
+
+<pre><code>use rustlavel::prelude::*;
+
+fn routes(r: &amp;mut Router) {
+    r.get("/users/{id}", |req: Request| async move {
+        let db = req.state::&lt;Database&gt;().expect("the database");
+        let id: i64 = req.param("id").and_then(|v| v.parse().ok()).unwrap_or(0);
+
+        let user = db
+            .select_one("select id, name from users where id = $1", &amp;[Value::Int(id)])
+            .await?
+            .ok_or_else(|| Error::msg("no such user"))?;
+
+        Ok::&lt;_, Error&gt;(Response::json(user.to_json()))
+    });
+}</code></pre>
+
+<h2>Measured, not asserted</h2>
+
+<p>The repository carries a benchmark harness comparing Rustlavel against Axum, Loco.rs,
+Spring Boot and Laravel across eight endpoints, and the README publishes what it found —
+including where this framework <em>loses</em>. JSON serialisation is behind serde by about
+1.5×, and the reason is structural rather than sloppy code.</p>
+
+<p>The harness refuses to run on a busy machine, and refuses to measure an application until
+all eight of its endpoints answer 200 — because a 500 error page benchmarks as very fast,
+and that has already happened once here.</p>
+
+</main>
+
+<footer class="site"><div class="wrap">
+MIT licensed · <a href="https://github.com/advancedynamic/rustlavel">advancedynamic/rustlavel</a>
+· <a href="https://docs.rs/rustlavel">API reference on docs.rs</a>
+</div></footer>
+
+</body>
+</html>

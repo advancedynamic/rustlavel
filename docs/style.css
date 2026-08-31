@@ -1,0 +1,118 @@
+/* One stylesheet, no framework, no build step — the same reasoning the
+   framework itself is built on. */
+
+:root {
+    --ink: #14181d;
+    --ink-soft: #4a5561;
+    --ink-faint: #78848f;
+    --page: #fdfdfc;
+    --panel: #f5f5f3;
+    --line: #e3e3df;
+    --rust: #b7451f;
+    --rust-soft: #f3e6e0;
+    --code: #22272e;
+    --measure: 46rem;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --ink: #e6e8ea;
+        --ink-soft: #a3adb8;
+        --ink-faint: #7b8794;
+        --page: #14181d;
+        --panel: #1b2027;
+        --line: #2a313a;
+        --rust: #e8825c;
+        --rust-soft: #2a1d18;
+        --code: #10141a;
+    }
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: var(--measure); margin: 0 auto; padding: 0 1.5rem; }
+
+header.site {
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    background: color-mix(in srgb, var(--page) 92%, transparent);
+    backdrop-filter: blur(8px);
+    z-index: 10;
+}
+header.site .wrap {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    height: 3.5rem;
+}
+header.site strong { font-size: 1.05rem; letter-spacing: -0.01em; }
+header.site nav { margin-left: auto; display: flex; gap: 1.25rem; font-size: 0.9rem; }
+header.site nav a { color: var(--ink-soft); text-decoration: none; }
+header.site nav a:hover, header.site nav a[aria-current] { color: var(--rust); }
+
+h1 { font-size: 2.4rem; line-height: 1.15; letter-spacing: -0.03em; margin: 2.5rem 0 0.75rem; }
+h2 { font-size: 1.35rem; letter-spacing: -0.015em; margin: 3rem 0 0.75rem; }
+h3 { font-size: 1.05rem; margin: 2rem 0 0.5rem; }
+p, li { color: var(--ink-soft); }
+p { margin: 0 0 1rem; }
+a { color: var(--rust); }
+
+.tagline { font-size: 1.15rem; color: var(--ink-soft); margin-bottom: 2rem; }
+.lede { font-size: 1.05rem; }
+
+pre {
+    background: var(--code);
+    color: #dfe4ea;
+    padding: 1rem 1.1rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 0.86rem;
+    line-height: 1.6;
+    margin: 0 0 1.25rem;
+}
+code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: 0.9em;
+}
+:not(pre) > code {
+    background: var(--panel);
+    padding: 0.12em 0.38em;
+    border-radius: 4px;
+    color: var(--ink);
+}
+pre code { background: none; padding: 0; color: inherit; }
+
+.note {
+    border-left: 3px solid var(--rust);
+    background: var(--rust-soft);
+    padding: 0.9rem 1.1rem;
+    border-radius: 0 6px 6px 0;
+    margin: 0 0 1.25rem;
+}
+.note p:last-child { margin: 0; }
+
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; margin: 0 0 1.5rem; }
+th, td { text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--ink); font-weight: 600; }
+td:first-child { white-space: nowrap; }
+
+footer.site {
+    border-top: 1px solid var(--line);
+    margin-top: 4rem;
+    padding: 2rem 0 3rem;
+    font-size: 0.87rem;
+    color: var(--ink-faint);
+}
+footer.site a { color: var(--ink-faint); }
+
+.badges { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0 0 2rem; }
+.badges img { height: 28px; }

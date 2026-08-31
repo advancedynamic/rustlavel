@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guide — Rustlavel</title>
+<meta name="description" content="Scaffold an application, add a database, write a handler, and understand what Rustlavel does differently from Laravel.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site"><div class="wrap">
+  <strong>Rustlavel</strong>
+  <nav>
+    <a href="index.html">Home</a>
+    <a href="guide.html" aria-current="page">Guide</a>
+    <a href="packages.html">Packages</a>
+    <a href="https://docs.rs/rustlavel">API</a>
+    <a href="https://github.com/advancedynamic/rustlavel">GitHub</a>
+  </nav>
+</div></header>
+
+<main class="wrap">
+
+<h1>Guide</h1>
+<p class="tagline">From nothing to a running application with a database behind it.</p>
+
+<h2>Install the CLI</h2>
+
+<pre><code>cargo install rustlavel-cli</code></pre>
+
+<p>This gives you <code>rustlavel</code>, which is the Artisan equivalent: it scaffolds
+projects, generates controllers and migrations, runs a development server, and diagnoses a
+misconfigured application.</p>
+
+<h2>Scaffold a project</h2>
+
+<pre><code>rustlavel new blog --with db,view,auth
+cd blog
+rustlavel serve</code></pre>
+
+<p>The skeleton is deliberately slim, following Laravel 11 and later: routes, one
+controller, config, a public directory, tests. Everything else arrives as a package.</p>
+
+<div class="note">
+<p><strong><code>--with</code> is the scaffold-time form of <code>cargo add</code>.</strong>
+What you do not ask for is never compiled into your binary, so an application with no mailer
+does not ship one. That is a real difference rather than a slogan — the benchmark found a
+comparable Loco application shipping an SMTP client and three cloud storage backends it
+never used.</p>
+</div>
+
+<h2>Routes</h2>
+
+<p>Routes are ordinary Rust, registered on a <code>Router</code>. There is no route file
+scanned at runtime and no attribute macro reflecting over your handlers.</p>
+
+<pre><code>use rustlavel::prelude::*;
+
+pub fn routes(r: &amp;mut Router) {
+    r.get("/", |_req: Request| async move {
+        Response::text("Hello, World!")
+    });
+
+    r.get("/users/{id}", controllers::users::show).name("users.show");
+
+    r.group("/admin", |admin| {
+        admin.middleware(Authenticate::default());
+        admin.get("/dashboard", controllers::admin::dashboard);
+    });
+}</code></pre>
+
+<p>Parameters come out of the request by name, groups carry a prefix and a middleware stack,
+and a named route can be reversed with <code>url_for</code>.</p>
+
+<h2>The database</h2>
+
+<p>A connection is application state, so a handler asks for it rather than reaching for a
+global.</p>
+
+<pre><code>let db = Database::connect("postgres://user:pass@localhost/app?sslmode=verify-full").await?;
+App::new()?.state(db).routes(routes).run().await</code></pre>
+
+<div class="note">
+<p><strong>Set <code>sslmode</code> deliberately.</strong> It defaults to
+<code>prefer</code>, matching libpq — which asks for encryption and accepts a server that
+declines, so it guarantees nothing against an attacker who can answer "no TLS". Anything
+crossing a network you do not own wants <code>verify-full</code>. Running
+<code>rustlavel doctor</code> will say so out loud.</p>
+</div>
+
+<p>The query builder cannot be injected into: values are bound, identifiers are validated
+against an allowlist, and an <code>update</code> or <code>delete</code> with no filter is
+refused rather than quietly emptying a table.</p>
+
+<pre><code>let posts = db.table("posts")
+    .where_eq("published", true)
+    .order_by("created_at", "desc")
+    .limit(20)
+    .get()
+    .await?;</code></pre>
+
+<h2>Models and relations</h2>
+
+<pre><code>#[derive(Model)]
+#[model(table = "posts")]
+struct Post {
+    id: i64,
+    title: String,
+    user_id: i64,
+}</code></pre>
+
+<p>The derive is a hand-written proc macro — no syn, no quote — and its errors are written
+to be read by a person. Relations load without N+1: <code>has_many</code> and
+<code>belongs_to</code> fetch in one round trip for the whole set.</p>
+
+<h2>Migrations and seeders</h2>
+
+<pre><code>rustlavel make:migration create_posts_table
+rustlavel migrate
+rustlavel migrate:rollback
+rustlavel db:seed</code></pre>
+
+<p>The migration list is a generated registry rather than a directory scanned at boot. A
+compiled program cannot discover types by looking at files, and pretending otherwise would
+mean giving up the compile-time guarantees that are the point.</p>
+
+<h2>Templates</h2>
+
+<pre><code>@extends("layouts.app")
+
+@section("content")
+  &lt;h1&gt;{{ title }}&lt;/h1&gt;
+  @foreach(posts as post)
+    &lt;article&gt;{{ post.title }}&lt;/article&gt;
+  @endforeach
+@endsection</code></pre>
+
+<p>Blade-shaped, with escaping that cannot be switched off by accident, and reload-from-disk
+while you are developing.</p>
+
+<h2>What is different from Laravel</h2>
+
+<table>
+<tr><th>Laravel</th><th>Rustlavel</th></tr>
+<tr><td>Facades and a runtime container</td><td>Typed application state, resolved at compile time</td></tr>
+<tr><td>Auto-discovered service providers</td><td>One explicit <code>.plugin(...)</code> line</td></tr>
+<tr><td>Migrations found by scanning a folder</td><td>A registry the CLI generates</td></tr>
+<tr><td><code>DB::transaction(fn () =&gt; ...)</code></td><td>A guard: <code>begin</code>, <code>commit</code>, rolls back when dropped</td></tr>
+</table>
+
+<p>The transaction difference is not taste. A closure returning a future that borrows its
+argument cannot express the lifetime it needs, so the guard is what the language actually
+allows.</p>
+
+<h2>Diagnosing a problem</h2>
+
+<pre><code>rustlavel doctor</code></pre>
+
+<p>Checks the toolchain, <code>.env</code>, the application key, the port, whether the
+database is reachable, what the connection is actually encrypted with, the directory layout,
+and whether the thing compiles.</p>
+
+<h2>Where to go next</h2>
+
+<p>The <a href="packages.html">packages page</a> lists every optional crate. The full API
+reference for each is on <a href="https://docs.rs/rustlavel">docs.rs</a>, and
+<a href="https://github.com/advancedynamic/rustlavel/tree/main/examples/blog">examples/blog</a>
+is a worked application that is compiled by CI on every push.</p>
+
+</main>
+
+<footer class="site"><div class="wrap">
+MIT licensed · <a href="https://github.com/advancedynamic/rustlavel">advancedynamic/rustlavel</a>
+· <a href="https://docs.rs/rustlavel">API reference on docs.rs</a>
+</div></footer>
+
+</body>
+</html>

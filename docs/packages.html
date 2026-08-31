@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Packages — Rustlavel</title>
+<meta name="description" content="Every Rustlavel crate, the feature flag that turns it on, and what it does.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site"><div class="wrap">
+  <strong>Rustlavel</strong>
+  <nav>
+    <a href="index.html">Home</a>
+    <a href="guide.html">Guide</a>
+    <a href="packages.html" aria-current="page">Packages</a>
+    <a href="https://docs.rs/rustlavel">API</a>
+    <a href="https://github.com/advancedynamic/rustlavel">GitHub</a>
+  </nav>
+</div></header>
+
+<main class="wrap">
+
+<h1>Packages</h1>
+<p class="tagline">One crate per package. What you do not enable is never compiled.</p>
+
+<p>Everything optional is a feature flag on the <code>rustlavel</code> meta-crate. Add what
+you need and nothing else reaches your binary:</p>
+
+<pre><code>cargo add rustlavel --features db,view,auth</code></pre>
+
+<p>Or take a single package on its own, the way you would <code>composer require</code> one
+Illuminate component:</p>
+
+<pre><code>cargo add rustlavel-db</code></pre>
+
+<div class="note">
+<p><strong>This matters more than it sounds.</strong> The benchmark in this repository found
+a comparable Loco application shipping an SMTP client and three cloud storage backends it
+never used, because they are unconditional dependencies there. 14 MB against 4 MB, for an
+application that has neither a mailer nor object storage.</p>
+</div>
+
+<h2>The full list</h2>
+
+<table>
+<tr><th>Crate</th><th>Feature</th><th>What it is</th></tr>
+<tr><td><a href="https://docs.rs/rustlavel">rustlavel</a></td><td><em>always</em></td><td>A Laravel-inspired full-stack web framework for Rust</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-ai">rustlavel-ai</a></td><td><code>ai</code></td><td>Rustlavel AI: one API for Anthropic, OpenAI and Ollama, with streaming, tools and a fake provider</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-auth">rustlavel-auth</a></td><td><code>auth</code></td><td>Rustlavel authentication: sessions, argon2 hashing, CSRF, signed URLs, encryption</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-cache">rustlavel-cache</a></td><td><code>cache</code></td><td>Rustlavel cache: memory, file and from-scratch Redis drivers, plus rate limiting</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-cli">rustlavel-cli</a></td><td><em>separate binary</em></td><td>The rustlavel command-line tool: new, serve, make:*</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-client">rustlavel-client</a></td><td><code>client</code></td><td>Rustlavel outbound HTTP client, written on Tokio with TLS from rustls</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-core">rustlavel-core</a></td><td><em>always</em></td><td>Rustlavel application lifecycle, config, .env, and internal instrumentation</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-db">rustlavel-db</a></td><td><code>db</code></td><td>Rustlavel database layer: PostgreSQL driver, query builder, migrations, and ORM</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-http">rustlavel-http</a></td><td><em>always</em></td><td>Rustlavel HTTP server, router, middleware pipeline, request/response</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-i18n">rustlavel-i18n</a></td><td>—</td><td>Rustlavel translations and localization</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-macros">rustlavel-macros</a></td><td><em>always</em></td><td>Derive macros for Rustlavel, notably #[derive(Model)]</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-mail">rustlavel-mail</a></td><td><code>mail</code></td><td>Rustlavel mail: MIME messages, an SMTP client written on Tokio, and multi-channel notifications</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-mcp">rustlavel-mcp</a></td><td><code>mcp</code></td><td>Rustlavel Model Context Protocol support: server, client, stdio and HTTP transports</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-metrics">rustlavel-metrics</a></td><td><code>metrics</code></td><td>Prometheus metrics for Rustlavel, gathered from the instrumentation bus</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-oauth">rustlavel-oauth</a></td><td><code>oauth</code></td><td>OAuth 2.1 for Rustlavel: the shared protocol types, and the client half</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-oauth-provider">rustlavel-oauth-provider</a></td><td><code>oauth-provider</code></td><td>Be an OAuth 2.1 provider: authorization code + PKCE, refresh rotation, revocation, introspection</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-openapi">rustlavel-openapi</a></td><td><code>openapi</code></td><td>Generate an OpenAPI document from a Rustlavel router</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-queue">rustlavel-queue</a></td><td><code>queue</code></td><td>Rustlavel queues: background jobs, workers, scheduling, and a dead-letter store</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-storage">rustlavel-storage</a></td><td><code>storage</code></td><td>Rustlavel file storage: local disk and S3-compatible object stores</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-telescope">rustlavel-telescope</a></td><td><code>telescope</code></td><td>Rustlavel Telescope: an in-process debugging dashboard for requests, queries, and logs</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-validation">rustlavel-validation</a></td><td><code>validation</code></td><td>Rustlavel validation: Laravel-style rules with 422 JSON error responses</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-vault">rustlavel-vault</a></td><td><code>vault</code></td><td>Secrets from OpenBao or HashiCorp Vault: KV, dynamic database credentials, leases</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-view">rustlavel-view</a></td><td><code>view</code></td><td>Rustlavel templating: Blade-inspired layouts, sections, and automatic escaping</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-ws">rustlavel-ws</a></td><td><code>ws</code></td><td>Rustlavel WebSockets: RFC 6455 handshake and framing, plus channel broadcasting</td></tr>
+</table>
+
+<h2>Two packages that are split on purpose</h2>
+
+<p><code>rustlavel-oauth</code> holds the wire vocabulary — scopes, the RFC 6749 error codes,
+PKCE, the token response — <em>and</em> the client half, the one you use to sign users in
+through Google or GitHub. <code>rustlavel-oauth-provider</code> depends on it for those
+types, so both ends of the protocol agree on the format by construction rather than by
+review.</p>
+
+<p><code>rustlavel-auth</code> carries its own simpler <code>Scopes</code> type for API
+tokens. That duplication is deliberate: personal access tokens must not drag an OAuth
+dependency into the authentication crate.</p>
+
+<h2>Databases</h2>
+
+<p>PostgreSQL, MySQL and SQL Server, each wire protocol written here, each with TLS. Oracle
+is deliberately excluded — its network protocol has never been published, so a driver means
+either wrapping the proprietary OCI library or a multi-year reverse-engineering effort, and
+neither fits a framework whose premise is that the protocols are written here.</p>
+
+</main>
+
+<footer class="site"><div class="wrap">
+MIT licensed · <a href="https://github.com/advancedynamic/rustlavel">advancedynamic/rustlavel</a>
+· <a href="https://docs.rs/rustlavel">API reference on docs.rs</a>
+</div></footer>
+
+</body>
+</html>

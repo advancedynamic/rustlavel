@@ -5,6 +5,11 @@
 
 A Laravel-inspired web framework for Rust — built from scratch.
 
+**[Documentation](https://advancedynamic.github.io/rustlavel/)** ·
+[Guide](https://advancedynamic.github.io/rustlavel/guide.html) ·
+[Packages](https://advancedynamic.github.io/rustlavel/packages.html) ·
+[API reference](https://docs.rs/rustlavel)
+
 > As comfortable as Laravel while you write it. As calm as Rust when you deploy it.
 
 Rustlavel takes what makes Laravel a pleasure to work in — conventions, an
