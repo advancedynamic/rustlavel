@@ -16,10 +16,43 @@
 //! accepts forged assertions, which is the single failure this package exists
 //! to prevent.
 
+pub mod authentication;
 pub mod cbor;
+pub mod ceremony;
+pub mod challenge;
 pub mod cose;
+pub mod credential;
+pub mod registration;
 
 pub use cbor::Cbor;
 pub use cose::{CoseKey, SignatureAlgorithm};
 
-pub use rustlavel_core::{Error, Result};
+pub use ceremony::{
+    AttestedCredential, AuthenticatorAttachment, AuthenticatorData, AuthenticatorFlags, ClientData,
+    RelyingParty, ResidentKey, UserEntity, UserVerification,
+};
+pub use challenge::{
+    Ceremony, Challenge, ChallengeStore, MemoryChallengeStore, SharedChallengeStore,
+};
+pub use credential::{
+    Credential, CredentialStore, MemoryCredentialStore, SharedCredentialStore,
+};
+
+pub use authentication::{
+    Authentication, AuthenticationResponse, PublicKeyCredentialRequestOptions,
+};
+pub use registration::{
+    AttestationStatement, PublicKeyCredentialCreationOptions, Registration, RegistrationResponse,
+};
+
+pub use rustlavel_core::{Error, Json, Result};
+
+/// What a controller finishing either ceremony imports.
+pub mod prelude {
+    pub use crate::{
+        AttestationStatement, Authentication, AuthenticationResponse, Ceremony, Challenge,
+        ChallengeStore, Credential, CredentialStore, MemoryChallengeStore, MemoryCredentialStore,
+        Registration, RegistrationResponse, RelyingParty, ResidentKey, UserEntity,
+        UserVerification,
+    };
+}
