@@ -34,6 +34,8 @@ pub use rustlavel_db as db;
 pub use rustlavel_i18n as i18n;
 #[cfg(feature = "vault")]
 pub use rustlavel_vault as vault;
+#[cfg(feature = "ldap")]
+pub use rustlavel_ldap as ldap;
 #[cfg(feature = "oauth")]
 pub use rustlavel_oauth as oauth;
 #[cfg(feature = "oauth-provider")]
@@ -48,6 +50,12 @@ pub use rustlavel_mcp as mcp;
 pub use rustlavel_metrics as metrics;
 #[cfg(feature = "metrics")]
 pub use rustlavel_metrics::Metrics;
+#[cfg(feature = "otel")]
+pub use rustlavel_otel as otel;
+#[cfg(feature = "search")]
+pub use rustlavel_search as search;
+#[cfg(feature = "webauthn")]
+pub use rustlavel_webauthn as webauthn;
 #[cfg(feature = "openapi")]
 pub use rustlavel_openapi as openapi;
 #[cfg(feature = "queue")]

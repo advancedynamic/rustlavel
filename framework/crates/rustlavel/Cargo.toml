@@ -17,18 +17,22 @@ rustlavel-cache = { workspace = true, optional = true }
 rustlavel-client = { workspace = true, optional = true }
 rustlavel-db = { workspace = true, optional = true }
 rustlavel-i18n = { workspace = true, optional = true }
+rustlavel-ldap = { workspace = true, optional = true }
 rustlavel-mail = { workspace = true, optional = true }
 rustlavel-mcp = { workspace = true, optional = true }
 rustlavel-metrics = { workspace = true, optional = true }
 rustlavel-oauth = { workspace = true, optional = true }
 rustlavel-oauth-provider = { workspace = true, optional = true }
 rustlavel-openapi = { workspace = true, optional = true }
+rustlavel-otel = { workspace = true, optional = true }
+rustlavel-search = { workspace = true, optional = true }
 rustlavel-queue = { workspace = true, optional = true }
 rustlavel-storage = { workspace = true, optional = true }
 rustlavel-telescope = { workspace = true, optional = true }
 rustlavel-validation = { workspace = true, optional = true }
 rustlavel-vault = { workspace = true, optional = true }
 rustlavel-view = { workspace = true, optional = true }
+rustlavel-webauthn = { workspace = true, optional = true }
 rustlavel-ws = { workspace = true, optional = true }
 
 [dev-dependencies]
@@ -43,6 +47,9 @@ cache = ["dep:rustlavel-cache"]
 client = ["dep:rustlavel-client"]
 db = ["dep:rustlavel-db"]
 i18n = ["dep:rustlavel-i18n"]
+# Authenticating against a directory. Brings the guard along, since a
+# successful bind has to establish a session to be worth anything.
+ldap = ["dep:rustlavel-ldap", "auth"]
 mail = ["dep:rustlavel-mail", "view"]
 mcp = ["dep:rustlavel-mcp"]
 metrics = ["dep:rustlavel-metrics"]
@@ -52,6 +59,10 @@ oauth = ["dep:rustlavel-oauth", "auth", "client"]
 # Being the provider yourself. Renders a consent screen, so it needs auth.
 oauth-provider = ["dep:rustlavel-oauth-provider", "oauth", "auth"]
 openapi = ["dep:rustlavel-openapi"]
+# Traces and metrics over OTLP, fed from the instrumentation bus.
+otel = ["dep:rustlavel-otel", "client"]
+# Elasticsearch and OpenSearch, which speak the same API.
+search = ["dep:rustlavel-search", "client"]
 queue = ["dep:rustlavel-queue", "db"]
 storage = ["dep:rustlavel-storage"]
 telescope = ["dep:rustlavel-telescope"]
@@ -59,6 +70,8 @@ validation = ["dep:rustlavel-validation"]
 # Secrets from OpenBao or HashiCorp Vault. Needs the outbound HTTP client.
 vault = ["dep:rustlavel-vault", "client"]
 view = ["dep:rustlavel-view"]
+# Passkeys. Needs the guard: a verified assertion has to log somebody in.
+webauthn = ["dep:rustlavel-webauthn", "auth"]
 ws = ["dep:rustlavel-ws"]
 # Everything the framework currently ships, for trying it out.
 full = [
@@ -68,17 +81,21 @@ full = [
     "client",
     "db",
     "i18n",
+    "ldap",
     "mail",
     "mcp",
     "metrics",
     "oauth",
     "oauth-provider",
     "openapi",
+    "otel",
+    "search",
     "queue",
     "storage",
     "telescope",
     "validation",
     "vault",
     "view",
+    "webauthn",
     "ws",
 ]

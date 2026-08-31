@@ -88,7 +88,8 @@ Publishing model: one repository, many crates — the way `laravel/framework` ho
 - [x] Pagination wired through the query builder
 - [x] Testing: the test client with its cookie jar, and `Http::fake()`
 - [x] API tokens (Sanctum-shaped): opaque, hashed at rest with SHA-256, scoped, expiring, `Bearer` middleware
-- [ ] Passkeys / WebAuthn, and an `--auth` starter kit (login, register, reset) — not yet
+- [x] Passkeys / WebAuthn — registration and authentication, CBOR and COSE written here
+- [ ] An `--auth` starter kit (login, register, reset) — not yet
 - [ ] An HTML form that fails validation is not re-rendered with its errors; it gets a plain 422 today. JSON clients already get Laravel's shape.
 
 ## Phase 0.4 — AI and agent-era DX ✅ done
@@ -104,7 +105,7 @@ Publishing model: one repository, many crates — the way `laravel/framework` ho
 - [x] Structured JSON logging in production
 - [x] `rustlavel doctor` — diagnoses toolchain, `.env`, `APP_KEY`, port, database, layout, and whether the thing compiles
 - [x] `rustlavel-metrics`: a Prometheus endpoint fed by the event bus; requests labelled by route pattern rather than path, so cardinality stays sane
-- [ ] OpenTelemetry export — not yet
+- [x] OpenTelemetry export over OTLP, protobuf written here, fed from the same event bus
 
 ## Phase 0.6 — The heavyweight features ✅ mostly
 
@@ -172,7 +173,6 @@ Decisions worth recording:
 - **Stateless OAuth state cannot detect replay**, by construction — there is nowhere to burn
   it. The authorization code is single-use at the provider, so a replay dies at the token
   endpoint; the lifetime is short, and the limitation is a named test rather than a footnote.
-- **Not done: passkeys/WebAuthn**, which is the remaining gap in `rustlavel-auth`.
 
 ## Phase 0.9 — TLS for PostgreSQL and MySQL ✅ done
 
@@ -278,6 +278,42 @@ Deliberately **not** automatic — this crate does not depend on `rustlavel-vaul
 application may get its credentials from somewhere this framework has never heard of. The
 application calls `credentials.rotate(user, password)`; nothing here reaches for a store.
 
+## Phase 1.3 — Directories, search, telemetry and passkeys ✅ done
+
+Four packages, each written on its published protocol and each verified against a real
+server rather than a fixture.
+
+- [x] **`rustlavel-webauthn`** — passkeys. CBOR and COSE framing written here; only the
+      elliptic-curve verification is borrowed, because a subtly wrong verifier accepts forged
+      assertions. Challenges are single-use, expiring, and bound to a user handle. 90 tests,
+      most of them named after the attack they refuse.
+- [x] **`rustlavel-ldap`** — LDAP v3 with BER written from scratch. A simple bind refuses an
+      empty password before it reaches the wire, and refuses to travel unencrypted unless the
+      caller opts in by name. `ldap://` defaults to StartTLS, which deviates from every other
+      client and is deliberate: a URL scheme should not quietly decide to send a password in
+      the clear.
+- [x] **`rustlavel-search`** — Elasticsearch and OpenSearch, which are wire-compatible, so
+      one package serves both. `_bulk` returns HTTP 200 with per-item failures, so partial
+      failure is surfaced rather than lost behind a status code.
+- [x] **`rustlavel-otel`** — traces and metrics over OTLP, with the protobuf encoder written
+      here. It consumes the instrumentation bus the framework already had rather than adding
+      a second path, so `rustlavel-metrics`, `rustlavel-telescope` and this all read the same
+      events.
+
+What testing against real servers caught, and fixtures did not:
+
+- **`rustlavel-client` read a body after a `HEAD`.** Elasticsearch answers `HEAD` with
+  `Transfer-Encoding: chunked` and then writes nothing at all, so every existence check hung
+  until it timed out. RFC 9110 says a `HEAD` response has no body whatever its headers claim;
+  204 and 304 were wrong in the same way.
+- **A protobuf `oneof` arm went untagged.** `false`, `0` and `""` were being skipped as
+  proto3 defaults — correct for an ordinary field, wrong for a `oneof`. The collector
+  answered 200 and recorded `Empty()`: silent data loss behind a success.
+- **An assumption in the brief was wrong.** OpenLDAP 2.6 answers an empty-password bind with
+  `unwillingToPerform`, not the `success` the specification permits. The test now asserts the
+  measured value, and the client-side guard stays, because it is a configuration option and
+  Active Directory has historically answered otherwise.
+
 ## Phase 1.0+ — Ecosystem (partly)
 
 - [x] A worked example: `examples/blog`
@@ -306,7 +342,6 @@ application calls `credentials.rotate(user, password)`; nothing here reaches for
 - **`verify-full` cannot work against a stock MySQL.** Its auto-generated certificate carries
   no `subjectAltName` at all, so no hostname matches it. Use `verify-ca` with `sslrootcert`,
   or install a certificate that names the server.
-- **Passkeys / WebAuthn** — the remaining gap in `rustlavel-auth`.
 - **SQL Server connections get no post-quantum protection.** TDS pins them to TLS 1.2 and
   the hybrid key exchange is TLS 1.3 only. PostgreSQL and MySQL both negotiate TLS 1.3, so
   they do get it.

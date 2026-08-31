@@ -659,18 +659,22 @@ dependencies = [
  "rustlavel-db",
  "rustlavel-http",
  "rustlavel-i18n",
+ "rustlavel-ldap",
  "rustlavel-mail",
  "rustlavel-mcp",
  "rustlavel-metrics",
  "rustlavel-oauth",
  "rustlavel-oauth-provider",
  "rustlavel-openapi",
+ "rustlavel-otel",
  "rustlavel-queue",
+ "rustlavel-search",
  "rustlavel-storage",
  "rustlavel-telescope",
  "rustlavel-validation",
  "rustlavel-vault",
  "rustlavel-view",
+ "rustlavel-webauthn",
  "rustlavel-ws",
  "tokio",
 ]
@@ -762,6 +766,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustlavel-ldap"
+version = "0.1.0"
+dependencies = [
+ "rustlavel-auth",
+ "rustlavel-core",
+ "rustls",
+ "tokio",
+ "tokio-rustls",
+ "webpki-roots 0.26.11",
+]
+
+[[package]]
 name = "rustlavel-macros"
 version = "0.1.0"
 
@@ -831,11 +847,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustlavel-otel"
+version = "0.1.0"
+dependencies = [
+ "rustlavel-client",
+ "rustlavel-core",
+ "rustlavel-http",
+ "tokio",
+]
+
+[[package]]
 name = "rustlavel-queue"
 version = "0.1.0"
 dependencies = [
  "rustlavel-core",
  "rustlavel-db",
+ "rustlavel-http",
+ "tokio",
+]
+
+[[package]]
+name = "rustlavel-search"
+version = "0.1.0"
+dependencies = [
+ "rustlavel-client",
+ "rustlavel-core",
  "rustlavel-http",
  "tokio",
 ]
