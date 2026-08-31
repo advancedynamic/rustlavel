@@ -30,6 +30,8 @@ pub use rustlavel_cache as cache;
 pub use rustlavel_client as client;
 #[cfg(feature = "db")]
 pub use rustlavel_db as db;
+#[cfg(feature = "debugbar")]
+pub use rustlavel_debugbar as debugbar;
 #[cfg(feature = "i18n")]
 pub use rustlavel_i18n as i18n;
 #[cfg(feature = "vault")]

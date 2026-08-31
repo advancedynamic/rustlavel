@@ -16,6 +16,7 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("cache", &["storage/cache"]),
     ("client", &[]),
     ("db", &["database/migrations", "database/seeders"]),
+    ("debugbar", &[]),
     ("i18n", &["lang"]),
     ("ldap", &[]),
     ("mail", &["resources/views"]),

@@ -119,6 +119,10 @@ Publishing model: one repository, many crates — the way `laravel/framework` ho
 - [x] Generators: `make:job`, `make:mail`, `make:notification`, `make:mcp-tool`
 - [x] Application commands: `migrate`, `migrate:rollback/fresh/status`, `db:seed`, `queue:work`, `queue:failed`, `schedule:run`
 - [x] `rustlavel-ws`: WebSocket (RFC 6455) from scratch plus broadcasting; private and presence channels; a subscriber that falls behind is dropped rather than allowed to grow a queue
+- [x] `rustlavel-debugbar` — Laravel Debugbar's shape: the current request's queries, cache and
+      timings drawn on the page itself, with repeated queries called out rather than merely
+      counted. Reads the same instrumentation bus as Telescope and metrics; refuses to appear
+      in anything but an HTML page, and refuses production unless said so in full.
 - [ ] Pennant-style feature flags — not yet
 - [ ] `make:crud`, `tinker` — not yet
 

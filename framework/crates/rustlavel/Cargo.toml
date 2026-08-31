@@ -16,6 +16,7 @@ rustlavel-auth = { workspace = true, optional = true }
 rustlavel-cache = { workspace = true, optional = true }
 rustlavel-client = { workspace = true, optional = true }
 rustlavel-db = { workspace = true, optional = true }
+rustlavel-debugbar = { workspace = true, optional = true }
 rustlavel-i18n = { workspace = true, optional = true }
 rustlavel-ldap = { workspace = true, optional = true }
 rustlavel-mail = { workspace = true, optional = true }
@@ -46,6 +47,8 @@ auth = ["dep:rustlavel-auth"]
 cache = ["dep:rustlavel-cache"]
 client = ["dep:rustlavel-client"]
 db = ["dep:rustlavel-db"]
+# The development overlay. Off in production unless said so in full.
+debugbar = ["dep:rustlavel-debugbar"]
 i18n = ["dep:rustlavel-i18n"]
 # Authenticating against a directory. Brings the guard along, since a
 # successful bind has to establish a session to be worth anything.
@@ -80,6 +83,7 @@ full = [
     "cache",
     "client",
     "db",
+    "debugbar",
     "i18n",
     "ldap",
     "mail",

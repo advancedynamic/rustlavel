@@ -104,6 +104,7 @@ App::new()?
 | `rustlavel-ldap` | LDAP v3 with BER written here; authenticating against a directory |
 | `rustlavel-search` | Elasticsearch and OpenSearch |
 | `rustlavel-otel` | Traces and metrics over OTLP, from the events already being emitted |
+| `rustlavel-debugbar` | A development overlay on the page: this request's queries, cache, timing |
 | `rustlavel-telescope` | The debugging dashboard |
 | `rustlavel-metrics` | Prometheus metrics from the events already being emitted |
 | `rustlavel-openapi` | API documentation generated from the routes |

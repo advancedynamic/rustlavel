@@ -657,6 +657,7 @@ dependencies = [
  "rustlavel-client",
  "rustlavel-core",
  "rustlavel-db",
+ "rustlavel-debugbar",
  "rustlavel-http",
  "rustlavel-i18n",
  "rustlavel-ldap",
@@ -746,6 +747,15 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "webpki-roots 0.26.11",
+]
+
+[[package]]
+name = "rustlavel-debugbar"
+version = "0.1.0"
+dependencies = [
+ "rustlavel-core",
+ "rustlavel-http",
+ "tokio",
 ]
 
 [[package]]
