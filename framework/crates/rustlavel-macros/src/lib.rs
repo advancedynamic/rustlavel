@@ -188,9 +188,100 @@ const _: Option<&Attributes> = None;
 
 // The parser and helpers are unit-tested here; the generated code is exercised
 // by integration tests in rustlavel-db, which is the only place it can compile.
+
+
+/// `#[rustlavel::main]` — start the application without naming a runtime.
+///
+/// Async Rust needs a runtime, and the standard library ships none: `async fn`
+/// compiles to a state machine that nothing in `std` will drive. So one has to
+/// exist, and here it is Tokio.
+///
+/// What a person using this framework should not have to do is *know* that.
+/// Adding `rustlavel` and then being told to add a second, unrelated-looking
+/// crate before anything compiles is the kind of paper cut that makes a
+/// framework feel like a pile of parts. This attribute and the `rustlavel::tokio`
+/// re-export exist so the runtime is a detail of the framework rather than a
+/// step in the reader's setup.
+///
+/// ```ignore
+/// use rustlavel::prelude::*;
+///
+/// #[rustlavel::main]
+/// async fn main() -> Result<()> {
+///     App::new()?.routes(routes::web::routes).run().await
+/// }
+/// ```
+///
+/// `#[tokio::main]` still works for anyone who wants the runtime in their own
+/// hands — this replaces nothing, it only removes a required step.
+#[proc_macro_attribute]
+pub fn main(_attributes: TokenStream, item: TokenStream) -> TokenStream {
+    runtime_wrapper(item, "main")
+}
+
+/// `#[rustlavel::test]` — the same, for an async test.
+#[proc_macro_attribute]
+pub fn test(_attributes: TokenStream, item: TokenStream) -> TokenStream {
+    runtime_wrapper(item, "test")
+}
+
+/// Rewrite `async fn name(..) -> T { body }` as a blocking `fn` that builds a
+/// runtime and blocks on the body.
+///
+/// Written by hand against the token stream, like everything else in this
+/// crate: no syn, no quote. The shape being rewritten is narrow — an `async fn`
+/// with no arguments — so the parsing can be too, and anything that does not
+/// match gets a message naming what was expected rather than a torrent of
+/// errors from further down the compile.
+fn runtime_wrapper(item: TokenStream, which: &str) -> TokenStream {
+    let source = item.to_string();
+
+    let Some(async_at) = source.find("async fn ") else {
+        return compile_error(&format!(
+            "#[rustlavel::{which}] goes on an `async fn`. This one is not async — if it does \
+             not await anything, it does not need the attribute."
+        ));
+    };
+
+    // Everything before `async` is attributes and visibility, and has to be
+    // kept: `#[allow(...)]` or `pub` above this attribute is still the user's.
+    let leading = &source[..async_at];
+    let rest = &source[async_at + "async ".len()..];
+
+    let Some(brace_at) = rest.find('{') else {
+        return compile_error(&format!(
+            "#[rustlavel::{which}] needs a function with a body."
+        ));
+    };
+    let signature = &rest[..brace_at];
+    let body = &rest[brace_at..];
+
+    let test_attribute = if which == "test" { "#[::core::prelude::v1::test]" } else { "" };
+
+    format!(
+        "{test_attribute}{leading}{signature}{{
+            ::rustlavel::tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect(\"the async runtime could not be started\")
+                .block_on(async {body})
+        }}"
+    )
+    .parse()
+    .unwrap_or_else(|error| {
+        compile_error(&format!("#[rustlavel::{which}] produced code that will not parse: {error}"))
+    })
+}
+
+fn compile_error(message: &str) -> TokenStream {
+    format!("::core::compile_error!({:?});", message).parse().expect("a literal parses")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // Named imports rather than a glob: this crate now exports an attribute
+    // called `test`, and a glob would shadow the one that makes these run.
+    use super::{pluralize, snake_case};
 
     #[test]
     fn derives_conventional_table_names() {

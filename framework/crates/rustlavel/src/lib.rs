@@ -77,6 +77,21 @@ pub use rustlavel_ws as ws;
 #[cfg(feature = "view")]
 pub use view::{Views, engine_from_config};
 
+/// The async runtime, re-exported so an application never has to add it.
+///
+/// Async Rust requires a runtime and the standard library provides none: an
+/// `async fn` compiles to a state machine that nothing in `std` will drive.
+/// That is a fact about the language rather than a choice made here — but a
+/// person adding this framework should not then be told to add a second,
+/// unrelated-looking crate before anything compiles.
+pub use tokio;
+
+/// Start the application without naming a runtime: `#[rustlavel::main]`.
+///
+/// `#[tokio::main]` still works for anyone who wants the runtime in their own
+/// hands. This replaces nothing; it removes a required step.
+pub use rustlavel_macros::{main, test};
+
 pub use rustlavel_core::{Config, Context, Error, Event, Json, Result, config, env, events, json, log};
 pub use rustlavel_http::{
     Cookie, Files, Handler, Headers, Method, Middleware, Next, Plugin, Request, Resource, Response,

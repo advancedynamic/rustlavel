@@ -10,6 +10,11 @@ repository.workspace = true
 [dependencies]
 rustlavel-core.workspace = true
 rustlavel-http.workspace = true
+# Both re-exported, so an application never adds a runtime or a macro crate of
+# its own. Async Rust requires a runtime and std ships none; that should be the
+# framework's problem, not a second `cargo add` before anything compiles.
+rustlavel-macros.workspace = true
+tokio = { workspace = true }
 # Opt-in packages. What is not enabled is never compiled.
 rustlavel-ai = { workspace = true, optional = true }
 rustlavel-auth = { workspace = true, optional = true }

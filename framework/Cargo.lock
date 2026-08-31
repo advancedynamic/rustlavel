@@ -661,6 +661,7 @@ dependencies = [
  "rustlavel-http",
  "rustlavel-i18n",
  "rustlavel-ldap",
+ "rustlavel-macros",
  "rustlavel-mail",
  "rustlavel-mcp",
  "rustlavel-metrics",

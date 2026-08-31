@@ -16,9 +16,17 @@ pub struct Console;
 
 impl Console {
     /// Handle a forwarded command, or say it is not one.
-    /// `args` is only read by commands that take options, so it is unused when
-    /// those packages are not enabled.
-    pub async fn dispatch(app: App, command: &str, _args: &[String]) -> Result<()> {
+    ///
+    /// Both parameters are read only by commands the optional packages bring,
+    /// so with none of them enabled neither is touched. They keep their names
+    /// with an underscore rather than being renamed per feature, because the
+    /// alternative is a warning in *an application's* build about a variable
+    /// inside this framework — which is somebody else's compiler output, and
+    /// not a place to leave litter.
+    pub async fn dispatch(_app: App, command: &str, _args: &[String]) -> Result<()> {
+        #[cfg(any(feature = "db", feature = "queue"))]
+        let app = _app;
+
         // `schedule:run` consumes the application; the rest only borrow it.
         match command {
             #[cfg(feature = "db")]

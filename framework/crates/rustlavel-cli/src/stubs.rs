@@ -28,13 +28,12 @@ path = "src/main.rs"
 
 [dependencies]
 rustlavel = { {{dependency}} }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 "#;
 
 pub const MAIN_RS: &str = r#"use rustlavel::prelude::*;
 use {{crate_name}}::routes;
 
-#[tokio::main]
+#[rustlavel::main]
 async fn main() -> Result<()> {
     App::new()?
         .routes(routes::web::routes)
@@ -51,7 +50,7 @@ async fn main() -> Result<()> {
 pub const MAIN_RS_DB: &str = r#"use rustlavel::prelude::*;
 use {{crate_name}}::{database, routes};
 
-#[tokio::main]
+#[rustlavel::main]
 async fn main() -> Result<()> {
     App::new()?
         .routes(routes::web::routes)
@@ -161,7 +160,7 @@ fn app() -> App {
     App::bare().routes({{crate_name}}::routes::web::routes)
 }
 
-#[tokio::test]
+#[rustlavel::test]
 async fn the_home_page_renders() {
     app().test_client().get("/").await.assert_ok();
 }
