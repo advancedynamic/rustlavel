@@ -610,8 +610,9 @@ mod tests {
 
     #[test]
     fn a_server_span_carries_kind_two_and_both_timestamps() {
+        let context = SpanContext::parse_traceparent(SAMPLE).expect("valid");
         let start = SystemTime::UNIX_EPOCH + Duration::from_secs(1);
-        let span = Span::new(SpanContext::root(), "GET /orders", SpanKind::Server)
+        let span = Span::new(context, "GET /orders", SpanKind::Server)
             .between(start, start + Duration::from_millis(5));
         let bytes = span.encode().into_bytes();
 
@@ -626,13 +627,18 @@ mod tests {
         );
     }
 
+    /// The fixed sample context matters here, not just for repeatability: this
+    /// asserts a tag byte is *absent*, and random identifiers contain an
+    /// arbitrary 0x7a about one run in eleven. The sample's ids contain none,
+    /// so the absence really is the absence of the field.
     #[test]
     fn an_unset_status_writes_no_status_field_and_an_error_writes_both_parts() {
-        let unset = Span::new(SpanContext::root(), "x", SpanKind::Internal).encode().into_bytes();
+        let context = SpanContext::parse_traceparent(SAMPLE).expect("valid");
+        let unset = Span::new(context, "x", SpanKind::Internal).encode().into_bytes();
         // Field 15, wire type 2, is tag 0x7a.
-        assert!(!unset.contains(&0x7a));
+        assert!(!unset.contains(&0x7a), "{unset:02x?}");
 
-        let failed = Span::new(SpanContext::root(), "x", SpanKind::Internal)
+        let failed = Span::new(context, "x", SpanKind::Internal)
             .status(SpanStatus::Error("boom".into()))
             .encode()
             .into_bytes();
