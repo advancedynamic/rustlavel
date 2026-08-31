@@ -35,5 +35,12 @@ Rustlavel is a full-stack Rust web framework inspired by **Laravel 13**, built *
 ## Project context
 
 - Published to GitHub under `advancedynamic` (not `galihlasahido`); gh multi-account over HTTPS.
+- **This machine has two GitHub accounts, and the repository pins itself to the right one.** `gh`'s credential helper only ever returns a token for whichever account is *active*, so anything that ran `gh auth switch` — including another agent — used to make the next push fail with a 403 naming the wrong user. A username in the remote URL does not help; `gh auth git-credential` ignores it. The fix is in `.git/config`: the inherited helper list is reset for `github.com`, and a repo-local helper calls `gh auth token --user advancedynamic`, which returns that account's token whatever is active. It is repo-local, so it is not in the tree and a fresh clone needs it again:
+
+  ```sh
+  git config --local --add credential.https://github.com.helper ""
+  git config --local --add credential.https://github.com.helper \
+    '!f() { test "$1" = get && printf "username=advancedynamic\npassword=%s\n" "$(gh auth token --user advancedynamic)"; }; f'
+  ```
 - References: Laravel 13 (slim skeleton, first-party AI SDK, passkeys) for the shape, and Loco.rs as the competitor to measure against.
 - Supported databases: PostgreSQL, MySQL, SQL Server. **Oracle is deliberately excluded** — its network protocol has never been published, so a driver means either wrapping the proprietary OCI library or a multi-year reverse-engineering effort. `ROADMAP.md` records the reasoning.
