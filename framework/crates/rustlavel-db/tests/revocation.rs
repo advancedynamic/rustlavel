@@ -97,7 +97,16 @@ async fn mysql_lets_an_open_connection_outlive_its_user() {
         .run(&format!("create user '{user}'@'%' identified by '{password}'"))
         .await
         .expect("create the user");
-    admin.run(&format!("grant select on appdb.* to '{user}'@'%'")).await.expect("grant");
+    // The database comes from the URL rather than a literal. Hardcoding one
+    // meant this passed against the container the test was written with and
+    // failed against any other, which is a property of the test rather than of
+    // MySQL — and it took a full-suite run against a differently-named database
+    // to notice.
+    let database = url.rsplit('/').next().and_then(|d| d.split('?').next()).unwrap_or("");
+    admin
+        .run(&format!("grant select on `{database}`.* to '{user}'@'%'"))
+        .await
+        .expect("grant");
 
     // MySQL 8.4 removed `mysql_native_password`, so this account uses
     // caching_sha2_password, whose full path needs an encrypted channel — a
