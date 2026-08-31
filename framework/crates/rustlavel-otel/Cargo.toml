@@ -1,0 +1,17 @@
+[package]
+name = "rustlavel-otel"
+description = "OpenTelemetry for Rustlavel: traces and metrics exported over OTLP"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-client.workspace = true
+rustlavel-http.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }
