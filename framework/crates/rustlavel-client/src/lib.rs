@@ -264,7 +264,7 @@ impl RequestBuilder {
         let exchange = async {
             stream.write_all(&request).await.map_err(Error::Io)?;
             stream.flush().await.map_err(Error::Io)?;
-            read_response(&mut stream, self.client.max_body_bytes).await
+            read_response(&mut stream, self.method, self.client.max_body_bytes).await
         };
 
         tokio::time::timeout(self.client.timeout, exchange)
@@ -409,7 +409,31 @@ fn tls_connector() -> tokio_rustls::TlsConnector {
 }
 
 /// Read a complete response: status line, headers, then the body.
-async fn read_response(connection: &mut Connection, max_body: usize) -> Result<ClientResponse> {
+/// Whether a response to `method` with this status may carry a body at all.
+///
+/// RFC 9110 is explicit, and it matters more than it sounds: a `HEAD` response
+/// carries the `Content-Length` or `Transfer-Encoding` the *`GET`* would have
+/// had, while sending no body. A reader that believes those headers waits for
+/// bytes that are never coming.
+///
+/// Elasticsearch is where this surfaced — it answers `HEAD` with
+/// `Transfer-Encoding: chunked` and then writes nothing, not even the
+/// terminating zero-length chunk, so an existence check hung until it timed out
+/// and then reported a chunked-body error that named the wrong thing entirely.
+fn body_is_possible(method: Method, status: Status) -> bool {
+    // 204 and 304 are the other two the specification rules out, and a 1xx is
+    // informational rather than a response at all.
+    method != Method::Head
+        && status != Status::NO_CONTENT
+        && status != Status::NOT_MODIFIED
+        && status.code() >= 200
+}
+
+async fn read_response(
+    connection: &mut Connection,
+    method: Method,
+    max_body: usize,
+) -> Result<ClientResponse> {
     let mut buffer = Vec::with_capacity(8 * 1024);
 
     let head_end = loop {
@@ -426,6 +450,12 @@ async fn read_response(connection: &mut Connection, max_body: usize) -> Result<C
 
     let (status, headers) = parse_head(&buffer[..head_end])?;
     let mut body = buffer.split_off(head_end);
+
+    if !body_is_possible(method, status) {
+        // The headers may describe a body; the specification says there is not
+        // one. Believing the headers here is a hang, not a wrong answer.
+        return Ok(ClientResponse { status, headers, body: Vec::new() });
+    }
 
     if headers.get("transfer-encoding").is_some_and(|te| te.contains("chunked")) {
         body = read_chunked(connection, body, max_body).await?;
@@ -537,6 +567,33 @@ fn find_crlf(buffer: &[u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_head_response_never_has_a_body_whatever_its_headers_claim() {
+        use super::body_is_possible;
+        use rustlavel_http::{Method, Status};
+
+        // The headers on a HEAD response describe the body the GET would have
+        // returned. Reading them as a promise is a hang: Elasticsearch answers
+        // HEAD with `Transfer-Encoding: chunked` and then writes nothing at
+        // all, not even the terminating zero-length chunk.
+        assert!(!body_is_possible(Method::Head, Status::OK));
+        assert!(!body_is_possible(Method::Head, Status::NOT_FOUND));
+
+        assert!(body_is_possible(Method::Get, Status::OK));
+        assert!(body_is_possible(Method::Post, Status::CREATED));
+    }
+
+    #[test]
+    fn the_two_statuses_that_forbid_a_body_are_honoured() {
+        use super::body_is_possible;
+        use rustlavel_http::{Method, Status};
+
+        assert!(!body_is_possible(Method::Get, Status::NO_CONTENT));
+        assert!(!body_is_possible(Method::Get, Status::NOT_MODIFIED));
+        // A 304 in particular arrives with the cached response's
+        // Content-Length, which is exactly the trap above in another costume.
+    }
+
     use super::*;
 
     #[test]
