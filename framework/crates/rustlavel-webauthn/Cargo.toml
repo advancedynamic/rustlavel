@@ -1,0 +1,25 @@
+[package]
+name = "rustlavel-webauthn"
+description = "Passkeys for Rustlavel: WebAuthn registration and authentication, written on the W3C specification"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-http.workspace = true
+rustlavel-auth.workspace = true
+
+# Cryptography only, and only the verifying half. WebAuthn is a signature
+# protocol: everything else here — CBOR, COSE framing, base64url, the ceremony
+# logic — is written from scratch, because none of it is cryptography. Writing
+# an ECDSA verifier is, and getting it subtly wrong means accepting forged
+# assertions, which is the one failure this package exists to prevent.
+sha2 = "0.10"
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+tokio = { workspace = true }

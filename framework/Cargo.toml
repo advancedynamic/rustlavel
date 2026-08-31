@@ -31,5 +31,6 @@ rustlavel-ai = { path = "crates/rustlavel-ai", version = "0.1.0" }
 rustlavel-queue = { path = "crates/rustlavel-queue", version = "0.1.0" }
 rustlavel-mail = { path = "crates/rustlavel-mail", version = "0.1.0" }
 rustlavel-mcp = { path = "crates/rustlavel-mcp", version = "0.1.0" }
+rustlavel-webauthn = { path = "crates/rustlavel-webauthn", version = "0.1.0" }
 rustlavel-ws = { path = "crates/rustlavel-ws", version = "0.1.0" }
 tokio = { version = "1", features = ["full"] }
