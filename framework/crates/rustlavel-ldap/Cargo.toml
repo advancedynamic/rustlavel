@@ -1,0 +1,38 @@
+[package]
+name = "rustlavel-ldap"
+description = "LDAP for Rustlavel: bind, search, and authenticating a user against a directory"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+# For `Authenticatable`, so an LDAP user drops into a session like any other.
+rustlavel-auth.workspace = true
+tokio.workspace = true
+
+# The cryptography exception from CLAUDE.md rule one. Everything else in this
+# crate is written here — BER, the LDAP message framing, the filters — because
+# a serialisation format is something a person can write correctly. A TLS stack
+# is not, and a simple bind puts a password on the wire in the clear, so the
+# encryption around it has to be somebody's full-time job.
+#
+# aws_lc_rs with prefer-post-quantum, not ring: that is what puts the
+# X25519MLKEM768 hybrid key exchange first in the ClientHello. It matters more
+# here than almost anywhere else in the framework, because a recorded LDAP
+# handshake decrypted years from now yields a directory password. Enabling two
+# providers at once makes rustls refuse to guess and panic in
+# `ClientConfig::builder()`, so there is exactly one.
+tokio-rustls = "0.26"
+rustls = { version = "0.23", default-features = false, features = [
+    "std",
+    "aws_lc_rs",
+    "prefer-post-quantum",
+    "tls12",
+] }
+webpki-roots = "0.26"
+
+[dev-dependencies]
+tokio = { workspace = true }
