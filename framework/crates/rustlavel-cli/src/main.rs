@@ -14,6 +14,7 @@ mod naming;
 mod new;
 mod project;
 mod serve;
+mod storage;
 mod stubs;
 
 use project::Project;
@@ -34,6 +35,7 @@ fn main() {
         "doctor" => doctor::run(),
         "build" => build::run(rest),
         "make:docker" => Project::discover().and_then(|p| build::make_docker(&p)),
+        "storage:link" => Project::discover().and_then(|p| storage::link(&p, rest)),
         "key:generate" => key_generate(),
         "help" | "--help" | "-h" => {
             help();
@@ -100,6 +102,7 @@ fn help() {
     row("doctor", "Diagnose why the app will not start");
     row("build", "Build the single deployable binary");
     row("key:generate", "Generate APP_KEY into .env");
+    row("storage:link", "Link public/storage to storage/app/public");
     println!();
 
     println!("{}", console::bold("GENERATORS"));

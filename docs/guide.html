@@ -139,6 +139,25 @@ mean giving up the compile-time guarantees that are the point.</p>
 <p>Blade-shaped, with escaping that cannot be switched off by accident, and reload-from-disk
 while you are developing.</p>
 
+<h2>Making stored files public</h2>
+
+<p>Uploads belong under <code>storage/app</code>, outside the web root — a directory the
+server hands out verbatim is not one anybody should be able to write arbitrary files into.
+But some of those files are meant to be seen.</p>
+
+<pre><code>rustlavel storage:link</code></pre>
+
+<p>That links <code>public/storage</code> to <code>storage/app/public</code>, so one copy of
+each file is reachable over HTTP and the rest of <code>storage/app</code> stays out of reach.
+Running it again is not an error, which matters because it belongs in a deploy script.</p>
+
+<div class="note">
+<p>It refuses to delete a real directory at <code>public/storage</code>, even with
+<code>--force</code>. That directory may hold files this command did not put there, and
+removing them is not a risk it gets to take on your behalf. <code>--force</code> repoints a
+link; it does not delete anybody's files.</p>
+</div>
+
 <h2>What is different from Laravel</h2>
 
 <table>
