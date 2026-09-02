@@ -106,7 +106,7 @@ pub mod prelude {
     pub use rustlavel_http::{
         BodyLimit, Compress, Cookie, Cors, ETag, Health, IntoResponse, JsonResource, Method,
         Middleware, Next, Request, RequestId, ResourceResponse, Response, Router, Status, Timeout,
-        attributes,
+        VersionHeader, attributes,
     };
     pub use rustlavel_core::{debug, error, info, warn};
 

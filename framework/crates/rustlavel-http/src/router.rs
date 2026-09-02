@@ -47,6 +47,12 @@ pub struct Route {
     /// Documented parameters: name, and what it is.
     pub parameters: Vec<(String, String)>,
     pub deprecated: bool,
+    /// The API version this route belongs to, from [`Router::version`].
+    pub version: Option<String>,
+    /// When the route was deprecated (unix time), sent as `Deprecation`.
+    pub deprecated_at: Option<i64>,
+    /// When the route will be removed (unix time), sent as `Sunset`.
+    pub sunset: Option<i64>,
     segments: Vec<Segment>,
     handler: Arc<dyn Handler>,
     middleware: Arc<Vec<Arc<dyn Middleware>>>,
@@ -134,6 +140,7 @@ pub struct Router {
     routes: Vec<Route>,
     /// Prefix and middleware of the group currently being defined.
     scope_prefix: String,
+    scope_version: Option<String>,
     scope_middleware: Vec<Arc<dyn Middleware>>,
     /// Runs for every request, whatever the route.
     global_middleware: Vec<Arc<dyn Middleware>>,
@@ -161,12 +168,37 @@ impl Router {
         let mut child = Router {
             scope_prefix: join_paths(&self.scope_prefix, prefix),
             scope_middleware: self.scope_middleware.clone(),
+            scope_version: self.scope_version.clone(),
             ..Router::default()
         };
         define(&mut child);
 
         // A group's global-looking middleware belongs to that group only.
         debug_assert!(child.global_middleware.is_empty() || !child.routes.is_empty());
+        self.routes.extend(child.routes);
+        self
+    }
+
+    /// Register one version of an API: a group under `/{version}` whose routes
+    /// know which version they are.
+    ///
+    /// ```ignore
+    /// r.version("v1", |v1| { v1.get("/users", v1::users::index); });
+    /// r.version("v2", |v2| { v2.get("/users", v2::users::index); });
+    /// ```
+    ///
+    /// A handler can read the version with `req.api_version()`, which lets one
+    /// handler serve two versions where the difference is small, and generated
+    /// documentation groups routes by it. Versioning by header instead of path
+    /// is [`crate::versioning::VersionHeader`].
+    pub fn version(&mut self, version: &str, define: impl FnOnce(&mut Router)) -> &mut Self {
+        let mut child = Router {
+            scope_prefix: join_paths(&self.scope_prefix, &format!("/{}", version.trim_start_matches('/'))),
+            scope_middleware: self.scope_middleware.clone(),
+            scope_version: Some(version.trim_start_matches('/').to_string()),
+            ..Router::default()
+        };
+        define(&mut child);
         self.routes.extend(child.routes);
         self
     }
@@ -189,6 +221,9 @@ impl Router {
             responses: Vec::new(),
             parameters: Vec::new(),
             deprecated: false,
+            version: self.scope_version.clone(),
+            deprecated_at: None,
+            sunset: None,
             handler: Arc::new(handler),
             middleware: Arc::new(self.scope_middleware.clone()),
         });
@@ -267,10 +302,15 @@ impl Router {
 
             request.set_params(params);
             request.route = Some(route.pattern.clone());
+            if let Some(version) = &route.version {
+                request.extend(crate::versioning::ApiVersion(version.clone()));
+            }
 
             let mut stack = self.global_middleware.clone();
             stack.extend(route.middleware.iter().cloned());
-            return run_guarded(Next::new(Arc::new(stack), Arc::clone(&route.handler)), request).await;
+            let response =
+                run_guarded(Next::new(Arc::new(stack), Arc::clone(&route.handler)), request).await;
+            return crate::versioning::stamp_lifecycle(route, response);
         }
 
         let response = if path_matched {
@@ -400,6 +440,44 @@ impl RouteHandle<'_> {
     /// Mark the route as deprecated in generated documentation.
     pub fn deprecated(self) -> Self {
         self.router.routes[self.index].deprecated = true;
+        self
+    }
+
+    /// Say when the route was deprecated, as `YYYY-MM-DD`.
+    ///
+    /// Responses then carry `Deprecation: @<unix time>` (RFC 9745), which is
+    /// how a client library learns to warn its own developers. Implies
+    /// [`RouteHandle::deprecated`].
+    ///
+    /// # Panics
+    ///
+    /// On a date that is not `YYYY-MM-DD` — this is called at startup, with a
+    /// literal, and a typo should fail there rather than send garbage.
+    pub fn deprecated_at(self, date: &str) -> Self {
+        let when = crate::date::parse_ymd(date)
+            .unwrap_or_else(|| panic!("`{date}` is not a date; deprecated_at wants YYYY-MM-DD"));
+        let route = &mut self.router.routes[self.index];
+        route.deprecated = true;
+        route.deprecated_at = Some(when);
+        self
+    }
+
+    /// Say when the route will stop working, as `YYYY-MM-DD`.
+    ///
+    /// Responses then carry `Sunset` (RFC 8594) with that date, and the route
+    /// is marked deprecated. Nothing removes the route on the day — that is a
+    /// deploy, and a person's decision — but every client has been told.
+    ///
+    /// # Panics
+    ///
+    /// On a date that is not `YYYY-MM-DD`, for the reason given on
+    /// [`RouteHandle::deprecated_at`].
+    pub fn sunset(self, date: &str) -> Self {
+        let when = crate::date::parse_ymd(date)
+            .unwrap_or_else(|| panic!("`{date}` is not a date; sunset wants YYYY-MM-DD"));
+        let route = &mut self.router.routes[self.index];
+        route.deprecated = true;
+        route.sunset = Some(when);
         self
     }
 }

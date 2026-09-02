@@ -29,6 +29,7 @@ pub mod testing;
 pub mod timeout;
 pub mod upgrade;
 pub mod url;
+pub mod versioning;
 
 pub use body_limit::BodyLimit;
 pub use compression::Compress;
@@ -52,3 +53,4 @@ pub use status::Status;
 pub use testing::{TestClient, TestResponse};
 pub use timeout::Timeout;
 pub use upgrade::{Upgrade, Upgraded};
+pub use versioning::{ApiVersion, VersionHeader};

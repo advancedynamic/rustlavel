@@ -99,6 +99,21 @@ pub fn parse_http_date(text: &str) -> Option<i64> {
     Some(days * 86_400 + hour * 3600 + minute * 60 + second)
 }
 
+/// `YYYY-MM-DD` at midnight UTC, as a unix timestamp.
+///
+/// For dates written in configuration and code — a sunset, a deprecation —
+/// where the ISO form is what a person types.
+pub fn parse_ymd(text: &str) -> Option<i64> {
+    let mut parts = text.trim().split('-');
+    let year: i64 = parts.next()?.parse().ok()?;
+    let month: u32 = parts.next()?.parse().ok()?;
+    let day: u32 = parts.next()?.parse().ok()?;
+    if parts.next().is_some() || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    Some(days_from_civil(year, month, day) * 86_400)
+}
+
 fn month_number(name: &str) -> Option<u32> {
     const MONTHS: [&str; 12] = [
         "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
@@ -142,6 +157,16 @@ mod tests {
         for unix in [0, 1, 86_399, 951_782_400, 1_000_000_000, 1_709_164_800, 4_102_444_800] {
             assert_eq!(parse_http_date(&http_date(unix)), Some(unix), "{unix}");
         }
+    }
+
+    #[test]
+    fn reads_iso_dates_at_midnight() {
+        assert_eq!(parse_ymd("1970-01-01"), Some(0));
+        assert_eq!(parse_ymd("1994-11-06"), Some(784_111_777 - (8 * 3600 + 49 * 60 + 37)));
+        assert_eq!(parse_ymd("2027-01-01"), Some(1_798_761_600));
+        assert_eq!(parse_ymd("2027-13-01"), None);
+        assert_eq!(parse_ymd("2027-01"), None);
+        assert_eq!(parse_ymd("tomorrow"), None);
     }
 
     #[test]

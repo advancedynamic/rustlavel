@@ -123,6 +123,12 @@ fn operation(route: &Route) -> Json {
     if route.deprecated {
         fields.push(("deprecated", Json::from(true)));
     }
+    // OpenAPI has no field for a retirement date, so it goes in an extension
+    // — the `x-` prefix is the specification's own escape hatch — as the same
+    // HTTP-date the Sunset header carries.
+    if let Some(sunset) = route.sunset {
+        fields.push(("x-sunset", Json::from(rustlavel_http::date::http_date(sunset))));
+    }
 
     let parameters = parameters(route);
     if !parameters.is_empty() {

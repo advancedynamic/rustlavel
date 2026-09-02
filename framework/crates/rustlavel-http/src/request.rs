@@ -240,6 +240,13 @@ impl Request {
         self.extensions.insert(TypeId::of::<T>(), Box::new(value));
     }
 
+    /// The API version this request is for — from the route's
+    /// [`Router::version`](crate::Router::version) group, or from the
+    /// [`VersionHeader`](crate::versioning::VersionHeader) middleware.
+    pub fn api_version(&self) -> Option<&str> {
+        self.extension::<crate::versioning::ApiVersion>().map(|v| v.0.as_str())
+    }
+
     /// The identifier the [`RequestId`](crate::request_id::RequestId)
     /// middleware assigned, for log lines and error reports.
     pub fn request_id(&self) -> Option<&str> {
