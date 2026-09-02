@@ -29,6 +29,10 @@ pub struct Validator {
     fields: Vec<(String, Rules)>,
     messages: Messages,
     wants_json: bool,
+    /// The session to leave the messages in, and where to send the browser.
+    /// Both are captured from the request, since the response is built later.
+    flash: Option<(std::sync::Arc<dyn rustlavel_http::Flash>, String)>,
+    old_input: Option<rustlavel_core::Json>,
 }
 
 impl Validator {
@@ -41,7 +45,24 @@ impl Validator {
     /// the failure response can be negotiated later, when the request is gone.
     pub fn from_request(request: &mut Request) -> Self {
         let wants_json = request.wants_json();
-        Validator { input: Input::from_request(request), wants_json, ..Validator::default() }
+
+        // Read before validating, because a failure has to hand back what was
+        // typed — and because `form()` borrows the request mutably, which the
+        // response cannot do later.
+        let old_input = (!wants_json).then(|| rustlavel_http::flash::old_input_of(request));
+        let flash = (!wants_json)
+            .then(|| {
+                request.flash().cloned().map(|store| (store, request.previous_url()))
+            })
+            .flatten();
+
+        Validator {
+            input: Input::from_request(request),
+            wants_json,
+            flash,
+            old_input,
+            ..Validator::default()
+        }
     }
 
     /// Add one field's rules, as a Laravel string or as a built rule set.
@@ -96,6 +117,22 @@ impl Validator {
         errors
     }
 
+    /// Put the messages and the old input where the next request will find
+    /// them, and tell the errors where to send the browser.
+    ///
+    /// Done here rather than in `into_response` because this is the last place
+    /// that still has the session — by the time a `Response` is built, the
+    /// request is gone.
+    fn leave_behind(&self, errors: Errors) -> Errors {
+        let Some((flash, back)) = &self.flash else { return errors };
+
+        flash.flash(rustlavel_http::flash::ERRORS_KEY, errors.to_field_json());
+        if let Some(old) = &self.old_input {
+            flash.flash(rustlavel_http::flash::OLD_INPUT_KEY, old.clone());
+        }
+        errors.redirecting_to(Some(back.clone()))
+    }
+
     pub fn passes(&self) -> bool {
         self.errors().is_empty()
     }
@@ -108,7 +145,7 @@ impl Validator {
     pub fn validate(&self) -> Result<Validated, Errors> {
         let errors = self.errors();
         if !errors.is_empty() {
-            return Err(errors);
+            return Err(self.leave_behind(errors));
         }
         let mut fields = BTreeMap::new();
         for (field, _) in &self.fields {

@@ -10,3 +10,10 @@ repository.workspace = true
 [dependencies]
 rustlavel-core.workspace = true
 rustlavel-http.workspace = true
+
+[dev-dependencies]
+# The round-trip test needs a session to leave the messages in, which is what
+# `tests/redirect_back.rs` exists to exercise. A dev-dependency only: this crate
+# must not depend on sessions to validate anything.
+rustlavel-auth.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

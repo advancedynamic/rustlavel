@@ -31,6 +31,39 @@ pub async fn shell(req: &Request, nav: &str) -> ViewContext {
         .with("theme_class", Json::from(if theme == "dark" { "dark" } else { "" }))
         .with("theme_next", Json::from(if theme == "dark" { "light" } else { "dark" }));
 
+    // Whatever a failed form left behind on the way here.
+    //
+    // `validate(&mut req, ...)?` redirects a browser back to the form and
+    // flashes the messages and the input; this is what puts them in front of
+    // the template, so a controller that does nothing but propagate the error
+    // with `?` still gets a redrawn form. The controllers below also render in
+    // place for the cases where they have already loaded a record, and
+    // `page::errors` covers that path — the two agree because both write the
+    // same `error_<field>` names.
+    let errors = req.errors();
+    let old = req.old();
+    let mut summary: Option<String> = None;
+
+    if let Some(fields) = errors.as_object() {
+        for (field, messages) in fields {
+            if let Some(message) = messages.as_array().and_then(|m| m.first()).and_then(Json::as_str) {
+                if summary.is_none() {
+                    summary = Some(message.to_string());
+                }
+                context = context.with(format!("error_{field}"), Json::from(message));
+            }
+        }
+    }
+    if let Some(fields) = old.as_object() {
+        for (field, value) in fields {
+            context = context.with(format!("old_{field}"), value.clone());
+        }
+    }
+    context = context
+        .with("errors", errors)
+        .with("old", old)
+        .with("error_summary", summary.map_or(Json::Null, Json::from));
+
     // One flash message, consumed as it is read.
     let session = req.session();
     let message = session.forget("flash_message").and_then(|v| v.as_str().map(str::to_string));

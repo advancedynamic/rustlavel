@@ -12,12 +12,17 @@ use std::collections::BTreeMap;
 
 /// The messages a failed validation produced, grouped by field.
 ///
-/// `wants_json` is captured when the errors are built from a request, because
-/// [`IntoResponse::into_response`] no longer has the request to negotiate with.
+/// `wants_json` and `back` are captured when the errors are built from a
+/// request, because [`IntoResponse::into_response`] no longer has the request
+/// to negotiate with or to read a `Referer` from.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Errors {
     fields: BTreeMap<String, Vec<String>>,
     wants_json: bool,
+    /// Where a browser is sent when validation fails. `None` when there is no
+    /// session to leave the messages in, which is when this falls back to
+    /// rendering them as text.
+    back: Option<String>,
 }
 
 impl Errors {
@@ -75,6 +80,17 @@ impl Errors {
         self.wants_json
     }
 
+    /// Send a browser back here instead of rendering the messages as text.
+    pub fn redirecting_to(mut self, back: Option<String>) -> Self {
+        self.back = back;
+        self
+    }
+
+    /// Where a browser will be sent, if anywhere.
+    pub fn back(&self) -> Option<&str> {
+        self.back.as_deref()
+    }
+
     pub fn with_json(mut self, wants_json: bool) -> Self {
         self.wants_json = wants_json;
         self
@@ -111,6 +127,20 @@ impl Errors {
     }
 
     /// The Laravel-shaped 422 body.
+    /// Just the field map, as a template reads it: `{"email": ["…"]}`.
+    ///
+    /// [`Errors::to_json`] wraps this in Laravel's `{"message", "errors"}`
+    /// envelope, which is right for an API response and one level too deep for
+    /// a view.
+    pub fn to_field_json(&self) -> Json {
+        Json::object(self.fields.iter().map(|(field, messages)| {
+            (
+                field.as_str(),
+                Json::Array(messages.iter().map(|m| Json::from(m.as_str())).collect()),
+            )
+        }))
+    }
+
     pub fn to_json(&self) -> Json {
         let errors = self.fields.iter().map(|(field, messages)| {
             let messages = messages.iter().map(|m| Json::from(m.as_str())).collect();
@@ -143,14 +173,31 @@ impl From<Errors> for Json {
     }
 }
 
-/// A `422`, as JSON for an API client and as plain text for a browser.
+/// A `422` for an API client; for a browser, a redirect back to the form.
 ///
-/// The HTML side is intentionally minimal for now: re-rendering the submitted
-/// form with the messages attached needs the view layer, which is a later phase.
+/// The two halves answer different questions. A JSON client asked for a result
+/// and gets one, with the status that says why. A browser asked for a page, and
+/// the useful answer is the form it just submitted, with the messages attached
+/// and the boxes still filled in.
+///
+/// It is a redirect rather than the page itself because the answer to a failed
+/// `POST` has to leave the browser somewhere reloadable. Rendering in place
+/// leaves it on a URL that re-submits the form on refresh, which is the
+/// double-submission problem in miniature — and it is why the messages travel
+/// through the session rather than in this response.
+///
+/// With no session to leave them in, this falls back to plain text. That is a
+/// degraded answer rather than a broken one, and it is what an application
+/// with no session middleware gets.
 impl IntoResponse for Errors {
     fn into_response(self) -> Response {
         if self.wants_json {
             return Response::new(Errors::STATUS).with_json(self.to_json());
+        }
+        if let Some(back) = &self.back {
+            // 303, so the browser follows it with a GET. A 302 leaves the
+            // method to the browser, and the older ones famously disagreed.
+            return Response::see_other(back.clone());
         }
         let mut body = self.summary();
         for message in self.messages().skip(1) {

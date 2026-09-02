@@ -22,7 +22,7 @@ use hmac::{Hmac, Mac};
 use rustlavel_core::{Config, Json, Result};
 use rustlavel_http::handler::BoxFuture;
 use rustlavel_http::middleware::{Middleware, Next};
-use rustlavel_http::{Cookie, Request, Response, SameSite};
+use rustlavel_http::{Cookie, Method, Request, Response, SameSite};
 use sha2::Sha256;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -166,6 +166,25 @@ struct Inner {
     path: String,
     secure: bool,
     same_site: SameSite,
+}
+
+/// The session is where a flashed value lives.
+///
+/// `flash` writes with the session's own one-request lifetime, so a value left
+/// here is gone after the next request whether or not anybody read it — which
+/// is what stops an old error message reappearing on a page three clicks later.
+impl rustlavel_http::Flash for SessionHandle {
+    fn flash(&self, key: &str, value: Json) {
+        self.lock().flash(key, value);
+    }
+
+    fn take(&self, key: &str) -> Option<Json> {
+        self.lock().forget(key)
+    }
+
+    fn peek(&self, key: &str) -> Option<Json> {
+        self.lock().get(key).cloned()
+    }
 }
 
 impl SessionManager {
@@ -319,9 +338,43 @@ impl Middleware for SessionManager {
 
             let loaded_id = session.id().to_string();
             let handle = SessionHandle::new(session);
+
+            // Read before the request is moved into the pipeline.
+            let method = request.method();
+            let wants_json = request.wants_json();
+            let target = request.target().to_string();
+
             request.extend(handle.clone());
+            // Registered a second time behind the trait, so validation and the
+            // view layer can leave and read a flash without depending on this
+            // crate. See `rustlavel_http::flash`.
+            let flash: std::sync::Arc<dyn rustlavel_http::Flash> = std::sync::Arc::new(handle.clone());
+            request.extend(flash);
 
             let response = next.run(request).await;
+
+            // Record where the visitor is, so a form that fails validation
+            // later knows where "back" is.
+            //
+            // After the handler, not before, and only for a session that is
+            // already being written. Recording unconditionally would start a
+            // session — and set a cookie — for everybody who ever loaded a
+            // page, which is both a privacy imposition and the end of caching
+            // anonymous responses. Running afterwards is what makes the common
+            // case work anyway: a page with a form has put a CSRF token in the
+            // session by now, so the request that needs this has a session by
+            // the time we ask. A page that uses no session at all falls back to
+            // the `Referer`.
+            //
+            // Only a page view counts. A POST is not somewhere to return to,
+            // and neither is a redirect or an answer to a request for JSON.
+            if matches!(method, Method::Get)
+                && !wants_json
+                && (200..300).contains(&response.status.code())
+                && handle.lock().is_dirty()
+            {
+                handle.put(rustlavel_http::flash::PREVIOUS_URL_KEY, target.clone());
+            }
 
             // Age the flash and take a copy, then drop the lock: the guard must
             // not be alive across the store's `.await`.
@@ -369,7 +422,7 @@ impl std::fmt::Debug for SessionManager {
 mod tests {
     use super::*;
     use crate::store::MemoryStore;
-    use rustlavel_http::{Method, Router, TestClient};
+    use rustlavel_http::{Router, TestClient};
 
     fn key() -> AppKey {
         AppKey::from_bytes([3u8; 32])
