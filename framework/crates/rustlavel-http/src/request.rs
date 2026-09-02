@@ -111,12 +111,53 @@ impl Request {
     }
 
     /// The client IP, honouring `X-Forwarded-For` when behind a proxy.
+    /// The client's address.
+    ///
+    /// The address that opened the socket, unless
+    /// [`TrustProxies`](crate::trusted_proxies::TrustProxies) ran and the
+    /// connection came from a proxy on its list — then it is the client
+    /// address that proxy reported.
+    ///
+    /// It deliberately does *not* read `X-Forwarded-For` on its own. A header
+    /// is something any client can send, so believing one unconditionally
+    /// does not reveal the client's address, it lets the client choose one —
+    /// and everything keyed on this, the rate limiter included, would be
+    /// defeated by a header.
     pub fn ip(&self) -> Option<String> {
-        if let Some(forwarded) = self.headers.get("x-forwarded-for")
-            && let Some(first) = forwarded.split(',').next() {
-                return Some(first.trim().to_string());
-            }
+        if let Some(forwarded) = self.extension::<crate::trusted_proxies::Forwarded>()
+            && let Some(ip) = &forwarded.ip
+        {
+            return Some(ip.clone());
+        }
         self.peer.map(|addr| addr.ip().to_string())
+    }
+
+    /// `https` when a trusted proxy said the client used TLS, or the
+    /// connection itself did; `http` otherwise.
+    ///
+    /// A proxy that terminates TLS forwards a plain request, so without this
+    /// an application behind one would build `http://` links for a site that
+    /// is entirely `https://`.
+    pub fn scheme(&self) -> &str {
+        match self.extension::<crate::trusted_proxies::Forwarded>().and_then(|f| f.scheme.as_deref())
+        {
+            Some(scheme) => scheme,
+            None => "http",
+        }
+    }
+
+    pub fn is_secure(&self) -> bool {
+        self.scheme() == "https"
+    }
+
+    /// The `Host` a trusted proxy said the client asked for.
+    pub fn forwarded_host(&self) -> Option<&str> {
+        self.extension::<crate::trusted_proxies::Forwarded>()?.host.as_deref()
+    }
+
+    /// The port a trusted proxy said the client connected to.
+    pub fn forwarded_port(&self) -> Option<u16> {
+        self.extension::<crate::trusted_proxies::Forwarded>()?.port
     }
 
     /// A route parameter: for `/users/{id}` matching `/users/7`, `param("id")`
@@ -260,6 +301,12 @@ impl Request {
 
     // --- Builders, used by the server, the router, and the test client. ---
 
+    /// Set the address the request arrived from, as the server does.
+    pub fn with_peer(mut self, peer: SocketAddr) -> Self {
+        self.peer = Some(peer);
+        self
+    }
+
     pub fn with_header(mut self, name: &str, value: impl Into<String>) -> Self {
         self.headers.set(name, value);
         self
@@ -357,9 +404,17 @@ mod tests {
     }
 
     #[test]
-    fn forwarded_header_wins_over_socket_address() {
-        let request = Request::new(Method::Get, "/").with_header("x-forwarded-for", "203.0.113.9, 10.0.0.1");
-        assert_eq!(request.ip().as_deref(), Some("203.0.113.9"));
+    fn a_forwarded_header_alone_does_not_decide_the_client_address() {
+        // This test used to assert the opposite, which was a way for any
+        // client to choose its own address and so its own rate limit bucket.
+        // The header is only evidence once `TrustProxies` has established that
+        // the connection came from a proxy that would have written it.
+        let request = Request::new(Method::Get, "/")
+            .with_peer("198.51.100.7:44321".parse().unwrap())
+            .with_header("x-forwarded-for", "203.0.113.9, 10.0.0.1");
+        assert_eq!(request.ip().as_deref(), Some("198.51.100.7"));
+        assert_eq!(request.scheme(), "http");
+        assert!(!request.is_secure());
     }
 
     #[test]

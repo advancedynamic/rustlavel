@@ -242,6 +242,13 @@ whether it can do useful work, and is what routes traffic to it.</p>
 limit of its own that protects the process; this one is policy, so a JSON endpoint that takes a
 kilobyte does not accept the fifty megabytes the avatar upload needs.</p>
 
+<p><strong>Behind a load balancer</strong>, add <code>TrustProxies</code>. Without it
+<code>req.ip()</code> is the balancer's address, which is true but not useful; with it, and only
+for a connection from an address you named, the client address the balancer reported is used
+instead. It is opt-in for a reason: reading <code>X-Forwarded-For</code> from anyone who sends it
+does not tell you where a request came from, it lets the sender choose &mdash; and the rate
+limiter keys on exactly that value.</p>
+
 <p><strong>Versions</strong> come by path with <code>r.version("v2", ...)</code> or by header with
 <code>VersionHeader</code>; either way the handler asks <code>req.api_version()</code>. Retiring
 one is <code>.sunset("2027-01-01")</code> on the route: every response then carries

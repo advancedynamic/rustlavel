@@ -140,10 +140,14 @@ mod tests {
         Arc::new(MemoryStore::new())
     }
 
-    /// The test client builds requests with no peer address, so an IP is
-    /// supplied the way a proxy would.
+    /// A request from a given address.
+    ///
+    /// The peer address, not `X-Forwarded-For`: a header is not evidence of
+    /// where a request came from unless `TrustProxies` says the connection
+    /// came from a proxy, and a limiter keyed on an unverified header is one
+    /// a client escapes by sending a different value each time.
     fn from(ip: &str, path: &str) -> Request {
-        Request::new(Method::Get, path).with_header("x-forwarded-for", ip)
+        Request::new(Method::Get, path).with_peer(format!("{ip}:44321").parse().expect("an address"))
     }
 
     #[tokio::test]
@@ -212,7 +216,7 @@ mod tests {
 
         let with_token = |token: &str| {
             Request::new(Method::Get, "/api/search")
-                .with_header("x-forwarded-for", "10.0.0.6")
+                .with_peer("10.0.0.6:44321".parse().expect("an address"))
                 .with_header("x-api-key", token)
         };
 

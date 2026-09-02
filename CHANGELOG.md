@@ -3,6 +3,29 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## Unreleased
+
+### Security
+
+- **`Request::ip()` no longer trusts `X-Forwarded-For` on its own.** It did,
+  unconditionally, which meant any client could choose its own address by
+  sending a header — and the rate limiter and idempotency scoping both key on
+  it, so both were escapable by varying one header per request. The address is
+  now the peer that opened the socket unless the new `TrustProxies` middleware
+  establishes that the connection came from a proxy named in advance.
+  Applications behind a load balancer must add `TrustProxies::from_config` (or
+  `::at([...])`) to keep seeing real client addresses.
+
+### Added
+
+- `TrustProxies`, with CIDR matching for IPv4 and IPv6, reading
+  `trustedproxy.proxies`. Forwarded hops are stripped from the right, so a
+  value the client wrote before the first proxy appended to it is never taken
+  as the client address.
+- `Request::scheme()`, `is_secure()`, `forwarded_host()`, `forwarded_port()`,
+  from a trusted proxy's `X-Forwarded-Proto`/`-Host`/`-Port`.
+- `Request::with_peer`, so a test can say where a request came from.
+
 ## 0.1.1 — 2026-09-02
 
 The API release: everything an application that only serves JSON needed and

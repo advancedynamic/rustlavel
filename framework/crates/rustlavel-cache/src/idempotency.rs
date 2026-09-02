@@ -289,7 +289,7 @@ mod tests {
     fn post(path: &str, key: &str, body: &str) -> Request {
         Request::new(Method::Post, path)
             .with_header("idempotency-key", key)
-            .with_header("x-forwarded-for", "10.0.0.1")
+            .with_peer("10.0.0.1:44321".parse().expect("an address"))
             .with_body(body.as_bytes().to_vec())
     }
 
