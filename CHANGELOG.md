@@ -3,7 +3,21 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
-## Unreleased
+## 0.2.0 — 2026-09-02
+
+The minor number rather than the patch, and deliberately: for a `0.x`
+version Cargo treats the minor as the major, so `rustlavel = "0.1"` would
+have picked this up on its own. Two changes below need a person to read them
+first.
+
+### Breaking
+
+- **`Request::ip()` no longer reads `X-Forwarded-For` by itself.** An
+  application behind a load balancer must add the new `TrustProxies`
+  middleware, or it will see the balancer's address for every request. See
+  below for why this is worth the interruption.
+- **`Error` has a new variant, `Unavailable`.** Code that matches on `Error`
+  exhaustively will not compile until it handles it.
 
 ### Security
 
