@@ -1,0 +1,29 @@
+# The collector configuration from the header of
+# framework/crates/rustlavel-otel/tests/collector.rs.
+#
+# Only the HTTP receiver is enabled: rustlavel-otel exports OTLP over HTTP, and
+# a gRPC port nothing connects to is one more thing that can fail to bind.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  # `verbosity: detailed` is not decoration. The suite asserts on the
+  # collector's own log — it reads `docker logs` and looks for the span names,
+  # attribute values and data points it sent, because a collector answers 200
+  # the moment it can unmarshal a request, and a field number written into the
+  # wrong slot unmarshals perfectly. At the default verbosity the log says
+  # "1 span" and proves nothing.
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug]

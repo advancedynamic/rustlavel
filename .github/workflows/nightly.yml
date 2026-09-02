@@ -1,0 +1,300 @@
+name: Nightly integration
+
+# Eight integration suites exist and have passed against live servers, and
+# until this workflow none of them ran in CI. They skip themselves when the
+# environment variable they need is unset — which is what keeps `cargo test`
+# green on a laptop with no Docker, and is also how a change that breaks one of
+# them could land green. This workflow stands the servers up and runs them for
+# real.
+#
+# Nightly rather than per-push on purpose. The set includes SQL Server,
+# Elasticsearch and two OpenLDAPs; it is several gigabytes of images and the
+# better part of an hour of runner time, which is the wrong tax on a pull
+# request that changed a doc comment. `workflow_dispatch` is there so it can be
+# run by hand the moment somebody touches the TLS handshake or the pool.
+on:
+  schedule:
+    # 03:17 UTC. Not on the hour: GitHub's scheduler queues everything that
+    # asks for :00 together, and a nightly that starts twenty minutes late for
+    # a week is a nightly nobody trusts.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+# Unlike CI, a run in progress is *not* cancelled by the next one. There is
+# only ever one a day, and finding out what last night's servers did is the
+# entire product.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+# Every job below is independent, and that is the point of splitting them: a
+# broken Elasticsearch image must not hide a real regression in the TLS
+# handshake. There is no `needs:` anywhere in this file.
+#
+# All of them bring their servers up through docker/compose.yml — the same file
+# a contributor runs locally — rather than GitHub `services:`. Three reasons,
+# and each one is disqualifying on its own:
+#
+#   * service containers start before the first step runs, so there is nowhere
+#     to generate the certificates that rustlavel-db/tests/tls.rs needs;
+#   * service containers get generated names, and
+#     rustlavel-otel/tests/collector.rs shells out to `docker logs` against a
+#     name it is told;
+#   * a reproduction would mean rebuilding the job's setup out of YAML by hand.
+#
+# The environment each job needs comes from docker/env.sh, appended to
+# $GITHUB_ENV. That script is the single definition of those variables, and it
+# names the test file every one of them comes from.
+
+jobs:
+  database:
+    name: Databases — TLS, revocation, rotation
+    runs-on: ubuntu-latest
+    # Covers, all against live servers:
+    #   rustlavel-db/tests/tls.rs        PostgreSQL and MySQL over TLS, with a
+    #                                    CA generated here so verify-full and
+    #                                    verify-ca are exercised rather than
+    #                                    skipped.
+    #   rustlavel-db/tests/revocation.rs what PostgreSQL, MySQL and SQL Server
+    #                                    each do to an open connection when its
+    #                                    account is deleted.
+    #   rustlavel-db/tests/rotation.rs   a live pool moving between two
+    #                                    credentials OpenBao issued.
+    #
+    # This is also the only job in the repository that runs SQL Server at all.
+    # ci.yml leaves it out because its image needs more memory and more minutes
+    # than a per-push job can justify, and the suites skip cleanly without it —
+    # so the TDS driver, one of the three supported databases, has never had a
+    # test run against it in CI. It has one now.
+    #
+    # The timeout is generous for the same reason: SQL Server takes about a
+    # minute to accept a login before any test can start.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: framework
+
+      # Generates the certificates, starts postgres-tls, mysql, postgres-vault,
+      # mssql and openbao, waits for every health check, copies MySQL's
+      # self-generated CA out of the container and configures OpenBao's
+      # database secrets engine. All of it is in docker/, so reproducing a
+      # failure locally is the same command.
+      - name: Servers
+        run: ./docker/up.sh db
+
+      - name: Variables
+        run: ./docker/env.sh db >> "$GITHUB_ENV"
+
+      # One `cargo test` per suite rather than one for the crate. It costs
+      # nothing — they share a build — and it means the summary says which of
+      # the three failed instead of just that rustlavel-db did.
+      - name: TLS
+        working-directory: framework
+        run: cargo test -p rustlavel-db --all-features --test tls -- --nocapture
+
+      - name: Credential revocation
+        working-directory: framework
+        run: cargo test -p rustlavel-db --all-features --test revocation -- --nocapture
+
+      - name: Credential rotation under a live pool
+        working-directory: framework
+        run: cargo test -p rustlavel-db --all-features --test rotation -- --nocapture
+
+      # The logs are worth having only when something went wrong, so they are
+      # `if: failure()`. The teardown is `if: always()`, because a job that
+      # leaves its containers behind is a job that fails the next one on a port
+      # collision — and on a self-hosted runner, forever.
+      - name: Server logs
+        if: failure()
+        run: docker compose -f docker/compose.yml logs --tail 200
+
+      - name: Down
+        if: always()
+        run: ./docker/down.sh
+
+  directory:
+    name: Directory — LDAP, LDAPS and StartTLS
+    runs-on: ubuntu-latest
+    # Covers rustlavel-ldap/tests/directory.rs and rustlavel-ldap/tests/tls.rs.
+    #
+    # Two containers, and they are not interchangeable. The first has no
+    # certificate at all, which is what lets directory.rs prove the plain-text
+    # refusals fire against a live server rather than only in a unit test. The
+    # second serves LDAPS on 3636 and StartTLS on 3390 from one instance with
+    # one self-signed certificate — self-signed so that the last test in tls.rs
+    # can watch certificate verification reject it.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: framework
+
+      - name: Servers
+        run: ./docker/up.sh ldap
+
+      - name: Variables
+        run: ./docker/env.sh ldap >> "$GITHUB_ENV"
+
+      - name: Bind, search and modify against a live directory
+        working-directory: framework
+        run: cargo test -p rustlavel-ldap --all-features --test directory -- --nocapture
+
+      - name: TLS
+        working-directory: framework
+        run: cargo test -p rustlavel-ldap --all-features --test tls -- --nocapture
+
+      - name: Server logs
+        if: failure()
+        run: docker compose -f docker/compose.yml logs --tail 200
+
+      - name: Down
+        if: always()
+        run: ./docker/down.sh
+
+  search:
+    name: Search — Elasticsearch
+    runs-on: ubuntu-latest
+    # Covers rustlavel-search/tests/elasticsearch.rs.
+    #
+    # Security is left on with TLS off, so ELASTICSEARCH_USER and
+    # ELASTICSEARCH_PASSWORD are actually read and the client's basic-auth path
+    # is exercised. The header's simpler `xpack.security.enabled=false` would
+    # leave those two variables unused, which is the kind of quiet gap this
+    # whole workflow exists to close.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: framework
+
+      # Elasticsearch wants a larger mmap limit than a runner ships with. With
+      # `discovery.type=single-node` it does not enforce the bootstrap check,
+      # so this is belt and braces rather than a requirement — but the failure
+      # it prevents is a container that exits during start-up with a message
+      # about vm.max_map_count, which reads like a broken image and is not.
+      - name: Raise the mmap limit Elasticsearch asks for
+        run: sudo sysctl -w vm.max_map_count=262144
+
+      - name: Server
+        run: ./docker/up.sh search
+
+      - name: Variables
+        run: ./docker/env.sh search >> "$GITHUB_ENV"
+
+      - name: Index, search and delete against a live cluster
+        working-directory: framework
+        run: cargo test -p rustlavel-search --all-features --test elasticsearch -- --nocapture
+
+      - name: Server logs
+        if: failure()
+        run: docker compose -f docker/compose.yml logs --tail 200
+
+      - name: Down
+        if: always()
+        run: ./docker/down.sh
+
+  telemetry:
+    name: Telemetry — OpenTelemetry Collector
+    runs-on: ubuntu-latest
+    # Covers rustlavel-otel/tests/collector.rs.
+    #
+    # This suite reads the collector's own log through `docker logs`, so it
+    # needs the container's name — OTEL_TEST_CONTAINER — and a collector
+    # configured with `verbosity: detailed`, both of which are in docker/. A
+    # collector answers 200 the moment it can unmarshal a request, so checking
+    # the status code would prove close to nothing; the assertions are on the
+    # span names, attributes and data points it decoded.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: framework
+
+      - name: Collector
+        run: ./docker/up.sh otel
+
+      - name: Variables
+        run: ./docker/env.sh otel >> "$GITHUB_ENV"
+
+      - name: Export spans and metrics to a live collector
+        working-directory: framework
+        run: cargo test -p rustlavel-otel --all-features --test collector -- --nocapture
+
+      - name: Collector logs
+        if: failure()
+        run: docker compose -f docker/compose.yml logs --tail 200
+
+      - name: Down
+        if: always()
+        run: ./docker/down.sh
+
+  secrets:
+    name: Secrets — OpenBao
+    runs-on: ubuntu-latest
+    # Covers rustlavel-vault/tests/openbao.rs.
+    #
+    # OpenBao alone would answer the token, AppRole and key/value assertions and
+    # skip the two that matter, because its database secrets engine needs a
+    # database to hand out accounts in. So this job starts PostgreSQL beside it
+    # and docker/openbao-init.sh wires the two together — the setup documented
+    # in the headers of both openbao.rs and rustlavel-db/tests/rotation.rs.
+    #
+    # The claim being tested is that revoking a lease does not merely expire a
+    # credential in OpenBao's bookkeeping, it deletes the PostgreSQL role. That
+    # cannot be asserted against a fake.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: framework
+
+      - name: Server and the database it issues accounts in
+        run: ./docker/up.sh secrets
+
+      - name: Variables
+        run: ./docker/env.sh secrets >> "$GITHUB_ENV"
+
+      - name: Auth, leases and dynamic database credentials
+        working-directory: framework
+        run: cargo test -p rustlavel-vault --all-features --test openbao -- --nocapture
+
+      - name: Server logs
+        if: failure()
+        run: docker compose -f docker/compose.yml logs --tail 200
+
+      - name: Down
+        if: always()
+        run: ./docker/down.sh
+
+# The other half of the guarantee — that all eight suites still *skip* on a
+# machine with no servers, so `cargo test --workspace --all-features` stays
+# green for a contributor without Docker — has no job here on purpose. It is
+# not missing: ci.yml's `no-database` job runs exactly that command with
+# nothing configured, on every push and every pull request, which is both
+# sooner and more often than a nightly. Repeating it here would cost ten
+# minutes and tell us nothing ci.yml has not already said this morning.

@@ -1,0 +1,310 @@
+# Every server the eight integration suites need, in one place.
+#
+# The suites skip themselves when their variable is unset, which keeps
+# `cargo test --workspace --all-features` green on a laptop with no Docker and
+# also meant they went unrun for months. This file — and the nightly workflow
+# that uses it — is how they get run. See docker/README.md for the commands.
+#
+# Ports are deliberately unusual (55432 rather than 5432, 33306 rather than
+# 3306) so that bringing this up does not collide with a PostgreSQL or MySQL
+# somebody already has listening, and so it does not collide with the ordinary
+# CI job in .github/workflows/ci.yml either.
+#
+# Container names are pinned rather than left to compose. One suite genuinely
+# needs it — rustlavel-otel/tests/collector.rs shells out to
+# `docker logs $OTEL_TEST_CONTAINER` and reads the collector's own output — and
+# for the rest a stable name is what makes `docker exec` and `docker logs`
+# usable while debugging a failure.
+
+name: rustlavel-tests
+
+services:
+  # --- The database job -------------------------------------------------------
+
+  postgres-tls:
+    # framework/crates/rustlavel-db/tests/tls.rs — PG_TLS_URL, PG_TLS_CA.
+    #
+    # TLS is switched on by docker/init/postgres-tls.sh using the certificates
+    # docker/certs.sh writes, so run that first; `docker compose up` on an
+    # unprepared checkout fails here rather than silently starting a server
+    # with no certificate.
+    image: postgres:16
+    container_name: rustlavel-pg-tls
+    environment:
+      POSTGRES_USER: rustlavel
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: rustlavel_test
+    ports: ['55432:5432']
+    volumes:
+      - ./certs:/certs:ro
+      - ./init/postgres-tls.sh:/docker-entrypoint-initdb.d/10-tls.sh:ro
+      # A named volume, because the init script only runs when the data
+      # directory is empty. `docker compose down -v` is therefore the way to
+      # pick up a regenerated certificate; plain `down` is not.
+      - postgres-tls-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U rustlavel -d rustlavel_test']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  mysql:
+    # framework/crates/rustlavel-db/tests/tls.rs      — MYSQL_TLS_URL, MYSQL_TLS_CA
+    # framework/crates/rustlavel-db/tests/revocation.rs — REVOCATION_MYSQL_URL
+    #
+    # One container for both, because the two file headers each asked for port
+    # 33306 and only one of them can have it. The suites do not overlap: the
+    # TLS one connects as `rustlavel` to `rustlavel_test`, the revocation one as
+    # root to `appdb`, and each throwaway account it makes is named after the
+    # test that makes it.
+    #
+    # MySQL generates its own CA and server certificate on first start, so
+    # nothing here has to hand it one — but that certificate carries no
+    # subjectAltName, which is why tls.rs verifies it with `sslmode=verify-ca`
+    # and not `verify-full`. Fetching /var/lib/mysql/ca.pem out of the container
+    # is what docker/up.sh does after this becomes healthy.
+    image: mysql:8.4
+    container_name: rustlavel-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_DATABASE: rustlavel_test
+      MYSQL_USER: rustlavel
+      MYSQL_PASSWORD: secret
+      # Without this root can only log in over the container's loopback, and
+      # every one of these tests arrives from the host.
+      MYSQL_ROOT_HOST: '%'
+    ports: ['33306:3306']
+    volumes:
+      - ./init/mysql.sql:/docker-entrypoint-initdb.d/10-appdb.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -psecret --silent']
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  postgres-vault:
+    # framework/crates/rustlavel-db/tests/revocation.rs — REVOCATION_PG_URL
+    # framework/crates/rustlavel-db/tests/rotation.rs   — ROTATION_DB_URL
+    # framework/crates/rustlavel-vault/tests/openbao.rs — VAULT_TEST_DATABASE_HOST
+    #
+    # Separate from postgres-tls on purpose. This one is the database OpenBao
+    # hands out dynamic accounts in, so it fills up with roles named
+    # `v-root-app-…` that the leases delete again; keeping that churn away from
+    # the server the TLS assertions run against means a failure in one suite
+    # cannot be explained by the other.
+    image: postgres:16
+    container_name: rustlavel-vault-pg
+    environment:
+      POSTGRES_PASSWORD: rootpass
+      POSTGRES_DB: appdb
+    ports: ['55433:5432']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d appdb']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  mssql:
+    # framework/crates/rustlavel-db/tests/revocation.rs — REVOCATION_MSSQL_URL
+    #
+    # The only server here that is genuinely awkward. The image is ~1.5 GB, it
+    # needs 2 GB of RAM before it will even start, it is published for amd64
+    # only (so an Apple Silicon machine emulates it, slowly), and it takes the
+    # better part of a minute to accept a login. Hence the long start_period —
+    # a health check that gives up in 30 seconds turns this into a flake.
+    #
+    # It is also the reason the SQL Server assertions exist: it is the database
+    # that behaves differently from the other two. It refuses to drop a login
+    # that is connected at all, so a secret store revoking one has to kill the
+    # sessions first. See the table at the top of revocation.rs.
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    container_name: rustlavel-mssql
+    environment:
+      ACCEPT_EULA: 'Y'
+      MSSQL_SA_PASSWORD: 'Rustlavel!2026'
+      MSSQL_PID: Developer
+    ports: ['51433:1433']
+    healthcheck:
+      # mssql-tools18 is what current images ship; the fallback covers an older
+      # tag that only has the unversioned path. `-C` trusts the self-signed
+      # certificate SQL Server generates for itself.
+      test:
+        - CMD-SHELL
+        - >-
+          /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1"
+          || /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -Q "SELECT 1"
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+
+  # --- The directory job ------------------------------------------------------
+
+  ldap:
+    # framework/crates/rustlavel-ldap/tests/directory.rs — LDAP_TEST_URL
+    #
+    # No TLS at all, and that is the point: this suite proves the *refusals*
+    # work. Every test in it opts into plain text twice over, and the one that
+    # leaves the second step out proves the refusal fires against a live server.
+    #
+    # Note the image name. Bitnami moved its catalogue to `bitnamilegacy` in
+    # 2025 and `bitnami/openldap` no longer resolves. The container listens on
+    # 1389 rather than 389 because it runs as a non-root user.
+    image: bitnamilegacy/openldap:latest
+    container_name: rustlavel-ldap
+    environment:
+      LDAP_ROOT: dc=example,dc=test
+      LDAP_ADMIN_USERNAME: admin
+      LDAP_ADMIN_PASSWORD: secret
+      LDAP_USERS: alice,bob
+      LDAP_PASSWORDS: alicepass,bobpass
+    ports: ['3389:1389']
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          ldapsearch -H ldap://127.0.0.1:1389 -x -D cn=admin,dc=example,dc=test
+          -w secret -b dc=example,dc=test -s base >/dev/null
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  ldaps:
+    # framework/crates/rustlavel-ldap/tests/tls.rs
+    #   — LDAPS_TEST_URL (port 3636), LDAP_STARTTLS_TEST_URL (port 3390)
+    #
+    # A second container rather than turning TLS on in the first one, because
+    # `directory.rs` above is asserting what a server with *no* certificate
+    # does. Both ports come from the same instance so that the LDAPS tests and
+    # the StartTLS tests are talking to one directory with one certificate.
+    #
+    # The certificate is self-signed and chains to nothing, which is what lets
+    # the last test in that file prove certificate verification is a real check
+    # rather than a flag nobody exercised.
+    image: bitnamilegacy/openldap:latest
+    container_name: rustlavel-ldaps
+    environment:
+      LDAP_ROOT: dc=example,dc=test
+      LDAP_ADMIN_USERNAME: admin
+      LDAP_ADMIN_PASSWORD: secret
+      LDAP_USERS: alice,bob
+      LDAP_PASSWORDS: alicepass,bobpass
+      LDAP_ENABLE_TLS: 'yes'
+      LDAP_TLS_CERT_FILE: /certs/ldap/server.crt
+      LDAP_TLS_KEY_FILE: /certs/ldap/server.key
+      LDAP_TLS_CA_FILE: /certs/ldap/ca.crt
+    ports:
+      - '3636:1636'
+      - '3390:1389'
+    volumes:
+      - ./certs:/certs:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          ldapsearch -H ldap://127.0.0.1:1389 -x -D cn=admin,dc=example,dc=test
+          -w secret -b dc=example,dc=test -s base >/dev/null
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # --- The search job ---------------------------------------------------------
+
+  elasticsearch:
+    # framework/crates/rustlavel-search/tests/elasticsearch.rs
+    #   — ELASTICSEARCH_URL, ELASTICSEARCH_USER, ELASTICSEARCH_PASSWORD
+    #
+    # Security is left *on*, with TLS off. The suite's header says the simplest
+    # setup is `xpack.security.enabled=false`, but then ELASTICSEARCH_USER and
+    # ELASTICSEARCH_PASSWORD are never read and the client's basic-auth path
+    # goes untested — which is exactly the kind of gap this whole exercise is
+    # about. Keeping the password and dropping the certificate costs nothing
+    # and exercises one more code path.
+    #
+    # OpenSearch answers all of this identically and is worth pointing the same
+    # suite at; see the header for the image.
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: rustlavel-es
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: 'true'
+      xpack.security.http.ssl.enabled: 'false'
+      xpack.security.enrollment.enabled: 'false'
+      ELASTIC_PASSWORD: rustlavel-secret
+      # Half a gig each way. The default heap is a quarter of the host's RAM,
+      # which on a CI runner is both wasteful and enough to get the container
+      # killed.
+      ES_JAVA_OPTS: '-Xms512m -Xmx512m'
+      bootstrap.memory_lock: 'false'
+    ports: ['9200:9200']
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -sf -u elastic:rustlavel-secret
+          'http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null
+      interval: 5s
+      timeout: 10s
+      retries: 40
+      start_period: 30s
+
+  # --- The telemetry job ------------------------------------------------------
+
+  otel:
+    # framework/crates/rustlavel-otel/tests/collector.rs
+    #   — OTEL_TEST_ENDPOINT, OTEL_TEST_CONTAINER
+    #
+    # OTEL_TEST_CONTAINER must match container_name below: the suite runs
+    # `docker logs` against it and greps the debug exporter's output for the
+    # span names and attribute values it sent. That is the only way to tell a
+    # correctly encoded payload from one whose field numbers landed in the
+    # wrong slots — both unmarshal, and both get a 200.
+    #
+    # No health check: the image is distroless, so there is no shell and no
+    # curl to run one with. `docker compose up --wait` falls back to waiting
+    # for the container to be running, which for a collector that binds one
+    # port immediately is enough.
+    image: otel/opentelemetry-collector:latest
+    container_name: rustlavel-otel
+    ports: ['4318:4318']
+    volumes:
+      - ./otelcol.yaml:/etc/otelcol/config.yaml:ro
+
+  # --- The secrets job --------------------------------------------------------
+
+  openbao:
+    # framework/crates/rustlavel-vault/tests/openbao.rs
+    #   — VAULT_ADDR, VAULT_TOKEN, VAULT_TEST_DATABASE_ROLE, VAULT_TEST_DATABASE_HOST
+    # framework/crates/rustlavel-db/tests/rotation.rs
+    #   — VAULT_ADDR (with ROTATION_DB_URL)
+    #
+    # Dev mode: in memory, unsealed, one well-known root token. Fine for a test
+    # and unacceptable anywhere else.
+    #
+    # It needs `postgres-vault` beside it, because the half of these suites
+    # that matters is the database secrets engine — a store that issues a real
+    # PostgreSQL account, and deletes it again when the lease is revoked. That
+    # wiring is done by docker/openbao-init.sh once this is up.
+    image: openbao/openbao:latest
+    container_name: rustlavel-openbao
+    command: server -dev
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: root-token
+      BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      # For the health check below; `bao status` is a client command and needs
+      # to be told where the server is.
+      BAO_ADDR: http://127.0.0.1:8200
+    ports: ['18200:8200']
+    cap_add: ['IPC_LOCK']
+    depends_on:
+      postgres-vault:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'bao status >/dev/null 2>&1']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  postgres-tls-data:
