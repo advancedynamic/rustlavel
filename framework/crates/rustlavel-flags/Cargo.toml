@@ -1,0 +1,17 @@
+[package]
+name = "rustlavel-flags"
+description = "Feature flags for Rustlavel: runtime switches resolved per user, with a store behind them"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-http.workspace = true
+# For `Identity`. A flag is almost always checked "for this user", and the
+# framework already has one place that decides who the user is; asking again
+# here would be a second answer to the same question, and the two would drift.
+rustlavel-auth.workspace = true
+tokio.workspace = true
