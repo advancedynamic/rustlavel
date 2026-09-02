@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cookbook — Rustlavel</title>
+<meta name="description" content="Short answers to the things people actually need at two in the afternoon: file uploads, pagination, a scheduled job, signing in through Google, sending mail, and the rest.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site"><div class="wrap">
+  <strong>Rustlavel</strong>
+  <nav>
+    <a href="index.html">Home</a>
+    <a href="guide.html">Guide</a>
+    <a href="cookbook.html" aria-current="page">Cookbook</a>
+    <a href="packages.html">Packages</a>
+    <a href="https://docs.rs/rustlavel">API</a>
+    <a href="https://github.com/advancedynamic/rustlavel">GitHub</a>
+  </nav>
+</div></header>
+
+<main class="wrap">
+
+<h1>Cookbook</h1>
+<p class="tagline">Short answers to the things people need in the middle of an afternoon.</p>
+
+<p>The <a href="guide.html">guide</a> reads front to back. This does not: each recipe stands
+alone, says which feature flag it needs, and shows the whole thing rather than a fragment.
+Every snippet is written against the version on the front page.</p>
+
+<h2>Forms</h2>
+
+<h3>Validate a form and redraw it when it fails</h3>
+
+<p>Propagate the error and the framework does the rest &mdash; a browser is redirected back
+to the form with the messages and the old input, and a JSON client gets a <code>422</code>
+in Laravel&rsquo;s shape. One handler serves both.</p>
+
+<pre><code>pub async fn store(mut req: Request) -&gt; Result&lt;Response, Errors&gt; {
+    let data = validate(&amp;mut req, &amp;[
+        ("title", "required|max:120"),
+        ("body",  "required|min:10"),
+    ]).await?;
+
+    let db = req.state::&lt;Database&gt;().expect("registered in main.rs");
+    let mut post = Post {
+        title: data.string("title").unwrap_or_default(),
+        body:  data.string("body").unwrap_or_default(),
+        ..Default::default()
+    };
+    post.insert(db).await?;
+
+    Ok(Response::see_other(format!("/posts/{}", post.id)))
+}</code></pre>
+
+<p>The form reads what the failed request left behind:</p>
+
+<pre><code>pub async fn create(req: Request) -&gt; Result&lt;Response&gt; {
+    req.view("posts/create", &amp;ViewContext::new()
+        .with("errors", req.errors())
+        .with("old", req.old()))
+}</code></pre>
+
+<pre><code>&lt;form method="post" action="/posts"&gt;
+  {!! csrf_field !!}
+  @if(errors.title)&lt;p class="error"&gt;{{ errors.title.0 }}&lt;/p&gt;@endif
+  &lt;input name="title" value="{{ old.title }}"&gt;
+  &lt;button&gt;Publish&lt;/button&gt;
+&lt;/form&gt;</code></pre>
+
+<div class="note">
+<p>The old input never contains a password, or anything else whose field name looks like a
+secret. Re-filling a password box means putting the password back into HTML, and that HTML
+ends up in caches, in browser history and in screenshots.</p>
+</div>
+
+<h3>Validate something that is not a form field</h3>
+
+<p><code>validate</code> reads the request body. When the values are already in hand &mdash;
+normalised, or assembled from several places &mdash; build the validator directly:</p>
+
+<pre><code>use rustlavel::validation::Validator;
+
+let input = Json::object([("email", Json::from(email.trim().to_lowercase()))]);
+let errors = Validator::new(&amp;input)
+    .rules(&amp;[("email", "required|email|max:190")])
+    .errors();
+
+if !errors.is_empty() { … }</code></pre>
+
+<h2>Files</h2>
+
+<h3>Accept an upload and serve it back</h3>
+<p class="muted">Needs <code>storage</code>.</p>
+
+<pre><code>pub async fn avatar(mut req: Request) -&gt; Result&lt;Response&gt; {
+    let storage = req.state::&lt;Storage&gt;().expect("registered in main.rs");
+
+    let Some(file) = req.file("avatar") else {
+        return Ok(Response::new(Status::BAD_REQUEST).with_text("No file was sent."));
+    };
+    // Never trust the filename the browser sent: it can contain a path.
+    let name = format!("avatars/{}.png", rustlavel::auth::random::hex(16));
+    storage.put(&amp;name, file.bytes()).await?;
+
+    Ok(Response::see_other("/profile"))
+}</code></pre>
+
+<p>Uploads belong under <code>storage/app</code>, outside the web root. To make a subset of
+them reachable over HTTP, write them under <code>storage/app/public</code> and link it once:</p>
+
+<pre><code>rustlavel storage:link</code></pre>
+
+<h3>Set a per-route upload limit</h3>
+
+<p>The server has a body limit that protects the process, and it has to be as large as the
+biggest upload the application accepts anywhere. <code>BodyLimit</code> is the policy on top:</p>
+
+<pre><code>r.group("/api", |api| {
+    api.middleware(BodyLimit::kilobytes(64));   // JSON endpoints
+    …
+});
+r.post("/avatar", upload).middleware(BodyLimit::megabytes(5));</code></pre>
+
+<h2>Data</h2>
+
+<h3>Paginate a listing</h3>
+<p class="muted">Needs <code>db</code>.</p>
+
+<pre><code>let page = req.query("page").and_then(|p| p.parse().ok()).unwrap_or(1);
+let listed = Post::query().latest("id").paginate(db, page, 20).await?;
+
+req.view("posts/index", &amp;ViewContext::new()
+    .with("posts", listed.to_json()))</code></pre>
+
+<p>Past a few hundred thousand rows the count query starts to hurt. Cursor pagination has no
+count and stays correct while rows are being inserted underneath the reader:</p>
+
+<pre><code>let page = Post::query()
+    .cursor_paginate(db, req.query("cursor"), 20)
+    .await?;</code></pre>
+
+<h3>Return JSON with one shape per type</h3>
+
+<pre><code>pub struct PostResource;
+
+impl JsonResource for PostResource {
+    type Model = Post;
+
+    fn to_json(post: &amp;Post) -&gt; Json {
+        attributes()
+            .set("id", post.id)
+            .set("title", post.title.as_str())
+            .when(post.published, "published_at", || Json::from(post.published_at.clone()))
+            .finish()
+    }
+}
+
+// In a controller:
+PostResource::collection(&amp;listed.hydrate::&lt;Post&gt;()?)
+    .paginate(listed.current_page, listed.per_page, listed.total)
+    .path("/api/posts")</code></pre>
+
+<div class="note">
+<p>A <code>when()</code> that is false leaves the key <em>absent</em>, not null. A client told
+<code>"published_at": null</code> has to work out what null means; a client not told about it
+knows it is not published.</p>
+</div>
+
+<h3>Run several statements as one</h3>
+
+<pre><code>let mut tx = db.begin().await?;
+tx.execute("update accounts set balance = balance - ? where id = ?", &amp;[amount.into(), from.into()]).await?;
+tx.execute("update accounts set balance = balance + ? where id = ?", &amp;[amount.into(), to.into()]).await?;
+tx.commit().await?;</code></pre>
+
+<p>Dropping the transaction without committing rolls it back, so an early <code>?</code>
+leaves nothing half-applied.</p>
+
+<h2>Background work</h2>
+
+<h3>Queue a job</h3>
+<p class="muted">Needs <code>queue</code>.</p>
+
+<pre><code>#[derive(Job)]
+pub struct SendWelcome { pub user_id: i64 }
+
+impl SendWelcome {
+    pub async fn handle(&amp;self, ctx: &amp;Context) -&gt; Result&lt;()&gt; { … }
+}
+
+// Anywhere:
+queue.push(SendWelcome { user_id: user.id }).await?;</code></pre>
+
+<pre><code>rustlavel queue:work            # a worker
+rustlavel queue:failed          # what died, and why</code></pre>
+
+<h3>Run something on a schedule</h3>
+
+<pre><code>App::new()?.schedule(
+    Scheduler::new()
+        .job("0 3 * * *", PruneOldSessions)     // 03:00 daily
+        .job("*/15 * * * *", RefreshExchangeRates),
+)</code></pre>
+
+<pre><code>rustlavel schedule:run           # from cron, once a minute</code></pre>
+
+<h2>Talking to other services</h2>
+
+<h3>Call an API without making an outage worse</h3>
+<p class="muted">Needs <code>client</code>.</p>
+
+<pre><code>let http = Client::new().retries(2).breaker(CircuitBreaker::new());
+
+match http.get("https://api.example.com/rates").send().await {
+    Ok(response) =&gt; use_them(response.json()?),
+    // Nothing was sent, so nothing can have had an effect — which is
+    // exactly when falling back to a cached answer is safe.
+    Err(Error::Unavailable(_)) =&gt; cached_rates(),
+    Err(error) =&gt; return Err(error),
+}</code></pre>
+
+<h3>Send mail</h3>
+<p class="muted">Needs <code>mail</code>.</p>
+
+<pre><code>mailer.send(
+    Message::new()
+        .to(user.email.as_str())
+        .subject("Your receipt")
+        .text(format!("Thanks, {}. Your receipt is attached.", user.name))
+        .attach(Attachment::new("receipt.pdf", pdf_bytes)),
+).await?;</code></pre>
+
+<p>In a test, assert instead of sending:</p>
+
+<pre><code>let mailer = Mail::fake();
+// … run the thing …
+let fake = mailer.fake().expect("faking");
+assert_eq!(fake.count(), 1);
+assert!(fake.sent_to("ada@example.com"));</code></pre>
+
+<h3>Sign somebody in through Google or GitHub</h3>
+<p class="muted">Needs <code>oauth</code>.</p>
+
+<pre><code>r.get("/auth/github", |req: Request| async move {
+    let provider = req.state::&lt;OAuthClient&gt;().expect("registered in main.rs");
+    let (url, verifier) = provider.authorize_url(&amp;["read:user"]);
+    // PKCE: the verifier stays here, only its hash goes to the provider.
+    req.session().put("_pkce", Json::from(verifier));
+    Response::see_other(url)
+});</code></pre>
+
+<h2>Operating it</h2>
+
+<h3>Turn something on for some people</h3>
+<p class="muted">Needs <code>flags</code>.</p>
+
+<pre><code>if req.flag("new-checkout").await? {
+    return new_checkout(req).await;
+}</code></pre>
+
+<p>And when it goes wrong at three in the morning, without a deploy:</p>
+
+<pre><code>FLAGS_OFF=new-checkout</code></pre>
+
+<h3>Answer a load balancer</h3>
+
+<pre><code>App::new()?.plugin(
+    Health::new().check("database", |req| {
+        let db = req.state::&lt;Database&gt;().cloned();
+        async move {
+            db.ok_or("no database")?
+              .scalar::&lt;i64&gt;("select 1", &amp;[]).await
+              .map(|_| ()).map_err(|e| e.to_string())
+        }
+    }),
+)</code></pre>
+
+<p><code>GET /up</code> says the process is alive and is what restarts it.
+<code>GET /up/ready</code> runs the checks and says whether it can do useful work, and is what
+routes traffic to it. Pointing a liveness probe at the second one turns a database outage into
+a restart loop.</p>
+
+<h3>Find out why a request was slow</h3>
+
+<pre><code>App::new()?
+    .middleware(RequestId::new())     // one id, in the log and on the response
+    .plugin(Telescope::default())     // /telescope, refuses to mount in production
+    .plugin(Debugbar::default())      // this page's queries, drawn on the page</code></pre>
+
+<p>The identifier on the response is the one to ask a user for: it appears in every log line
+for that request and on the <code>http.request</code> event that Telescope, the metrics
+endpoint and the OTLP exporter all read.</p>
+
+<h3>Deploy it as one file</h3>
+
+<pre><code>rustlavel build --release          # a single binary, assets embedded
+rustlavel make:docker              # a two-stage Dockerfile, if you would rather</code></pre>
+
+<h2>Testing</h2>
+
+<h3>Exercise a route without a socket</h3>
+
+<pre><code>#[rustlavel::test]
+async fn a_guest_cannot_reach_the_dashboard() {
+    let client = app().test_client();
+    let response = client.get("/dashboard").await;
+    response.assert_redirect("/login");
+}
+
+#[rustlavel::test]
+async fn a_bad_form_comes_back_with_its_errors() {
+    let client = app().test_client();
+    client.get("/posts/create").await;
+    client.post("/posts", &amp;[("title", "")]).await.assert_status(303);
+    client.get("/posts/create").await.assert_see("The title field is required.");
+}</code></pre>
+
+<h3>Test against a real database, or skip cleanly</h3>
+
+<p>The pattern the framework uses on itself: a suite that needs a server reads its URL from
+the environment and reports a skip when there is none, so <code>cargo test</code> stays green
+on a laptop with no Docker.</p>
+
+<pre><code>macro_rules! server {
+    ($variable:literal) =&gt; {
+        match std::env::var($variable) {
+            Ok(url) if !url.is_empty() =&gt; url,
+            _ =&gt; { eprintln!("skipping: {} is not set", $variable); return; }
+        }
+    };
+}</code></pre>
+
+<div class="note">
+<p>Give every test its own name-spaced rows or tables. The suite runs concurrently, and two
+tests sharing a fixture fail in a way that looks like a bug in the code rather than in the
+tests.</p>
+</div>
+
+<h2>What is missing from here</h2>
+
+<p>This page grows with the questions people ask. If something you needed was not here, it is
+worth <a href="https://github.com/advancedynamic/rustlavel/issues">saying so</a> &mdash; a
+recipe that somebody needed and could not find is the most useful thing to add.</p>
+
+</main>
+
+<footer class="site"><div class="wrap">
+MIT licensed · <a href="https://github.com/advancedynamic/rustlavel">advancedynamic/rustlavel</a>
+· <a href="https://docs.rs/rustlavel">API reference on docs.rs</a>
+</div></footer>
+
+</body>
+</html>
