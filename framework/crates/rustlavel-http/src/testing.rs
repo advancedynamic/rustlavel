@@ -125,6 +125,11 @@ impl TestResponse {
         self.response.body_string()
     }
 
+    /// The raw body, for a response that is not text — a compressed one, say.
+    pub fn body_bytes(&self) -> &[u8] {
+        &self.response.body
+    }
+
     pub fn json(&self) -> Json {
         Json::parse(&self.body()).unwrap_or_else(|e| {
             panic!("response body is not valid JSON ({e}); body was:\n{}", self.body())

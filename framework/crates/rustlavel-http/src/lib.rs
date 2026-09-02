@@ -31,6 +31,7 @@ pub mod upgrade;
 pub mod url;
 
 pub use body_limit::BodyLimit;
+pub use compression::Compress;
 pub use cookie::{Cookie, SameSite};
 pub use cors::Cors;
 pub use etag::ETag;
