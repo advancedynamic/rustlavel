@@ -159,6 +159,29 @@ removing them is not a risk it gets to take on your behalf. <code>--force</code>
 link; it does not delete anybody's files.</p>
 </div>
 
+<h2>Turning things on for some people</h2>
+
+<p>Runtime switches, resolved per user &mdash; not to be confused with the Cargo feature
+flags above, which are compile-time and decide what is in the binary at all.</p>
+
+<pre><code>App::new()?.plugin(FeatureFlags::new(
+    Flags::from_config(app.config())
+        .rollout("new-checkout", 5)          // five per cent, stably
+        .define("beta-search", |scope| async move { is_staff(scope).await }),
+))
+
+// In a handler:
+if req.flag("new-checkout").await? { … }
+// Or on a whole route, which answers 404 when the flag is off:
+r.get("/checkout/v2", checkout).middleware(WhenActive::new("new-checkout"));</code></pre>
+
+<p>And when it goes wrong at three in the morning, without a deploy:</p>
+
+<pre><code>FLAGS_OFF=new-checkout</code></pre>
+
+<p>That is read before the store is touched, so it works even when the store is what broke.
+It is the strongest thing in the chain for exactly that reason.</p>
+
 <h2>Building an API</h2>
 
 <p>An application that only serves JSON needs a handful of things a page-serving one does not,
@@ -278,6 +301,26 @@ limiter keys on exactly that value.</p>
 one is <code>.sunset("2027-01-01")</code> on the route: every response then carries
 <code>Sunset</code> and <code>Deprecation</code>, so a client library can warn its own developers
 for months before the day.</p>
+
+<h2>Generators</h2>
+
+<p>Ten of them, and the two that do the most work:</p>
+
+<pre><code>rustlavel make:crud Post --fields "title:string,body:text,published:bool"</code></pre>
+
+<p>Writes a model, a migration, a resourceful controller and two views whose columns, struct
+fields, form inputs and table headers all agree, and appends the routes to
+<code>src/routes/web.rs</code> &mdash; a resource nobody wired up does not work. With the auth
+package on, the forms carry a CSRF token; without it they do not, and neither does the code
+that would fail to compile.</p>
+
+<pre><code>rustlavel tinker
+rustlavel tinker -e 'Post::count(&amp;db).await?'</code></pre>
+
+<p>A scratch crate that depends on yours, rebuilt per snippet: about 0.9 seconds the first
+time and 0.3 after. It is a scratchpad rather than a conversation &mdash; every statement
+costs a compile and nothing carries between them, which the command says on its first run
+rather than leaving you to work out.</p>
 
 <h2 id="starter-kit">The starter kit</h2>
 

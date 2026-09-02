@@ -3,6 +3,36 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## 0.3.0 — 2026-09-03
+
+The minor number, because `Errors` gained a field and a `Validator` built from
+a request now behaves differently for a browser: it redirects instead of
+rendering text. Everything else is new.
+
+### Changed
+
+- **A failed HTML form now redirects back to itself** with the messages and the
+  submitted input, instead of answering a plain `422` with the page gone. JSON
+  clients are unaffected and still get Laravel's shape. An application with no
+  session middleware falls back to the old plain-text `422`.
+
+### Added
+
+- `rustlavel-flags` — runtime feature switches resolved per user or tenant,
+  with percentage rollouts that are stable across processes, a store for
+  operator overrides, and `FLAGS_OFF` as an incident switch that is read before
+  the store is touched.
+- `rustlavel make:crud`, `make:package` and `tinker`.
+- A cookbook at
+  [advancedynamic.github.io/rustlavel/cookbook.html](https://advancedynamic.github.io/rustlavel/cookbook.html).
+- `Flash`, in `rustlavel-http`: somewhere to leave a value for exactly one
+  further request. Implemented by the session, used by validation and the view
+  layer, so neither has to depend on the other.
+- `Request::errors`, `old`, `old_field`, `has_errors` and `previous_url`.
+- A nightly CI workflow and a `docker/` set that stand up the eight servers the
+  integration suites need — including the TLS certificates, which is why
+  database TLS was untested even though CI already had the databases.
+
 ## 0.2.2 — 2026-09-02
 
 Two bugs that met anybody who ran `rustlavel new --with auth-kit` on 0.2.1.

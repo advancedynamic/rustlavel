@@ -103,6 +103,7 @@ App::new()?
 | `rustlavel-validation` | Laravel-style rules and 422 responses |
 | `rustlavel-auth` | Password hashing, encryption, sessions, CSRF, signed URLs, guards, API tokens |
 | `rustlavel-cache` | Memory, file, and a from-scratch Redis client; rate limiting and idempotency keys |
+| `rustlavel-flags` | Runtime feature switches, per user or per tenant, with an incident switch |
 | `rustlavel-rbac` | Roles and permissions: assignment, wildcard checks, and route guards |
 | `rustlavel-queue` | Background jobs, workers, retries, dead letters, cron scheduling |
 | `rustlavel-mail` | SMTP written from scratch, MIME, mailables, notifications |

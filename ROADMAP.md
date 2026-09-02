@@ -97,7 +97,7 @@ Publishing model: one repository, many crates — the way `laravel/framework` ho
       impersonation), `rustlavel-webauthn` and `rustlavel-rbac`; the
       controllers and views are written into the project, as Laravel Breeze
       does, so the login page is a file the application owns
-- [ ] An HTML form that fails validation is not re-rendered with its errors; it gets a plain 422 today. JSON clients already get Laravel's shape.
+- [x] An HTML form that fails validation is redirected back to itself with the messages and the submitted input, both flashed through the session; JSON clients still get Laravel's `422`. The `Flash` trait lives in `rustlavel-http` so that validation can leave errors without depending on sessions and the view layer can read them without depending on either
 
 ## Phase 0.4 — AI and agent-era DX ✅ done
 
@@ -130,8 +130,8 @@ Publishing model: one repository, many crates — the way `laravel/framework` ho
       timings drawn on the page itself, with repeated queries called out rather than merely
       counted. Reads the same instrumentation bus as Telescope and metrics; refuses to appear
       in anything but an HTML page, and refuses production unless said so in full.
-- [ ] Pennant-style feature flags — not yet
-- [ ] `make:crud`, `tinker` — not yet
+- [x] Pennant-style feature flags: `rustlavel-flags`, runtime switches resolved per user with a store behind them and an incident switch in `.env`
+- [x] `make:crud` and `tinker`
 
 ## Phase 0.7 — More databases (in progress)
 
@@ -348,8 +348,8 @@ What testing against real servers caught, and fixtures did not:
 ## Phase 1.0+ — Ecosystem (partly)
 
 - [x] A worked example: `examples/blog`
-- [ ] A documentation site and cookbook
-- [ ] `rustlavel make:package` — scaffolding for third-party packages
+- [x] A documentation site and cookbook
+- [x] `rustlavel make:package` — scaffolding for third-party packages
 - [ ] Livewire-style server-driven components
 
 
