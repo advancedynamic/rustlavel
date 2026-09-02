@@ -3,7 +3,10 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
-## Unreleased
+## 0.2.2 — 2026-09-02
+
+Two bugs that met anybody who ran `rustlavel new --with auth-kit` on 0.2.1.
+Nothing else changed.
 
 ### Fixed
 
