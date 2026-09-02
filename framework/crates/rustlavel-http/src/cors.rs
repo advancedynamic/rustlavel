@@ -30,7 +30,7 @@ use crate::method::Method;
 use crate::middleware::{Middleware, Next};
 use crate::request::Request;
 use crate::response::Response;
-use rustlavel_core::{Config, Json};
+use rustlavel_core::Config;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -124,26 +124,26 @@ impl Cors {
     pub fn from_config(config: &Config) -> Self {
         let mut cors = Cors::new();
 
-        let paths = list(config.get("cors.paths"));
+        let paths = config.list("cors.paths");
         if !paths.is_empty() {
             cors.paths = paths;
         }
 
-        let origins = list(config.get("cors.allowed_origins"));
+        let origins = config.list("cors.allowed_origins");
         cors.origins =
             if origins.iter().any(|o| o == "*") { Origins::Any } else { Origins::List(origins) };
 
-        let methods = list(config.get("cors.allowed_methods"));
+        let methods = config.list("cors.allowed_methods");
         if !methods.is_empty() && !methods.iter().any(|m| m == "*") {
             cors.methods = methods.iter().filter_map(|m| Method::parse(m)).collect();
         }
 
-        let headers = list(config.get("cors.allowed_headers"));
+        let headers = config.list("cors.allowed_headers");
         if !headers.is_empty() && !headers.iter().any(|h| h == "*") {
             cors.allowed_headers = AllowedHeaders::List(headers);
         }
 
-        cors.exposed_headers = list(config.get("cors.exposed_headers"));
+        cors.exposed_headers = config.list("cors.exposed_headers");
         cors.credentials = config.bool("cors.supports_credentials", false);
 
         let max_age = config.int("cors.max_age", 0);
@@ -360,26 +360,11 @@ fn origin_matches(pattern: &str, origin: &str) -> bool {
     !label.is_empty() && !label.contains(['.', '/', ':'])
 }
 
-/// A JSON array, or a comma-separated string, as a list of trimmed strings.
-fn list(value: Option<Json>) -> Vec<String> {
-    match value {
-        Some(Json::Array(items)) => {
-            items.iter().filter_map(Json::as_str).map(|s| s.trim().to_string()).collect()
-        }
-        Some(Json::String(text)) => text
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .collect(),
-        _ => Vec::new(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::router::Router;
+    use rustlavel_core::Json;
     use crate::testing::TestClient;
 
     fn client(cors: Cors) -> TestClient {

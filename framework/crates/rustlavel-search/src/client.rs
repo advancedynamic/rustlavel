@@ -11,7 +11,7 @@ use crate::error::{Result, SearchError};
 use crate::query::Search;
 use crate::response::SearchResults;
 use rustlavel_client::Client;
-use rustlavel_core::Json;
+use rustlavel_core::{Config, Json};
 use rustlavel_http::Method;
 use std::time::Duration;
 
@@ -53,6 +53,45 @@ impl SearchClient {
             http: Client::new().timeout(Duration::from_secs(30)),
             retries: 2,
         }
+    }
+
+    /// Build from `config/search.json`, so the cluster address and credentials
+    /// can come from `.env`.
+    ///
+    /// | Key                 | Meaning                                              |
+    /// |---------------------|------------------------------------------------------|
+    /// | `search.url`        | Cluster base URL. `http://localhost:9200` by default. |
+    /// | `search.username`   | With `search.password`, HTTP basic authentication.   |
+    /// | `search.api_key`    | The `encoded` API key, used as-is.                   |
+    /// | `search.token`      | A bearer token.                                      |
+    /// | `search.timeout_ms` | Per-request timeout.                                 |
+    /// | `search.retries`    | Retries for failures that retrying can fix.          |
+    ///
+    /// The first credential found wins, in the order above. Nothing connects
+    /// here — an application must boot while the cluster is restarting.
+    pub fn from_config(config: &Config) -> SearchClient {
+        let mut client = SearchClient::new(config.string("search.url", "http://localhost:9200"));
+
+        let username = config.string("search.username", "");
+        let api_key = config.string("search.api_key", "");
+        let token = config.string("search.token", "");
+        if !username.is_empty() {
+            client = client.basic_auth(&username, &config.string("search.password", ""));
+        } else if !api_key.is_empty() {
+            client = client.api_key(api_key);
+        } else if !token.is_empty() {
+            client = client.bearer(token);
+        }
+
+        let timeout_ms = config.int("search.timeout_ms", 0);
+        if timeout_ms > 0 {
+            client = client.timeout(Duration::from_millis(timeout_ms as u64));
+        }
+        let retries = config.int("search.retries", -1);
+        if retries >= 0 {
+            client = client.retries(retries.min(10) as u32);
+        }
+        client
     }
 
     /// Authenticate with a username and password, the way `elastic` and a
@@ -524,6 +563,28 @@ fn base64(input: &[u8]) -> String {
 mod tests {
     use super::*;
     use rustlavel_client::{Fake, FakeResponse};
+
+    #[test]
+    fn from_config_reads_the_address_and_the_first_credential_it_finds() {
+        let config = Config::new();
+        config.set("search.url", "https://es.internal:9200/");
+        config.set("search.username", "elastic");
+        config.set("search.password", "s3cret");
+        config.set("search.api_key", "ignored-because-basic-wins");
+        config.set("search.retries", Json::from(2_i64));
+
+        let client = SearchClient::from_config(&config);
+        assert_eq!(client.base_url, "https://es.internal:9200", "trailing slash trimmed");
+        assert!(matches!(&client.auth, Auth::Header(h) if h.starts_with("Basic ")));
+        assert_eq!(client.retries, 2);
+    }
+
+    #[test]
+    fn from_config_with_nothing_set_points_at_localhost_unauthenticated() {
+        let client = SearchClient::from_config(&Config::new());
+        assert_eq!(client.base_url, "http://localhost:9200");
+        assert!(matches!(client.auth, Auth::None));
+    }
 
     fn json(body: &str) -> Json {
         Json::parse(body).expect("valid JSON in a test")

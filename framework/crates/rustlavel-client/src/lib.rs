@@ -79,6 +79,10 @@ impl Default for Client {
         let mut default_headers = Headers::new();
         default_headers.set("user-agent", concat!("rustlavel/", env!("CARGO_PKG_VERSION")));
         default_headers.set("accept", "*/*");
+        // Compressed responses are decoded before the caller sees them, so
+        // asking for them costs nothing and saves most of the bytes of any
+        // JSON API this client talks to.
+        default_headers.set("accept-encoding", "gzip, deflate");
 
         Client {
             timeout: Duration::from_secs(30),
@@ -264,7 +268,8 @@ impl RequestBuilder {
         let exchange = async {
             stream.write_all(&request).await.map_err(Error::Io)?;
             stream.flush().await.map_err(Error::Io)?;
-            read_response(&mut stream, self.method, self.client.max_body_bytes).await
+            let response = read_response(&mut stream, self.method, self.client.max_body_bytes).await?;
+            decode_body(response, self.client.max_body_bytes)
         };
 
         tokio::time::timeout(self.client.timeout, exchange)
@@ -480,6 +485,30 @@ async fn read_response(
     }
 
     Ok(ClientResponse { status, headers, body })
+}
+
+/// Undo a `Content-Encoding` the caller never asked to see.
+///
+/// The decoded body replaces the wire body and the encoding headers come off,
+/// so `response.body` is always the representation the server meant. An
+/// encoding this client did not ask for — `br`, say — is left as it came, and
+/// the header stays, so the caller can tell.
+fn decode_body(mut response: ClientResponse, max_body: usize) -> Result<ClientResponse> {
+    use rustlavel_http::compression::gzip;
+
+    let encoding = response.headers.get("content-encoding").map(|e| e.trim().to_ascii_lowercase());
+    let decoded = match encoding.as_deref() {
+        Some("gzip" | "x-gzip") => gzip::decompress_with_limit(&response.body, max_body),
+        Some("deflate") => gzip::zlib_decompress_with_limit(&response.body, max_body),
+        _ => return Ok(response),
+    };
+
+    response.body = decoded.map_err(|e| {
+        Error::Protocol(format!("the response body could not be decompressed: {e}"))
+    })?;
+    response.headers.remove("content-encoding");
+    response.headers.remove("content-length");
+    Ok(response)
 }
 
 pub(crate) fn parse_head(head: &[u8]) -> Result<(Status, Headers)> {
@@ -736,5 +765,72 @@ mod tests {
             offered.iter().any(|name| name == "X25519"),
             "a classical group must remain, for servers that do not know the hybrid: {offered:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod compression_tests {
+    use super::*;
+    use rustlavel_http::compression::gzip;
+    use tokio::net::TcpListener;
+
+    /// Serve exactly one response and close, returning the address to hit.
+    async fn one_shot(head: &'static str, body: Vec<u8>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0u8; 8192];
+            let _ = socket.read(&mut request).await;
+            let mut wire = format!("HTTP/1.1 200 OK\r\ncontent-length: {}\r\n{head}\r\n", body.len()).into_bytes();
+            wire.extend_from_slice(&body);
+            socket.write_all(&wire).await.unwrap();
+            let _ = socket.shutdown().await;
+        });
+        format!("http://{address}/")
+    }
+
+    #[tokio::test]
+    async fn gzip_and_deflate_bodies_are_decoded_before_the_caller_sees_them() {
+        let text = "{\"users\":[".to_string() + &"{\"name\":\"same\"},".repeat(200) + "{}]}";
+
+        let url = one_shot("content-encoding: gzip\r\ncontent-type: application/json\r\n", gzip::compress(text.as_bytes())).await;
+        let response = Client::new().get(url).send().await.unwrap();
+        assert_eq!(response.text(), text);
+        assert_eq!(response.headers.get("content-encoding"), None, "the encoding is gone with the bytes it described");
+        assert_eq!(response.headers.get("content-type"), Some("application/json"));
+
+        let url = one_shot("content-encoding: deflate\r\n", gzip::zlib_compress(text.as_bytes())).await;
+        assert_eq!(Client::new().get(url).send().await.unwrap().text(), text);
+    }
+
+    #[tokio::test]
+    async fn an_unknown_encoding_is_left_as_it_came() {
+        let url = one_shot("content-encoding: br\r\n", b"not really brotli".to_vec()).await;
+        let response = Client::new().get(url).send().await.unwrap();
+        assert_eq!(response.headers.get("content-encoding"), Some("br"));
+        assert_eq!(response.body, b"not really brotli");
+    }
+
+    #[tokio::test]
+    async fn a_corrupt_gzip_body_is_an_error_not_garbage() {
+        let url = one_shot("content-encoding: gzip\r\n", b"\x1f\x8b\x08definitely not deflate".to_vec()).await;
+        let error = Client::new().get(url).send().await.expect_err("an error").to_string();
+        assert!(error.contains("decompressed"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn every_request_asks_for_compression_by_default() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let seen = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0u8; 8192];
+            let n = socket.read(&mut request).await.unwrap();
+            socket.write_all(b"HTTP/1.1 204 No Content\r\n\r\n").await.unwrap();
+            String::from_utf8_lossy(&request[..n]).to_ascii_lowercase()
+        });
+        Client::new().get(format!("http://{address}/")).send().await.unwrap();
+        assert!(seen.await.unwrap().contains("accept-encoding: gzip, deflate"));
     }
 }

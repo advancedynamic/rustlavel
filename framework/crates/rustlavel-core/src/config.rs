@@ -133,6 +133,35 @@ impl Config {
             .unwrap_or(default)
     }
 
+    /// A list, from either a JSON array or one comma-separated string.
+    ///
+    /// The string form exists because of `.env`: a variable can only hold a
+    /// string, so `CORS_ALLOWED_ORIGINS=https://a.example,https://b.example`
+    /// has to mean the same as the array it would be in JSON. Items are
+    /// trimmed and empty ones dropped, so a trailing comma is not an entry.
+    pub fn list(&self, path: &str) -> Vec<String> {
+        match self.get(path) {
+            Some(Json::Array(items)) => items
+                .iter()
+                .filter_map(|item| match item {
+                    Json::String(s) => Some(s.clone()),
+                    Json::Number(n) => Some(n.to_string()),
+                    Json::Bool(b) => Some(b.to_string()),
+                    _ => None,
+                })
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            Some(Json::String(text)) => text
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
     pub fn bool(&self, path: &str, default: bool) -> bool {
         self.get(path)
             .and_then(|v| match v {
@@ -237,6 +266,18 @@ fn expand_str(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_list_comes_from_an_array_or_a_comma_separated_string() {
+        let config = Config::new();
+        config.set("a.items", Json::from(vec!["x", " y ", ""]));
+        config.set("a.csv", "x, y,,z ,");
+        config.set("a.one", "solo");
+        assert_eq!(config.list("a.items"), vec!["x", "y"]);
+        assert_eq!(config.list("a.csv"), vec!["x", "y", "z"]);
+        assert_eq!(config.list("a.one"), vec!["solo"]);
+        assert!(config.list("a.missing").is_empty());
+    }
 
     #[test]
     fn sets_and_reads_nested_paths() {

@@ -201,14 +201,7 @@ impl std::fmt::Debug for Vault {
 }
 
 fn configured_roots(config: &Config) -> Vec<String> {
-    config
-        .get("vault.resolve")
-        .as_ref()
-        .and_then(rustlavel_core::Json::as_array)
-        .map(|roots| {
-            roots.iter().filter_map(rustlavel_core::Json::as_str).map(str::to_string).collect()
-        })
-        .unwrap_or_default()
+    config.list("vault.resolve")
 }
 
 /// Whether an address means the token crosses a network unencrypted.

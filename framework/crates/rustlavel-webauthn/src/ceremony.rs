@@ -12,7 +12,7 @@
 use crate::cbor::Cbor;
 use crate::cose::CoseKey;
 use rustlavel_auth::base64;
-use rustlavel_core::{Error, Json, Result};
+use rustlavel_core::{Config, Error, Json, Result};
 use sha2::{Digest, Sha256};
 
 /// SHA-256, the only hash WebAuthn uses.
@@ -175,6 +175,14 @@ pub struct RelyingParty {
     allow_cross_origin: bool,
 }
 
+/// The host of a URL, without scheme, port or path — the shape an rp id has.
+fn host_of(url: &str) -> Option<String> {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host = authority.rsplit('@').next()?.split(':').next()?;
+    (!host.is_empty()).then(|| host.to_string())
+}
+
 impl RelyingParty {
     /// A relying party for `id`, expecting `https://{id}` and nothing else.
     ///
@@ -199,6 +207,66 @@ impl RelyingParty {
             timeout_ms: DEFAULT_TIMEOUT_MS,
             allow_cross_origin: false,
         }
+    }
+
+    /// Build from `config/webauthn.json`, falling back to `app.name` and
+    /// `app.url`, so a site that has configured nothing else still gets a
+    /// relying party that matches itself.
+    ///
+    /// | Key                          | Meaning                                                   |
+    /// |------------------------------|-----------------------------------------------------------|
+    /// | `webauthn.id`                | The relying party id: a domain. Defaults to `app.url`'s host. |
+    /// | `webauthn.name`              | Shown by the authenticator. Defaults to `app.name`.       |
+    /// | `webauthn.origins`           | Expected origins, array or comma-separated. Defaults to `app.url`. |
+    /// | `webauthn.user_verification` | `required`, `preferred` (default) or `discouraged`.       |
+    /// | `webauthn.resident_key`      | `required`, `preferred` (default) or `discouraged`.       |
+    /// | `webauthn.timeout_ms`        | How long the browser waits for the authenticator.         |
+    ///
+    /// Fails when no id can be found anywhere, because a relying party id is
+    /// the one thing the specification will not let anyone guess.
+    pub fn from_config(config: &Config) -> Result<RelyingParty> {
+        let app_url = config.string("app.url", "");
+        let id = match config.string("webauthn.id", "") {
+            id if !id.is_empty() => id,
+            _ => host_of(&app_url).ok_or_else(|| {
+                Error::msg(
+                    "WebAuthn needs a relying party id: set webauthn.id (a domain, such as \
+                     example.com) or app.url so one can be taken from it.",
+                )
+            })?,
+        };
+        let name = match config.string("webauthn.name", "") {
+            name if !name.is_empty() => name,
+            _ => config.string("app.name", "Rustlavel"),
+        };
+
+        let mut party = RelyingParty::new(id, name);
+
+        let origins = config.list("webauthn.origins");
+        if !origins.is_empty() {
+            party = party.with_origins(origins);
+        } else if !app_url.is_empty() {
+            party = party.with_origins([app_url.trim_end_matches('/').to_string()]);
+        }
+
+        match config.string("webauthn.user_verification", "").to_ascii_lowercase().as_str() {
+            "required" => party = party.with_user_verification(UserVerification::Required),
+            "discouraged" => party = party.with_user_verification(UserVerification::Discouraged),
+            "" | "preferred" => {}
+            other => return Err(Error::msg(format!("`{other}` is not a user verification policy; use required, preferred or discouraged"))),
+        }
+        match config.string("webauthn.resident_key", "").to_ascii_lowercase().as_str() {
+            "required" => party = party.with_resident_key(ResidentKey::Required),
+            "discouraged" => party = party.with_resident_key(ResidentKey::Discouraged),
+            "" | "preferred" => {}
+            other => return Err(Error::msg(format!("`{other}` is not a resident key policy; use required, preferred or discouraged"))),
+        }
+
+        let timeout_ms = config.int("webauthn.timeout_ms", 0);
+        if timeout_ms > 0 {
+            party = party.with_timeout_ms(timeout_ms as u64);
+        }
+        Ok(party)
     }
 
     /// Replace the expected origins. Every one is matched exactly.
@@ -1078,5 +1146,62 @@ mod tests {
         .unwrap();
         let printed = format!("{client:?}");
         assert!(printed.contains("<32 bytes>"), "the challenge was printed: {printed}");
+    }
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    #[test]
+    fn from_config_falls_back_to_the_applications_own_name_and_url() {
+        let config = Config::new();
+        config.set("app.name", "Acme");
+        config.set("app.url", "https://app.acme.example:8443/");
+
+        let party = RelyingParty::from_config(&config).expect("app.url is enough");
+        assert_eq!(party.id(), "app.acme.example", "the host, without scheme or port");
+        assert_eq!(party.name, "Acme");
+        assert_eq!(party.origins, vec!["https://app.acme.example:8443"], "the origin keeps its port");
+    }
+
+    #[test]
+    fn from_config_reads_every_key_and_a_comma_separated_origin_list() {
+        let config = Config::new();
+        config.set("webauthn.id", "acme.example");
+        config.set("webauthn.name", "Acme Passkeys");
+        config.set("webauthn.origins", "https://acme.example, https://www.acme.example");
+        config.set("webauthn.user_verification", "required");
+        config.set("webauthn.resident_key", "discouraged");
+        config.set("webauthn.timeout_ms", Json::from(30_000_i64));
+
+        let party = RelyingParty::from_config(&config).unwrap();
+        assert_eq!(party.id(), "acme.example");
+        assert_eq!(party.name, "Acme Passkeys");
+        assert_eq!(party.origins.len(), 2);
+        assert_eq!(party.user_verification, UserVerification::Required);
+        assert_eq!(party.resident_key, ResidentKey::Discouraged);
+        assert_eq!(party.timeout_ms, 30_000);
+    }
+
+    #[test]
+    fn from_config_refuses_to_guess_an_id_and_a_misspelt_policy() {
+        let error = RelyingParty::from_config(&Config::new()).expect_err("no id anywhere").to_string();
+        assert!(error.contains("webauthn.id"), "{error}");
+
+        let config = Config::new();
+        config.set("webauthn.id", "acme.example");
+        config.set("webauthn.user_verification", "always");
+        let error = RelyingParty::from_config(&config).err().unwrap().to_string();
+        assert!(error.contains("`always`"), "{error}");
+    }
+
+    #[test]
+    fn host_of_handles_the_shapes_a_url_takes() {
+        assert_eq!(host_of("https://acme.example"), Some("acme.example".into()));
+        assert_eq!(host_of("https://acme.example:8443/login?x=1"), Some("acme.example".into()));
+        assert_eq!(host_of("http://user:pw@acme.example/"), Some("acme.example".into()));
+        assert_eq!(host_of("acme.example"), Some("acme.example".into()));
+        assert_eq!(host_of(""), None);
     }
 }
