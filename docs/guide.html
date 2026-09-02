@@ -158,6 +158,96 @@ removing them is not a risk it gets to take on your behalf. <code>--force</code>
 link; it does not delete anybody's files.</p>
 </div>
 
+<h2>Building an API</h2>
+
+<p>An application that only serves JSON needs a handful of things a page-serving one does not,
+and every one of them is a middleware or a plugin you add by name. Nothing is on until you turn
+it on.</p>
+
+<pre><code>use rustlavel::prelude::*;
+use std::time::Duration;
+
+App::new()?
+    .middleware(RequestId::new())
+    .middleware(Cors::from_config(app.config()))
+    .middleware(Compress::new())
+    .middleware(ETag::new())
+    .plugin(Health::new().check("database", |req| { &hellip; }))
+    .routes(|r| {
+        r.version("v1", |v1| {
+            v1.middleware(Timeout::seconds(10));
+            v1.middleware(BodyLimit::kilobytes(64));
+            v1.middleware(Idempotency::new(&amp;cache));
+            v1.get("/users", UserController::index);
+            v1.post("/payments", PaymentController::store);
+        });
+    })
+    .run()
+    .await</code></pre>
+
+<p><strong>CORS</strong> is the one an API cannot be called from a browser without. It reads
+<code>config/cors.json</code> with the same keys as Laravel's <code>config/cors.php</code>, and
+every list also accepts a comma-separated string so it can come from <code>.env</code>. The
+default is closed: a forgotten line shows up in a browser console, not as an API open to the
+world.</p>
+
+<p><strong>Compression</strong> negotiates from <code>Accept-Encoding</code> and sends gzip, or
+zlib for <code>deflate</code>. The codec is written in the framework, like everything else, and
+its output is checked against the real <code>gzip</code>. A 300-user JSON list went from 17,671
+bytes to 2,238 on the wire.</p>
+
+<p><strong>ETag</strong> tags every successful <code>GET</code> and answers a matching
+<code>If-None-Match</code> with a <code>304</code> and no body. The handler still runs &mdash; this
+saves bandwidth, not compute.</p>
+
+<p><strong>Resources</strong> give a type one JSON shape instead of one per controller:</p>
+
+<pre><code>pub struct UserResource;
+
+impl JsonResource for UserResource {
+    type Model = User;
+
+    fn to_json(user: &amp;User) -> Json {
+        attributes()
+            .set("id", user.id)
+            .set("name", &amp;user.name)
+            .when(user.is_admin, "permissions", || Json::from(vec!["*"]))
+            .finish()
+    }
+}
+
+// In a controller:
+UserResource::make(&amp;user).created()
+UserResource::collection(&amp;page.hydrate()?)
+    .paginate(page.current_page, page.per_page, page.total)</code></pre>
+
+<p>The shapes are Laravel's, down to the keys in <code>meta</code> and <code>links</code>. A
+<code>when()</code> that is false leaves the key <em>absent</em>, not null &mdash; a client not told
+about permissions knows it may not ask.</p>
+
+<p><strong>Request ids</strong> connect a user's screenshot to a line in the log. One is assigned
+per request, or kept from a proxy, and appears on the response, in <code>req.request_id()</code>,
+and on the <code>http.request</code> event that Telescope and OTLP see.</p>
+
+<p><strong>Idempotency keys</strong> make <code>POST /payments</code> safe to retry. The first
+request with an <code>Idempotency-Key</code> runs; every later one gets the first answer back,
+marked <code>Idempotent-Replayed: true</code>. The same key with a different body is a
+<code>422</code>, and a request still in flight is a <code>409</code>.</p>
+
+<p><strong>Health</strong> is two routes because they answer two questions. <code>/up</code> says
+the process is alive, and is what restarts it; <code>/up/ready</code> runs your checks and says
+whether it can do useful work, and is what routes traffic to it.</p>
+
+<p><strong>Timeout</strong> and <strong>BodyLimit</strong> are per group. The server has a body
+limit of its own that protects the process; this one is policy, so a JSON endpoint that takes a
+kilobyte does not accept the fifty megabytes the avatar upload needs.</p>
+
+<p><strong>Versions</strong> come by path with <code>r.version("v2", ...)</code> or by header with
+<code>VersionHeader</code>; either way the handler asks <code>req.api_version()</code>. Retiring
+one is <code>.sunset("2027-01-01")</code> on the route: every response then carries
+<code>Sunset</code> and <code>Deprecation</code>, so a client library can warn its own developers
+for months before the day.</p>
+
 <h2>What is different from Laravel</h2>
 
 <table>

@@ -84,13 +84,13 @@ App::new()?
 | --- | --- |
 | `rustlavel` | The meta-crate an application imports, with feature flags |
 | `rustlavel-core` | Config, `.env`, JSON, typed context, instrumentation bus, events |
-| `rustlavel-http` | HTTP/1.1 server, router, middleware, dev error page, test client |
+| `rustlavel-http` | HTTP/1.1 server, router, middleware, dev error page, test client; CORS, gzip (a DEFLATE written here), ETag, request ids, health probes, timeouts, API resources and versioning |
 | `rustlavel-cli` | The `rustlavel` binary — `new`, `serve`, `make:*`, `migrate`, `doctor`, `build` |
 | `rustlavel-db` | Drivers for PostgreSQL, MySQL and SQL Server with TLS; query builder, schema, migrations, ORM, pagination |
 | `rustlavel-view` | Blade-shaped template engine |
 | `rustlavel-validation` | Laravel-style rules and 422 responses |
 | `rustlavel-auth` | Password hashing, encryption, sessions, CSRF, signed URLs, guards, API tokens |
-| `rustlavel-cache` | Memory, file, and a from-scratch Redis client; rate limiting |
+| `rustlavel-cache` | Memory, file, and a from-scratch Redis client; rate limiting and idempotency keys |
 | `rustlavel-queue` | Background jobs, workers, retries, dead letters, cron scheduling |
 | `rustlavel-mail` | SMTP written from scratch, MIME, mailables, notifications |
 | `rustlavel-storage` | Local disk and S3-compatible object stores |
