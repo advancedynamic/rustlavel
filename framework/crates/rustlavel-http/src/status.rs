@@ -16,6 +16,7 @@ impl Status {
     pub const FORBIDDEN: Status = Status(403);
     pub const NOT_FOUND: Status = Status(404);
     pub const METHOD_NOT_ALLOWED: Status = Status(405);
+    pub const CONFLICT: Status = Status(409);
     pub const PAYLOAD_TOO_LARGE: Status = Status(413);
     /// Laravel's status for a rejected CSRF token: the form was rendered too
     /// long ago, or in another session.

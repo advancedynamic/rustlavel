@@ -35,6 +35,7 @@
 
 pub mod config;
 pub mod file;
+pub mod idempotency;
 pub mod memory;
 pub mod rate_limit;
 pub mod redis;
@@ -43,6 +44,7 @@ pub mod throttle;
 
 pub use config::{CacheConfig, CacheStore, Driver};
 pub use file::FileStore;
+pub use idempotency::Idempotency;
 pub use memory::MemoryStore;
 pub use rate_limit::{RateLimit, RateLimiter};
 pub use redis::{RedisConfig, RedisStore};
@@ -53,7 +55,7 @@ pub use rustlavel_core::{Error, Json, Result};
 
 /// What an application importing this crate usually wants.
 pub mod prelude {
-    pub use crate::{Cache, CacheExt, CacheStore, RateLimiter, Throttle};
+    pub use crate::{Cache, CacheExt, CacheStore, Idempotency, RateLimiter, Throttle};
     pub use rustlavel_core::{Json, Result};
 }
 
