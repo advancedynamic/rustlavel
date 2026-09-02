@@ -278,6 +278,110 @@ one is <code>.sunset("2027-01-01")</code> on the route: every response then carr
 <code>Sunset</code> and <code>Deprecation</code>, so a client library can warn its own developers
 for months before the day.</p>
 
+<h2 id="starter-kit">The starter kit</h2>
+
+<p>Everything above builds an application from parts. If what you want is a working sign-in
+to start from, there is one:</p>
+
+<pre><code>rustlavel new app --with auth-kit
+cd app
+rustlavel key:generate
+# set DATABASE_URL in .env
+rustlavel migrate
+rustlavel db:seed     # prints a link to set the first administrator&rsquo;s password
+rustlavel serve</code></pre>
+
+<p>That writes the controllers, views, routes and migrations <em>into your project</em>. The
+login page is <code>resources/views/auth/login.rl.html</code> and the controller behind it is
+<code>src/controllers/auth/login_controller.rs</code>. Both are yours: change them, delete
+what you do not need, and the code stops being reachable. This is the shape Laravel Breeze
+has, and for the same reason.</p>
+
+<p>What stays in crates is the part that should not be copy-pasted &mdash; TOTP, the QR
+encoder, passkeys, roles and permissions. A security fix there reaches your application
+through <code>cargo update</code>, rather than through a diff nobody applies to a project
+scaffolded a year ago.</p>
+
+<h3>What you get</h3>
+
+<table>
+<tr><th>Page</th><th>Where it lives</th></tr>
+<tr><td>Sign in, with a second factor</td><td><code>resources/views/auth/login.rl.html</code>, <code>challenge.rl.html</code></td></tr>
+<tr><td>Register, and the invitation an administrator sends</td><td><code>auth/register.rl.html</code>, <code>sent.rl.html</code></td></tr>
+<tr><td>Choose a first password, or reset one</td><td><code>auth/activate.rl.html</code>, <code>forgot.rl.html</code></td></tr>
+<tr><td>Recovery codes</td><td><code>auth/recovery.rl.html</code></td></tr>
+<tr><td>Dashboard</td><td><code>resources/views/dashboard.rl.html</code></td></tr>
+<tr><td>Profile and change password</td><td><code>resources/views/profile.rl.html</code></td></tr>
+<tr><td>Security: authenticator app, passkeys, recovery codes, sessions</td><td><code>settings/security.rl.html</code></td></tr>
+<tr><td>Users, roles and permissions</td><td><code>resources/views/admin/</code></td></tr>
+</table>
+
+<h3>Registration, and why nobody types a password early</h3>
+
+<p>A visitor may sign up when <code>AUTH_REGISTRATION_OPEN</code> allows it, and an
+administrator may create the account instead. Both roads end at the same place: a link
+emailed to the address, behind which the person chooses their own password. So a password is
+never typed into a form belonging to an unconfirmed address, and an administrator never knows
+anybody&rsquo;s.</p>
+
+<p>The public form answers the same way whether or not the address already has an account.
+Saying &ldquo;that email is taken&rdquo; would turn it into a way to ask who has an account
+here.</p>
+
+<h3>Two factors</h3>
+
+<p>An authenticator app (TOTP) or a passkey, with single-use recovery codes behind both. The
+QR code on the enrolment page is rendered on the server as SVG: a chart API would mean
+posting the TOTP secret to a third party, and a JavaScript QR library would need a looser
+Content-Security-Policy than the kit ships with.</p>
+
+<p>Recovery codes are not optional decoration. Without them a lost phone means a lost
+account, and an administrator ends up turning two-factor off with a database query.</p>
+
+<h3>Lockout, in two halves</h3>
+
+<p>Wrong passwords lock the <em>account</em> for fifteen minutes, stored on the user row so
+it survives a restart and applies wherever the attempt comes from. Separately, failures from
+one <em>address</em> are counted in the cache. Without that second half, somebody trying one
+common password against ten thousand accounts never trips a single account&rsquo;s counter
+&mdash; and that is the attack that actually works.</p>
+
+<h3>Roles and permissions</h3>
+
+<p>Roles hold permissions, and a user may also be granted or denied one directly. An explicit
+direct deny beats everything, including the super role: a rule another role can quietly
+overrule is not a rule. A permission ending in <code>.*</code> covers everything below it, so
+a role holding <code>users.*</code> covers <code>users.create</code>.</p>
+
+<pre><code>// In a route:
+admin.get("/users", UsersController::index).middleware(Can::permission("users.view"));
+
+// In a handler:
+if req.can("users.delete").await? { … }</code></pre>
+
+<h3>Viewing as somebody else</h3>
+
+<p>Support asks &ldquo;what does this user see?&rdquo; and impersonation is how you look. The
+session keeps who really signed in, so the audit trail names the administrator rather than
+the person they were looking at, and a loud banner sits across every page &mdash; forgetting
+you are impersonating and then changing something is the failure this exists to prevent.
+Somebody who may impersonate cannot themselves be impersonated, which is what stops one
+administrator&rsquo;s session becoming every administrator&rsquo;s.</p>
+
+<h3>The interface</h3>
+
+<p>Tailwind v4, built to <code>public/css/app.css</code> and committed, so running the result
+needs no Node toolchain. Rebuild after using a class no page used before:</p>
+
+<pre><code>npx @tailwindcss/cli -i resources/css/app.css -o public/css/app.css --minify</code></pre>
+
+<p>There is no inline style, no inline script and no external origin anywhere in the markup.
+That is deliberate: the pages are meant to be served under a Content-Security-Policy with no
+<code>unsafe-inline</code>, and a policy that has to be loosened for the framework&rsquo;s own
+output protects nothing. The light and dark theme is a cookie the server reads, not a class
+JavaScript adds after the page has painted &mdash; the usual fix for that flash is a small
+inline script in the head, which is precisely what the policy forbids.</p>
+
 <h2>What is different from Laravel</h2>
 
 <table>

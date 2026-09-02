@@ -62,6 +62,18 @@ async fn main() -> Result<()> {
 }
 ```
 
+## A starter kit, if you want one
+
+```bash
+rustlavel new app --with auth-kit
+```
+
+Sign-in with an authenticator app or a passkey, recovery codes, invitation and
+self-registration, password reset, a sign-in audit log, account lockout, roles
+and permissions with a management area, "view as this user", and eleven pages of
+Tailwind. The controllers and views are written into your project — the login
+page is a file you edit, not a template you override.
+
 ## Packages, not a monolith
 
 Like `composer require`, every feature beyond the core is opt-in — and what you
@@ -91,6 +103,7 @@ App::new()?
 | `rustlavel-validation` | Laravel-style rules and 422 responses |
 | `rustlavel-auth` | Password hashing, encryption, sessions, CSRF, signed URLs, guards, API tokens |
 | `rustlavel-cache` | Memory, file, and a from-scratch Redis client; rate limiting and idempotency keys |
+| `rustlavel-rbac` | Roles and permissions: assignment, wildcard checks, and route guards |
 | `rustlavel-queue` | Background jobs, workers, retries, dead letters, cron scheduling |
 | `rustlavel-mail` | SMTP written from scratch, MIME, mailables, notifications |
 | `rustlavel-storage` | Local disk and S3-compatible object stores |

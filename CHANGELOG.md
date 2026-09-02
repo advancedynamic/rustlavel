@@ -3,7 +3,12 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
-## Unreleased
+## 0.2.1 — 2026-09-02
+
+The patch number rather than the minor, and that is the right slot: for a
+`0.x` version Cargo treats the minor as the major, so a breaking change would
+have to be `0.3.0`. Nothing here breaks anything. Everything below is new, so
+`rustlavel = "0.2"` picks it up on its own.
 
 ### Added
 

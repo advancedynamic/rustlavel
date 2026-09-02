@@ -48,13 +48,13 @@ application that has neither a mailer nor object storage.</p>
 <tr><th>Crate</th><th>Feature</th><th>What it is</th></tr>
 <tr><td><a href="https://docs.rs/rustlavel">rustlavel</a></td><td><em>always</em></td><td>A Laravel-inspired full-stack web framework for Rust</td></tr>
 <tr><td><a href="https://docs.rs/rustlavel-ai">rustlavel-ai</a></td><td><code>ai</code></td><td>Rustlavel AI: one API for Anthropic, OpenAI and Ollama, with streaming, tools and a fake provider</td></tr>
-<tr><td><a href="https://docs.rs/rustlavel-auth">rustlavel-auth</a></td><td><code>auth</code></td><td>Rustlavel authentication: sessions, argon2 hashing, CSRF, signed URLs, encryption</td></tr>
-<tr><td><a href="https://docs.rs/rustlavel-cache">rustlavel-cache</a></td><td><code>cache</code></td><td>Rustlavel cache: memory, file and from-scratch Redis drivers, plus rate limiting</td></tr>
-<tr><td><a href="https://docs.rs/rustlavel-cli">rustlavel-cli</a></td><td><em>separate binary</em></td><td>The rustlavel command-line tool: new, serve, make:*</td></tr>
-<tr><td><a href="https://docs.rs/rustlavel-client">rustlavel-client</a></td><td><code>client</code></td><td>Rustlavel outbound HTTP client, written on Tokio with TLS from rustls</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-auth">rustlavel-auth</a></td><td><code>auth</code></td><td>Sessions, argon2 hashing, CSRF, signed URLs, encryption, API tokens, TOTP with a QR encoder, and impersonation</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-cache">rustlavel-cache</a></td><td><code>cache</code></td><td>Memory, file and from-scratch Redis drivers, rate limiting, and idempotency keys</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-cli">rustlavel-cli</a></td><td><em>separate binary</em></td><td>The rustlavel command-line tool: new (with the auth starter kit), serve, make:*, migrate, doctor, build</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-client">rustlavel-client</a></td><td><code>client</code></td><td>Outbound HTTP on Tokio with TLS from rustls, transparent gzip, and a circuit breaker</td></tr>
 <tr><td><a href="https://docs.rs/rustlavel-core">rustlavel-core</a></td><td><em>always</em></td><td>Rustlavel application lifecycle, config, .env, and internal instrumentation</td></tr>
-<tr><td><a href="https://docs.rs/rustlavel-db">rustlavel-db</a></td><td><code>db</code></td><td>Rustlavel database layer: PostgreSQL driver, query builder, migrations, and ORM</td></tr>
-<tr><td><a href="https://docs.rs/rustlavel-http">rustlavel-http</a></td><td><em>always</em></td><td>Rustlavel HTTP server, router, middleware pipeline, request/response</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-db">rustlavel-db</a></td><td><code>db</code></td><td>Drivers for PostgreSQL, MySQL and SQL Server with TLS; query builder, schema, migrations, ORM, pagination</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-http">rustlavel-http</a></td><td><em>always</em></td><td>HTTP/1.1 server, router and middleware; CORS, compression, ETag, request ids, health probes, timeouts, API resources and versioning</td></tr>
 <tr><td><a href="https://docs.rs/rustlavel-i18n">rustlavel-i18n</a></td><td><code>i18n</code></td><td>Rustlavel translations and localization</td></tr>
 <tr><td><a href="https://docs.rs/rustlavel-ldap">rustlavel-ldap</a></td><td><code>ldap</code></td><td>LDAP for Rustlavel: bind, search, and authenticating a user against a directory</td></tr>
 <tr><td><a href="https://docs.rs/rustlavel-macros">rustlavel-macros</a></td><td><em>always</em></td><td>Derive macros for Rustlavel, notably #[derive(Model)]</td></tr>
@@ -65,6 +65,7 @@ application that has neither a mailer nor object storage.</p>
 <tr><td><a href="https://docs.rs/rustlavel-oauth-provider">rustlavel-oauth-provider</a></td><td><code>oauth-provider</code></td><td>Be an OAuth 2.1 provider: authorization code + PKCE, refresh rotation, revocation, introspection</td></tr>
 <tr><td><a href="https://docs.rs/rustlavel-openapi">rustlavel-openapi</a></td><td><code>openapi</code></td><td>Generate an OpenAPI document from a Rustlavel router</td></tr>
 <tr><td><a href="https://docs.rs/rustlavel-otel">rustlavel-otel</a></td><td><code>otel</code></td><td>OpenTelemetry for Rustlavel: traces and metrics exported over OTLP</td></tr>
+<tr><td><a href="https://docs.rs/rustlavel-rbac">rustlavel-rbac</a></td><td><code>rbac</code></td><td>Roles and permissions for Rustlavel: assignment, checking, and route guards</td></tr>
 <tr><td><a href="https://docs.rs/rustlavel-queue">rustlavel-queue</a></td><td><code>queue</code></td><td>Rustlavel queues: background jobs, workers, scheduling, and a dead-letter store</td></tr>
 <tr><td><a href="https://docs.rs/rustlavel-search">rustlavel-search</a></td><td><code>search</code></td><td>Elasticsearch and OpenSearch for Rustlavel: indexing, search, and bulk operations</td></tr>
 <tr><td><a href="https://docs.rs/rustlavel-storage">rustlavel-storage</a></td><td><code>storage</code></td><td>Rustlavel file storage: local disk and S3-compatible object stores</td></tr>
@@ -75,6 +76,27 @@ application that has neither a mailer nor object storage.</p>
 <tr><td><a href="https://docs.rs/rustlavel-webauthn">rustlavel-webauthn</a></td><td><code>webauthn</code></td><td>Passkeys for Rustlavel: WebAuthn registration and authentication, written on the W3C specification</td></tr>
 <tr><td><a href="https://docs.rs/rustlavel-ws">rustlavel-ws</a></td><td><code>ws</code></td><td>Rustlavel WebSockets: RFC 6455 handshake and framing, plus channel broadcasting</td></tr>
 </table>
+
+<h2>Not packages: the middleware in the box</h2>
+
+<p>Several things an API needs are not feature flags, because they live in
+<code>rustlavel-http</code> and are always compiled. Nothing is on until you add it:</p>
+
+<pre><code>App::new()?
+    .middleware(TrustProxies::from_config(app.config()))
+    .middleware(RequestId::new())
+    .middleware(Cors::from_config(app.config()))
+    .middleware(Compress::new())
+    .middleware(ETag::new())
+    .middleware(Timeout::seconds(10))
+    .middleware(BodyLimit::kilobytes(64))
+    .plugin(Health::new())</code></pre>
+
+<p><code>TrustProxies</code> is the one to reach for first behind a load balancer. Without
+it <code>req.ip()</code> is the balancer&rsquo;s address &mdash; true, but not useful. It is
+opt-in on purpose: reading <code>X-Forwarded-For</code> from anyone who sends it does not
+tell you where a request came from, it lets the sender choose, and the rate limiter keys on
+exactly that value.</p>
 
 <h2>Two packages that are split on purpose</h2>
 
@@ -87,6 +109,15 @@ review.</p>
 <p><code>rustlavel-auth</code> carries its own simpler <code>Scopes</code> type for API
 tokens. That duplication is deliberate: personal access tokens must not drag an OAuth
 dependency into the authentication crate.</p>
+
+<h2>The starter kit</h2>
+
+<p><code>rustlavel new app --with auth-kit</code> is scaffolding rather than a feature flag.
+It turns on the packages it needs &mdash; <code>auth</code>, <code>db</code>,
+<code>view</code>, <code>validation</code>, <code>rbac</code>, <code>webauthn</code>,
+<code>cache</code>, <code>mail</code> &mdash; and writes the controllers, views, routes and
+migrations into the project, where they belong to you. The
+<a href="guide.html#starter-kit">guide</a> covers what you get.</p>
 
 <h2>Databases</h2>
 
