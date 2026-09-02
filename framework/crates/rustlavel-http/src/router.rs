@@ -343,6 +343,11 @@ async fn run_guarded(next: Next, request: Request) -> Response {
             // The pattern, not the path: one metric series per route, not per id.
             event = event.with("route", route);
         }
+        // Read from the response rather than the request, which the pipeline
+        // has consumed by now; the middleware puts it there for exactly this.
+        if let Some(id) = response.headers.get(crate::request_id::HEADER) {
+            event = event.with("request_id", id);
+        }
         event.dispatch();
     }
 

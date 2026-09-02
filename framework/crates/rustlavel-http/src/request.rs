@@ -240,6 +240,12 @@ impl Request {
         self.extensions.insert(TypeId::of::<T>(), Box::new(value));
     }
 
+    /// The identifier the [`RequestId`](crate::request_id::RequestId)
+    /// middleware assigned, for log lines and error reports.
+    pub fn request_id(&self) -> Option<&str> {
+        self.extension::<crate::request_id::Assigned>().map(|id| id.0.as_str())
+    }
+
     /// Read a value attached by earlier middleware.
     pub fn extension<T: Send + Sync + 'static>(&self) -> Option<&T> {
         self.extensions.get(&TypeId::of::<T>()).and_then(|value| value.downcast_ref::<T>())
