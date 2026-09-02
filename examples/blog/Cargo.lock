@@ -322,7 +322,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-db",
@@ -335,11 +335,11 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-core"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "rustlavel-db"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "hmac",
  "md-5",
@@ -355,7 +355,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-http"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "rustlavel-core",
  "tokio",
@@ -363,11 +363,11 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-macros"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "rustlavel-validation"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -375,7 +375,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-view"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "rustlavel-core",
 ]

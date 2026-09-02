@@ -3,6 +3,24 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## Unreleased
+
+### Fixed
+
+- The starter kit shipped a `match` that clippy rewrites as `matches!`, so
+  `cargo clippy -- -D warnings` failed on a freshly scaffolded project. A lint
+  in the kit is a lint in an application's own build.
+- The scaffold's default test asserted a public home page, which the kit
+  replaces with a redirect to the sign-in page, so `cargo test` failed
+  immediately after `rustlavel new --with auth-kit`. The kit now ships four
+  tests of its own covering the guard and the CSRF check.
+
+### Added
+
+- A CI job that scaffolds a project with the kit, builds it, runs its tests and
+  runs clippy over it. None of the kit's ~57 files are compiled by the
+  workspace, so a rename in the framework used to break them silently.
+
 ## 0.2.1 — 2026-09-02
 
 The patch number rather than the minor, and that is the right slot: for a

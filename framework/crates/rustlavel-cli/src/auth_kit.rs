@@ -73,6 +73,7 @@ pub const FILES: &[(&str, &str)] = &[
     ("src/support/page.rs", include_str!("../templates/auth-kit/src/support/page.rs")),
     ("src/support/passkeys.rs", include_str!("../templates/auth-kit/src/support/passkeys.rs")),
     ("src/support/tokens.rs", include_str!("../templates/auth-kit/src/support/tokens.rs")),
+    ("tests/web.rs", include_str!("../templates/auth-kit/tests/web.rs")),
 ];
 
 /// The lines added to `.env`.

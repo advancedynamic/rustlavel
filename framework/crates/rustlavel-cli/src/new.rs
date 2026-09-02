@@ -192,7 +192,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
 
     if auth_kit {
         for (path, contents) in auth_kit::FILES {
-            write(&root.join(path), contents)?;
+            // Rendered rather than copied: `tests/web.rs` names the crate, and
+            // the crate is only known here. Nothing else in the kit holds a
+            // `{{placeholder}}` — the views use `{{ spaced }}` for their own
+            // variables, which this does not touch.
+            write(&root.join(path), &render(contents, &values))?;
         }
         console::created("src/controllers/auth/ (sign in, register, reset, two-factor)");
         console::created("src/controllers/admin/ (users, roles, permissions)");

@@ -116,6 +116,51 @@ jobs:
       - working-directory: examples/blog
         run: cargo build --locked || cargo build
 
+  starter-kit:
+    name: The starter kit scaffolds, builds and passes its own tests
+    runs-on: ubuntu-latest
+    # The kit is ~57 files written into a new project, and none of them are
+    # compiled by the workspace above — a rename in the framework breaks them
+    # silently and nobody finds out until somebody scaffolds. This is the only
+    # job that reads them.
+    #
+    # Clippy runs too, and with -D warnings on purpose: a lint left in the kit
+    # is a lint in *an application's* build, which is somebody else's compiler
+    # output and not a place to leave litter.
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build the CLI
+        working-directory: framework
+        run: cargo build -p rustlavel-cli
+
+      - name: Scaffold a project with the kit
+        run: |
+          framework/target/debug/rustlavel new kit-check \
+            --with auth-kit --local "$PWD/framework"
+
+      - name: It builds
+        working-directory: kit-check
+        run: cargo build
+
+      - name: Its own tests pass
+        working-directory: kit-check
+        run: cargo test
+
+      - name: And it is clippy-clean, as a user's project must be
+        working-directory: kit-check
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: The bare scaffold still works too
+        run: |
+          framework/target/debug/rustlavel new plain --local "$PWD/framework"
+          cd plain && cargo test
+
   publishable:
     name: Every crate is publishable
     runs-on: ubuntu-latest

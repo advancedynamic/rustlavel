@@ -300,12 +300,10 @@ impl UsersController {
                         ),
                         (
                             "selected",
-                            Json::from(match (value, explicit) {
-                                ("grant", Some(true)) => true,
-                                ("deny", Some(false)) => true,
-                                ("inherit", None) => true,
-                                _ => false,
-                            }),
+                            Json::from(matches!(
+                                (value, explicit),
+                                ("grant", Some(true)) | ("deny", Some(false)) | ("inherit", None)
+                            )),
                         ),
                     ])
                 });
