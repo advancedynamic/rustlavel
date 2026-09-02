@@ -1,0 +1,152 @@
+//! Signing in, and the several ways it can go wrong.
+
+use rustlavel::prelude::*;
+
+use crate::models::login_attempt::LoginAttempt;
+use crate::models::user::User;
+use crate::support::{lockout, page, tokens};
+
+/// The session key holding a half-finished login: password accepted, second
+/// factor still owed. It is deliberately not the identity key — a session
+/// carrying this is not signed in, and nothing downstream should think it is.
+pub const PENDING_KEY: &str = "_mfa_pending";
+
+pub struct LoginController;
+
+impl LoginController {
+    pub async fn show(req: Request) -> Result<Response> {
+        if req.identity().is_some() {
+            return Ok(Response::redirect("/dashboard"));
+        }
+        let context = page::shell(&req, "").await.with(
+            "registration_open",
+            Json::from(req.config().bool("auth.registration.open", true)),
+        );
+        req.view("auth/login", &page::old(context, &[("email", None)]))
+    }
+
+    pub async fn store(mut req: Request) -> Result<Response> {
+        let db = req.state::<Database>().expect("the database is registered in main.rs").clone();
+        let email = req.input("email").unwrap_or_default().trim().to_lowercase();
+        let password = req.input("password").unwrap_or_default();
+        let now = tokens::now();
+
+        // The address limit is checked before anything is looked up, so a
+        // password-spraying run is stopped before it can tell one account
+        // apart from another.
+        if lockout::address_is_blocked(&req).await {
+            LoginAttempt::record(&db, &email, None, false, Some("address_blocked"), &req).await?;
+            return Self::refuse(req, &email, "Too many failed attempts from this network. Try again later.").await;
+        }
+
+        let user = User::first(&db, User::by_email(&email)).await?;
+
+        // The password is verified even when no account matched, against a
+        // dummy hash. Skipping it would make a missing account measurably
+        // faster to reject than a wrong password, and that difference is how
+        // an attacker enumerates who has an account here.
+        let stored = user.as_ref().and_then(|u| u.password_hash.clone());
+        let matches = match &stored {
+            Some(hash) => rustlavel::auth::verify_password(&password, hash),
+            None => {
+                rustlavel::auth::verify_password(&password, DUMMY_HASH);
+                false
+            }
+        };
+
+        let Some(mut user) = user else {
+            LoginAttempt::record(&db, &email, None, false, Some("unknown_email"), &req).await?;
+            lockout::record_address_failure(&req).await;
+            return Self::refuse(req, &email, WRONG).await;
+        };
+
+        if let Err(reason) = user.can_sign_in(&now) {
+            LoginAttempt::record(&db, &email, Some(user.id), false, Some(reason), &req).await?;
+
+            // A locked account is told it is locked. Hiding that would leave a
+            // person retrying a correct password forever with no idea why.
+            if reason == "locked" {
+                let until = user.locked_until.clone().unwrap_or_default();
+                let context = page::shell(&req, "").await
+                    .with("locked", Json::from(true))
+                    .with("locked_for", Json::from(lockout::remaining(&until, &now)));
+                return req.view("auth/login", &page::old(context, &[("email", Some(email))]));
+            }
+            let message = match reason {
+                "not_activated" => "This account has not been activated yet. Check your email for the invitation.",
+                _ => "This account has been deactivated. Ask an administrator.",
+            };
+            return Self::refuse(req, &email, message).await;
+        }
+
+        if !matches {
+            LoginAttempt::record(&db, &email, Some(user.id), false, Some("bad_password"), &req).await?;
+            lockout::record_address_failure(&req).await;
+
+            if lockout::record_failure(&db, &mut user, &now).await? {
+                let until = user.locked_until.clone().unwrap_or_default();
+                let context = page::shell(&req, "").await
+                    .with("locked", Json::from(true))
+                    .with("locked_for", Json::from(lockout::remaining(&until, &now)));
+                return req.view("auth/login", &page::old(context, &[("email", Some(email))]));
+            }
+            return Self::refuse(req, &email, WRONG).await;
+        }
+
+        // The password was right. If a second factor is enrolled, the session
+        // holds only a pending id — not an identity — until it is satisfied.
+        if crate::controllers::auth::mfa_controller::has_factor(&db, user.id).await? {
+            let session = req.session();
+            session.regenerate();
+            session.put(PENDING_KEY, Json::from(user.id));
+            return Ok(Response::see_other("/mfa"));
+        }
+
+        Self::complete(&req, &db, &mut user, &now).await?;
+        Ok(Response::see_other(intended(&req)))
+    }
+
+    /// Finish a login that has cleared every check.
+    pub async fn complete(req: &Request, db: &Database, user: &mut User, now: &str) -> Result<()> {
+        Guard::new(req.session().clone()).login(user);
+        lockout::record_success(db, user, req, now).await?;
+        LoginAttempt::record(db, &user.email.clone(), Some(user.id), true, None, req).await?;
+        Ok(())
+    }
+
+    pub async fn destroy(req: Request) -> Result<Response> {
+        Guard::new(req.session().clone()).logout();
+        Ok(Response::see_other("/login"))
+    }
+
+    /// Re-render the form with a message, keeping the address but never the
+    /// password.
+    async fn refuse(req: Request, email: &str, message: &str) -> Result<Response> {
+        let context = page::shell(&req, "").await
+            .with("error_summary", Json::from(message))
+            .with("registration_open", Json::from(req.config().bool("auth.registration.open", true)));
+        req.view("auth/login", &page::old(context, &[("email", Some(email.to_string()))]))
+    }
+}
+
+/// One message for a wrong password and for an address with no account.
+///
+/// Saying which would turn the login form into a directory of who has an
+/// account here, which matters for any site where membership itself is
+/// private.
+const WRONG: &str = "Those details do not match an account.";
+
+/// A real argon2 hash of a value nobody knows, so the no-account path costs
+/// the same as the wrong-password path.
+const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHR2YWx1ZQ$Zm9yIHRpbWluZyBvbmx5IG5ldmVyIG1hdGNoZXM";
+
+/// Where to go after signing in: back where they were headed, if anywhere.
+fn intended(req: &Request) -> String {
+    req.session()
+        .forget("_intended")
+        .and_then(|value| value.as_str().map(str::to_string))
+        // Only a path on this site. A full URL here would be an open redirect,
+        // which is how a phishing link borrows a real domain.
+        .filter(|path| path.starts_with('/') && !path.starts_with("//"))
+        .unwrap_or_else(|| "/dashboard".to_string())
+}

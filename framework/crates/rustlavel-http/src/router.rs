@@ -437,6 +437,25 @@ impl RouteHandle<'_> {
         self
     }
 
+    /// Add middleware to this one route.
+    ///
+    /// A group is the right place for middleware several routes share. This is
+    /// for the case a group cannot express: routes on one prefix that need
+    /// *different* guards, which is what a resource with a permission per verb
+    /// looks like — `users.view` on the index, `users.delete` on the delete.
+    /// Without this, each verb needs a group of its own and the prefix stops
+    /// reading as one resource.
+    ///
+    /// It runs after the group's middleware and before the handler.
+    pub fn middleware(self, middleware: impl Middleware) -> Self {
+        let stack = &mut self.router.routes[self.index].middleware;
+        // The `Arc` is shared with every other route registered in the same
+        // group, so it is cloned before being added to — otherwise one route's
+        // guard would silently appear on its neighbours.
+        Arc::make_mut(stack).push(Arc::new(middleware));
+        self
+    }
+
     /// Mark the route as deprecated in generated documentation.
     pub fn deprecated(self) -> Self {
         self.router.routes[self.index].deprecated = true;
@@ -540,6 +559,50 @@ fn join_paths(prefix: &str, path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn per_route_middleware_does_not_leak_to_its_neighbours() {
+        use crate::testing::TestClient;
+        fn tag(name: &'static str) -> impl Middleware {
+            move |request: Request, next: Next| async move {
+                next.run(request).await.with_header("x-tag", name)
+            }
+        }
+
+        let mut router = Router::new();
+        router.group("/admin", |admin| {
+            admin.middleware(tag("group"));
+            admin.get("/users", |_req: Request| async { Response::text("users") }).middleware(tag("view"));
+            admin.get("/roles", |_req: Request| async { Response::text("roles") });
+        });
+        let client = TestClient::new(router);
+
+        // The group's middleware ran last on both, so it wins the header; what
+        // matters is that /roles never saw the guard put on /users.
+        assert_eq!(client.get("/admin/users").await.status(), 200);
+        assert_eq!(client.get("/admin/roles").await.status(), 200);
+
+        let mut counted = Router::new();
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = hits.clone();
+        counted.group("/admin", |admin| {
+            admin
+                .get("/users", |_req: Request| async { Response::text("users") })
+                .middleware(move |request: Request, next: Next| {
+                    let counter = counter.clone();
+                    async move {
+                        counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        next.run(request).await
+                    }
+                });
+            admin.get("/roles", |_req: Request| async { Response::text("roles") });
+        });
+        let client = TestClient::new(counted);
+        client.get("/admin/roles").await;
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0, "the guard belongs to /users only");
+        client.get("/admin/users").await;
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
     use super::*;
 
     async fn ok(_req: Request) -> &'static str {

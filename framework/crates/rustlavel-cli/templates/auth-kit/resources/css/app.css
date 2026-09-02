@@ -1,0 +1,202 @@
+/* The starter kit's stylesheet.
+ *
+ * Built with Tailwind v4 and committed as `public/css/app.css`, so a project
+ * needs no Node toolchain to run. Rebuild after editing this file, or after
+ * using a Tailwind class that no page used before:
+ *
+ *     npx @tailwindcss/cli -i resources/css/app.css -o public/css/app.css --minify
+ *
+ * Everything is in this file and in `public/js/app.js` on purpose. The pages
+ * are served under a Content-Security-Policy with no `unsafe-inline`, so a
+ * `<style>` block or an `onclick=` attribute anywhere would simply not run —
+ * and a policy that has to be loosened for the framework's own markup is a
+ * policy that protects nothing.
+ */
+
+/* `source(none)` turns off Tailwind's automatic scanning and the two `@source`
+ * lines say exactly where to look instead. Left to itself it would walk up to
+ * the repository root and scan everything, which is both slow and wrong: this
+ * stylesheet serves these templates and nothing else. */
+@import "tailwindcss" source(none);
+
+@source "../views/**/*.rl.html";
+/* The password meter picks its colour and width classes at runtime, so they
+ * appear only here and would otherwise be swept out as unused. */
+@source "../../public/js/app.js";
+
+/* Dark mode is a class on <html>, not a media query, because the preference is
+ * a cookie the server reads: it renders `class="dark"` on the first response.
+ * A toggle done in JavaScript would flash the wrong theme before it ran, and
+ * the usual fix — a tiny inline script in <head> — is exactly what the CSP
+ * forbids. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-ink-50:  oklch(0.985 0.002 265);
+  --color-ink-100: oklch(0.967 0.003 265);
+  --color-ink-200: oklch(0.925 0.005 265);
+  --color-ink-300: oklch(0.865 0.008 265);
+  --color-ink-400: oklch(0.700 0.012 265);
+  --color-ink-500: oklch(0.560 0.014 265);
+  --color-ink-600: oklch(0.442 0.014 265);
+  --color-ink-700: oklch(0.360 0.013 265);
+  --color-ink-800: oklch(0.267 0.012 265);
+  --color-ink-900: oklch(0.203 0.011 265);
+  --color-ink-950: oklch(0.145 0.010 265);
+
+  --color-brand-50:  oklch(0.970 0.014 254);
+  --color-brand-100: oklch(0.932 0.032 255);
+  --color-brand-200: oklch(0.882 0.059 254);
+  --color-brand-300: oklch(0.809 0.105 252);
+  --color-brand-400: oklch(0.707 0.165 254);
+  --color-brand-500: oklch(0.623 0.214 259);
+  --color-brand-600: oklch(0.546 0.245 262);
+  --color-brand-700: oklch(0.488 0.243 264);
+  --color-brand-800: oklch(0.424 0.199 265);
+  --color-brand-900: oklch(0.379 0.146 265);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  --radius-card: 0.75rem;
+}
+
+/* A handful of component classes, so a page reads as what it is rather than as
+ * twelve utilities in a row. Anything used once stays inline; anything a form
+ * repeats on every page earns a name. */
+/* The component classes.
+ *
+ * Every one of these is an `@utility` rather than a rule in `@layer
+ * components`, because in Tailwind v4 only a real utility may appear inside
+ * an `@apply` — and these build on each other. A plain component-layer rule
+ * would work when written in markup and fail the moment another rule tried to
+ * compose it, which is a confusing way to find out.
+ */
+
+@utility field-label {
+  @apply block text-sm font-medium text-ink-700 dark:text-ink-300 mb-1.5;
+}
+
+@utility field-input {
+  @apply block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm
+         text-ink-900 shadow-xs transition
+         placeholder:text-ink-400
+         focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30
+         disabled:cursor-not-allowed disabled:bg-ink-100
+         dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100 dark:placeholder:text-ink-500
+         dark:disabled:bg-ink-800;
+}
+
+@utility field-input-invalid {
+  @apply border-red-500 focus:border-red-500 focus:ring-red-500/30;
+}
+
+@utility field-error {
+  @apply mt-1.5 text-sm text-red-600 dark:text-red-400;
+}
+
+@utility field-hint {
+  @apply mt-1.5 text-sm text-ink-500 dark:text-ink-400;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm
+         font-medium transition select-none
+         focus:outline-none focus:ring-2 focus:ring-offset-2
+         focus:ring-offset-white dark:focus:ring-offset-ink-950
+         disabled:cursor-not-allowed disabled:opacity-60;
+}
+
+@utility btn-primary {
+  @apply btn bg-brand-600 text-white shadow-xs hover:bg-brand-700 focus:ring-brand-500;
+}
+
+@utility btn-secondary {
+  @apply btn border border-ink-300 bg-white text-ink-700 shadow-xs
+         hover:bg-ink-50 focus:ring-ink-400
+         dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800;
+}
+
+@utility btn-danger {
+  @apply btn bg-red-600 text-white shadow-xs hover:bg-red-700 focus:ring-red-500;
+}
+
+@utility btn-ghost {
+  @apply btn text-ink-600 hover:bg-ink-100 focus:ring-ink-400
+         dark:text-ink-300 dark:hover:bg-ink-800;
+}
+
+@utility btn-sm {
+  @apply px-2.5 py-1.5 text-xs;
+}
+
+@utility card {
+  @apply rounded-card border border-ink-200 bg-white shadow-xs
+         dark:border-ink-800 dark:bg-ink-900;
+}
+
+@utility card-header {
+  @apply border-b border-ink-200 px-5 py-4 dark:border-ink-800;
+}
+
+@utility card-body {
+  @apply px-5 py-5;
+}
+
+@utility badge {
+  @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset;
+}
+
+@utility badge-neutral {
+  @apply badge bg-ink-100 text-ink-700 ring-ink-500/20
+         dark:bg-ink-800 dark:text-ink-300 dark:ring-ink-400/20;
+}
+
+@utility badge-success {
+  @apply badge bg-green-50 text-green-700 ring-green-600/20
+         dark:bg-green-500/10 dark:text-green-400 dark:ring-green-500/30;
+}
+
+@utility badge-warning {
+  @apply badge bg-amber-50 text-amber-800 ring-amber-600/20
+         dark:bg-amber-500/10 dark:text-amber-400 dark:ring-amber-500/30;
+}
+
+@utility badge-danger {
+  @apply badge bg-red-50 text-red-700 ring-red-600/20
+         dark:bg-red-500/10 dark:text-red-400 dark:ring-red-500/30;
+}
+
+@utility table-wrap {
+  @apply overflow-x-auto;
+}
+
+@utility table {
+  @apply w-full text-left text-sm;
+
+  & th {
+    @apply whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide
+           text-ink-500 dark:text-ink-400;
+  }
+
+  & td {
+    @apply border-t border-ink-200 px-4 py-3 align-middle
+           text-ink-700 dark:border-ink-800 dark:text-ink-300;
+  }
+
+  & tbody tr:hover {
+    @apply bg-ink-50 dark:bg-ink-800/50;
+  }
+}
+
+@utility nav-link {
+  @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium
+         text-ink-600 transition
+         hover:bg-ink-100 hover:text-ink-900
+         dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100;
+}
+
+@utility nav-link-active {
+  @apply bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-400;
+}

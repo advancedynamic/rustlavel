@@ -3,6 +3,42 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## Unreleased
+
+### Added
+
+- **`rustlavel new app --with auth-kit`** — a starter kit, in the shape Laravel
+  Breeze has: the controllers, views, routes and migrations are written into
+  the project and belong to it, so the login page is a file you edit rather
+  than a template you override. The library half stays in crates, so a
+  security fix arrives with `cargo update`.
+  - Sign-in with an authenticator app (TOTP), passkeys, and single-use recovery
+    codes; a sign-in audit log; per-account and per-address lockout.
+  - Self-registration (switchable off) and admin invitation, both ending at a
+    link where the person chooses their own password — so an administrator
+    never knows one.
+  - Roles and permissions with a management area, direct per-user grants and
+    denies, and "view as this user" for support.
+  - Eleven pages of Tailwind v4, built to a committed stylesheet so no Node
+    toolchain is needed, under a Content-Security-Policy with no
+    `unsafe-inline` anywhere.
+- **`rustlavel-rbac`** — roles, permissions, wildcard matching, a cached check
+  and `Can::permission(...)` route guards. Tested against PostgreSQL, MySQL and
+  SQL Server.
+- **`rustlavel-auth::totp`** — RFC 6238, verified against the full RFC 4226 and
+  RFC 6238 test tables, with recovery codes.
+- **`rustlavel-auth::qr`** — a QR encoder, checked byte for byte against
+  libqrencode across 291 payloads. It exists because posting a TOTP secret to a
+  chart API is not acceptable and a JavaScript QR library would need a looser
+  policy than the kit ships with.
+- **`rustlavel-auth::impersonation`** — acting as another user, with the real
+  operator kept for the audit trail.
+- `CoseKey::to_bytes` and a CBOR encoder, without which a passkey could be
+  verified and never stored.
+- `RouteHandle::middleware`, for a resource whose verbs need different guards.
+- `Request::inputs`, for the repeated fields a checkbox group sends.
+- `Config::list`, `Request::body_bytes` in tests, `sha256_hex`.
+
 ## 0.2.0 — 2026-09-02
 
 The minor number rather than the patch, and deliberately: for a `0.x`

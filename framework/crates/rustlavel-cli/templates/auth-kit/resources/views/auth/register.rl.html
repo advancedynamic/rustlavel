@@ -1,0 +1,38 @@
+@extends("layouts.guest")
+@section("title", "Create an account")
+@section("heading", "Create an account")
+
+@section("subheading")
+  <p class="mt-2 text-center text-sm text-ink-500 dark:text-ink-400">
+    or <a href="/login" class="font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400">sign in</a>
+  </p>
+@endsection
+
+@section("content")
+  @include("partials.errors")
+
+  <form method="post" action="/register" class="space-y-5" novalidate>
+    {!! csrf_field !!}
+
+    <div>
+      <label for="name" class="field-label">Name</label>
+      <input id="name" name="name" type="text" value="{{ old_name }}" required autofocus
+             autocomplete="name" class="field-input @if(error_name) field-input-invalid @endif">
+      @if(error_name)<p class="field-error">{{ error_name }}</p>@endif
+    </div>
+
+    <div>
+      <label for="email" class="field-label">Email</label>
+      <input id="email" name="email" type="email" value="{{ old_email }}" required
+             autocomplete="email" inputmode="email"
+             class="field-input @if(error_email) field-input-invalid @endif">
+      @if(error_email)<p class="field-error">{{ error_email }}</p>@endif
+      <p class="field-hint">We will send a link here to confirm the address.</p>
+    </div>
+
+    <button type="submit" class="btn-primary w-full">Create account</button>
+    <p class="text-center text-xs text-ink-500 dark:text-ink-400">
+      You will choose a password after confirming your email.
+    </p>
+  </form>
+@endsection

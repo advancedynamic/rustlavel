@@ -1,4 +1,4 @@
-//! Just enough CBOR to read what an authenticator sends.
+//! Just enough CBOR to read what an authenticator sends, and to write it back.
 //!
 //! WebAuthn wraps its attestation object and its public keys in CBOR, so this
 //! has to exist. It is a serialisation format rather than cryptography, so
@@ -10,6 +10,13 @@
 //! Indefinite-length items, tags and floats are refused rather than parsed. No
 //! authenticator may send them, so anything that does is either broken or
 //! probing.
+//!
+//! The encoder is the same subset in the other direction, and it exists so a
+//! credential can be *stored*. A parsed key with no way back to bytes is a key
+//! that cannot go in a database column, which left the in-memory
+//! `CredentialStore` as the only one anybody could write. Because it emits the
+//! one canonical form, re-encoding what an authenticator sent reproduces the
+//! authenticator's own bytes.
 
 use rustlavel_core::{Error, Result};
 use std::collections::BTreeMap;
@@ -63,6 +70,77 @@ impl Cbor {
         Ok((value, decoder.position))
     }
 
+    /// Write this value out as canonical CTAP2 CBOR.
+    ///
+    /// "Canonical" is not decoration. RFC 8949 §4.2.1 calls it deterministic
+    /// encoding and CTAP2 §6 calls it the canonical CBOR encoding form; both
+    /// mean definite lengths, every integer and every length written in the
+    /// shortest form that holds it, and one fixed order for map keys. Two
+    /// consequences follow, and the tests hold this to both: encoding a value
+    /// twice gives the same bytes, and encoding something an authenticator
+    /// sent gives back exactly the bytes the authenticator sent.
+    ///
+    /// Infallible on purpose — every `Cbor` variant has an encoding, so there
+    /// is no failure for a caller to handle and no `Result` to unwrap in the
+    /// middle of storing a credential.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        self.write(&mut out);
+        out
+    }
+
+    fn write(&self, out: &mut Vec<u8>) {
+        match self {
+            Cbor::Unsigned(value) => head(0, *value, out),
+            Cbor::Negative(value) => head(1, negative_argument(*value), out),
+            Cbor::Bytes(bytes) => {
+                head(2, bytes.len() as u64, out);
+                out.extend_from_slice(bytes);
+            }
+            Cbor::Text(text) => {
+                head(3, text.len() as u64, out);
+                out.extend_from_slice(text.as_bytes());
+            }
+            Cbor::Array(items) => {
+                head(4, items.len() as u64, out);
+                for item in items {
+                    item.write(out);
+                }
+            }
+            Cbor::Map(map) => {
+                head(5, map.len() as u64, out);
+
+                // The keys are sorted on their *encoded* bytes, which is not
+                // the order the `BTreeMap` holds them in: `CborKey` orders
+                // every integer before every text and orders integers
+                // numerically, while CBOR compares the bytes those keys turn
+                // into. Encoding each key first and sorting afterwards is the
+                // only way to get the order the specification asks for.
+                let mut entries: Vec<(Vec<u8>, &Cbor)> = map
+                    .iter()
+                    .map(|(key, value)| {
+                        let mut encoded = Vec::new();
+                        key.write(&mut encoded);
+                        (encoded, value)
+                    })
+                    .collect();
+                entries.sort_by(|(left, _), (right, _)| canonical_key_order(left, right));
+
+                for (key, value) in entries {
+                    out.extend_from_slice(&key);
+                    value.write(out);
+                }
+            }
+            // Major type 7: 20 is false and 21 is true (RFC 8949 §3.3).
+            Cbor::Bool(value) => out.push(0xf4 | u8::from(*value)),
+            // 22 is null. Note that the decoder also folds 23 (undefined) into
+            // `Null`, so an `undefined` an authenticator somehow sent comes
+            // back out as `null` — the only place a round trip changes bytes,
+            // and a distinction WebAuthn has no use for.
+            Cbor::Null => out.push(0xf6),
+        }
+    }
+
     pub fn as_bytes(&self) -> Option<&[u8]> {
         match self {
             Cbor::Bytes(bytes) => Some(bytes),
@@ -99,6 +177,83 @@ impl Cbor {
             _ => None,
         }
     }
+}
+
+impl CborKey {
+    fn write(&self, out: &mut Vec<u8>) {
+        match self {
+            CborKey::Int(value) if *value >= 0 => head(0, *value as u64, out),
+            CborKey::Int(value) => head(1, negative_argument(*value), out),
+            CborKey::Text(text) => {
+                head(3, text.len() as u64, out);
+                out.extend_from_slice(text.as_bytes());
+            }
+        }
+    }
+}
+
+/// Write a major type and its argument in the shortest form that holds it.
+///
+/// RFC 8949 §4.2.1 requires the "preferred serialization" of every argument:
+/// values below 24 go in the low five bits of the initial byte, and everything
+/// else takes the smallest of the one-, two-, four- and eight-byte forms.
+/// CTAP2 says the same thing in its own words — integers encoded as small as
+/// possible, lengths expressed as short as possible — so an authenticator that
+/// disagreed with this function would not be sending canonical CBOR.
+fn head(major: u8, argument: u64, out: &mut Vec<u8>) {
+    let major = major << 5;
+    match argument {
+        0..=23 => out.push(major | argument as u8),
+        24..=0xff => {
+            out.push(major | 24);
+            out.push(argument as u8);
+        }
+        0x100..=0xffff => {
+            out.push(major | 25);
+            out.extend_from_slice(&(argument as u16).to_be_bytes());
+        }
+        0x1_0000..=0xffff_ffff => {
+            out.push(major | 26);
+            out.extend_from_slice(&(argument as u32).to_be_bytes());
+        }
+        _ => {
+            out.push(major | 27);
+            out.extend_from_slice(&argument.to_be_bytes());
+        }
+    }
+}
+
+/// The argument a negative integer carries: major type 1 encodes -1 - n, so a
+/// value of -1 is written as 0 and -256 as 255 (RFC 8949 §3.1).
+///
+/// The subtraction happens in `i128` because `-1 - i64::MIN` overflows an
+/// `i64`, and that value — the largest negative CBOR integer this type can
+/// hold — is exactly the one an attacker would reach for. `Negative` never
+/// holds a value above -1: the decoder builds it as `-1 - n` from a
+/// non-negative `n`, and nothing else constructs one. A hand-built value that
+/// broke that invariant would be a programming error rather than untrusted
+/// input, so it is clamped to -1 rather than being allowed to wrap.
+fn negative_argument(value: i64) -> u64 {
+    (-1i128 - i128::from(value)).max(0) as u64
+}
+
+/// The order canonical CBOR puts map keys in: shorter encodings first, then
+/// byte-wise lexicographic among keys of the same length.
+///
+/// This is RFC 8949 §4.2.3's length-first ordering, which is what CTAP2's
+/// canonical CBOR requires — not the plain byte-wise ordering of §4.2.1. The
+/// difference is visible in every attestation object: "fmt", "attStmt" and
+/// "authData" are sent in that order because "fmt" is the shortest, where
+/// byte-wise ordering would have put it last.
+///
+/// CTAP2 words its own rule as major type first, then length, then bytes.
+/// Comparing encoded bytes gives the same answer whenever two keys encode to
+/// the same length, because the major type lives in the high bits of the first
+/// byte; the two rules can only disagree when a lower major type needs a
+/// longer encoding, which takes a map key above 23 — larger than any COSE
+/// label or any key WebAuthn defines.
+fn canonical_key_order(left: &[u8], right: &[u8]) -> std::cmp::Ordering {
+    left.len().cmp(&right.len()).then_with(|| left.cmp(right))
 }
 
 /// How deep a nested structure may go.
@@ -367,5 +522,273 @@ mod tests {
     #[test]
     fn text_that_is_not_utf8_is_refused() {
         assert!(Cbor::parse(&[0x62, 0xff, 0xfe]).is_err());
+    }
+
+    /// Hex in, so a row of RFC 8949 Appendix A can be written here exactly as
+    /// the RFC prints it and read back against the table by eye.
+    fn from_hex(text: &str) -> Vec<u8> {
+        assert!(text.len().is_multiple_of(2), "hex must come in whole bytes");
+        (0..text.len())
+            .step_by(2)
+            .map(|at| u8::from_str_radix(&text[at..at + 2], 16).expect("hex digits"))
+            .collect()
+    }
+
+    /// Encode a value, compare it with the RFC's own hex, then decode what was
+    /// written and check it is the value we started from.
+    ///
+    /// Both halves matter. The first says the encoder agrees with the
+    /// specification rather than merely with itself; the second says the two
+    /// directions in this file agree with each other.
+    fn appendix_a(value: Cbor, expected: &str) {
+        let encoded = value.to_bytes();
+        assert_eq!(crate::ceremony::hex(&encoded), expected, "encoding {value:?}");
+        assert_eq!(Cbor::parse(&encoded).unwrap(), value, "decoding {expected}");
+    }
+
+    fn map(entries: impl IntoIterator<Item = (CborKey, Cbor)>) -> Cbor {
+        Cbor::Map(entries.into_iter().collect())
+    }
+
+    #[test]
+    fn appendix_a_unsigned_integers() {
+        appendix_a(Cbor::Unsigned(0), "00");
+        appendix_a(Cbor::Unsigned(1), "01");
+        appendix_a(Cbor::Unsigned(10), "0a");
+        appendix_a(Cbor::Unsigned(23), "17");
+        appendix_a(Cbor::Unsigned(24), "1818");
+        appendix_a(Cbor::Unsigned(25), "1819");
+        appendix_a(Cbor::Unsigned(100), "1864");
+        appendix_a(Cbor::Unsigned(1000), "1903e8");
+        appendix_a(Cbor::Unsigned(1_000_000), "1a000f4240");
+        appendix_a(Cbor::Unsigned(1_000_000_000_000), "1b000000e8d4a51000");
+        appendix_a(Cbor::Unsigned(18_446_744_073_709_551_615), "1bffffffffffffffff");
+    }
+
+    #[test]
+    fn appendix_a_negative_integers() {
+        appendix_a(Cbor::Negative(-1), "20");
+        appendix_a(Cbor::Negative(-10), "29");
+        appendix_a(Cbor::Negative(-100), "3863");
+        appendix_a(Cbor::Negative(-1000), "3903e7");
+    }
+
+    #[test]
+    fn appendix_a_simple_values() {
+        appendix_a(Cbor::Bool(false), "f4");
+        appendix_a(Cbor::Bool(true), "f5");
+        appendix_a(Cbor::Null, "f6");
+    }
+
+    #[test]
+    fn appendix_a_byte_and_text_strings() {
+        appendix_a(Cbor::Bytes(Vec::new()), "40");
+        appendix_a(Cbor::Bytes(vec![1, 2, 3, 4]), "4401020304");
+
+        appendix_a(Cbor::Text(String::new()), "60");
+        appendix_a(Cbor::Text("a".into()), "6161");
+        appendix_a(Cbor::Text("IETF".into()), "6449455446");
+        appendix_a(Cbor::Text("\"\\".into()), "62225c");
+        // Text lengths are in bytes, not characters — a two-byte "ü", a
+        // three-byte "水" and a four-byte "𐅑" all carry a length of one
+        // character less than nothing, which is the classic way to get this
+        // wrong.
+        appendix_a(Cbor::Text("\u{00fc}".into()), "62c3bc");
+        appendix_a(Cbor::Text("\u{6c34}".into()), "63e6b0b4");
+        appendix_a(Cbor::Text("\u{10151}".into()), "64f0908591");
+    }
+
+    #[test]
+    fn appendix_a_arrays() {
+        appendix_a(Cbor::Array(Vec::new()), "80");
+        appendix_a(
+            Cbor::Array(vec![Cbor::Unsigned(1), Cbor::Unsigned(2), Cbor::Unsigned(3)]),
+            "83010203",
+        );
+        appendix_a(
+            Cbor::Array(vec![
+                Cbor::Unsigned(1),
+                Cbor::Array(vec![Cbor::Unsigned(2), Cbor::Unsigned(3)]),
+                Cbor::Array(vec![Cbor::Unsigned(4), Cbor::Unsigned(5)]),
+            ]),
+            "8301820203820405",
+        );
+        // Twenty-five items: the element count crosses the same threshold an
+        // integer does, and takes the two-byte form.
+        appendix_a(
+            Cbor::Array((1..=25).map(Cbor::Unsigned).collect()),
+            "98190102030405060708090a0b0c0d0e0f101112131415161718181819",
+        );
+    }
+
+    #[test]
+    fn appendix_a_maps_and_nesting() {
+        appendix_a(map([]), "a0");
+        appendix_a(
+            map([
+                (CborKey::Int(1), Cbor::Unsigned(2)),
+                (CborKey::Int(3), Cbor::Unsigned(4)),
+            ]),
+            "a201020304",
+        );
+        appendix_a(
+            map([
+                (CborKey::Text("a".into()), Cbor::Unsigned(1)),
+                (
+                    CborKey::Text("b".into()),
+                    Cbor::Array(vec![Cbor::Unsigned(2), Cbor::Unsigned(3)]),
+                ),
+            ]),
+            "a26161016162820203",
+        );
+        appendix_a(
+            Cbor::Array(vec![
+                Cbor::Text("a".into()),
+                map([(CborKey::Text("b".into()), Cbor::Text("c".into()))]),
+            ]),
+            "826161a161626163",
+        );
+        appendix_a(
+            map([
+                (CborKey::Text("a".into()), Cbor::Text("A".into())),
+                (CborKey::Text("b".into()), Cbor::Text("B".into())),
+                (CborKey::Text("c".into()), Cbor::Text("C".into())),
+                (CborKey::Text("d".into()), Cbor::Text("D".into())),
+                (CborKey::Text("e".into()), Cbor::Text("E".into())),
+            ]),
+            "a56161614161626142616361436164614461656145",
+        );
+    }
+
+    #[test]
+    fn the_argument_boundaries_take_the_shortest_form_on_both_sides() {
+        // Preferred serialisation (RFC 8949 §4.2.1) is the rule a canonical
+        // encoder is likeliest to get wrong, and these are the four thresholds
+        // where it would show. One byte too many at any of them and the bytes
+        // stop matching what the device sent.
+        appendix_a(Cbor::Unsigned(255), "18ff");
+        appendix_a(Cbor::Unsigned(256), "190100");
+        appendix_a(Cbor::Unsigned(65_535), "19ffff");
+        appendix_a(Cbor::Unsigned(65_536), "1a00010000");
+        appendix_a(Cbor::Unsigned(4_294_967_295), "1affffffff");
+        appendix_a(Cbor::Unsigned(4_294_967_296), "1b0000000100000000");
+
+        // The negative mirrors. Major type 1 stores -1 - n, so each threshold
+        // sits one further from zero than its unsigned twin.
+        appendix_a(Cbor::Negative(-24), "37");
+        appendix_a(Cbor::Negative(-25), "3818");
+        appendix_a(Cbor::Negative(-256), "38ff");
+        appendix_a(Cbor::Negative(-257), "390100");
+        appendix_a(Cbor::Negative(-65_536), "39ffff");
+        appendix_a(Cbor::Negative(-65_537), "3a00010000");
+        appendix_a(Cbor::Negative(-4_294_967_296), "3affffffff");
+        appendix_a(Cbor::Negative(-4_294_967_297), "3b0000000100000000");
+    }
+
+    #[test]
+    fn the_largest_negative_integer_does_not_overflow_on_the_way_out() {
+        // -1 - i64::MIN overflows an i64, and this is the one value that finds
+        // it. Nothing more negative can reach the encoder: the decoder refuses
+        // a magnitude that will not fit in an i64.
+        appendix_a(Cbor::Negative(i64::MIN), "3b7fffffffffffffff");
+    }
+
+    #[test]
+    fn string_and_container_lengths_take_the_shortest_form_too() {
+        assert_eq!(Cbor::Bytes(vec![0; 23]).to_bytes()[..1], [0x57]);
+        assert_eq!(Cbor::Bytes(vec![0; 24]).to_bytes()[..2], [0x58, 24]);
+        assert_eq!(Cbor::Bytes(vec![0; 255]).to_bytes()[..2], [0x58, 0xff]);
+        assert_eq!(Cbor::Bytes(vec![0; 256]).to_bytes()[..3], [0x59, 0x01, 0x00]);
+        // 0x58 0x20 is how every COSE key on the wire introduces a coordinate.
+        assert_eq!(Cbor::Bytes(vec![0; 32]).to_bytes()[..2], [0x58, 0x20]);
+    }
+
+    #[test]
+    fn map_keys_are_sorted_on_their_encoded_bytes_and_not_on_the_rust_value() {
+        // `CborKey` puts every integer before every text and orders integers
+        // numerically. Canonical CBOR orders the bytes those keys encode to,
+        // shortest first — so 1_000_000, which needs five bytes, comes last,
+        // behind a text key the `BTreeMap` holds after it.
+        let value = map([
+            (CborKey::Text("a".into()), Cbor::Unsigned(1)),
+            (CborKey::Int(1_000_000), Cbor::Unsigned(2)),
+            (CborKey::Int(1), Cbor::Unsigned(3)),
+        ]);
+
+        let Cbor::Map(entries) = &value else { unreachable!("built as a map") };
+        assert_eq!(
+            entries.keys().collect::<Vec<_>>(),
+            vec![&CborKey::Int(1), &CborKey::Int(1_000_000), &CborKey::Text("a".into())],
+            "the map really is held in an order the encoder has to undo"
+        );
+
+        // 01, then 6161 ("a"), then 1a000f4240 — one byte, two, five.
+        appendix_a(value, "a301036161011a000f424002");
+    }
+
+    #[test]
+    fn text_keys_sort_by_length_first_which_is_what_an_attestation_object_needs() {
+        // Byte-wise ordering (RFC 8949 §4.2.1) would give attStmt, authData,
+        // fmt. CTAP2 uses the length-first ordering of §4.2.3, which puts the
+        // short one in front — and length-first is what every attestation
+        // object on the wire is written in.
+        appendix_a(
+            map([
+                (CborKey::Text("fmt".into()), Cbor::Text("none".into())),
+                (CborKey::Text("attStmt".into()), map([])),
+                (CborKey::Text("authData".into()), Cbor::Bytes(vec![7])),
+            ]),
+            "a363666d74646e6f6e656761747453746d74a06861757468446174614107",
+        );
+    }
+
+    #[test]
+    fn empty_containers_encode_to_a_single_byte() {
+        // Not hypothetical: an attestation of format "none" carries an empty
+        // map for attStmt, and a zero-length byte string is what a credential
+        // with no extension data has.
+        let empties =
+            [map([]), Cbor::Array(Vec::new()), Cbor::Bytes(Vec::new()), Cbor::Text(String::new())];
+        for value in empties {
+            let encoded = value.to_bytes();
+            assert_eq!(encoded.len(), 1, "{value:?} encoded to {}", crate::ceremony::hex(&encoded));
+            assert_eq!(Cbor::parse(&encoded).unwrap(), value);
+        }
+    }
+
+    #[test]
+    fn undefined_is_the_one_value_that_does_not_come_back_as_it_went_in() {
+        // The decoder folds 23 (undefined) into `Null`, so it leaves again as
+        // 22 (null). Nothing in WebAuthn distinguishes the two, and writing it
+        // down here is cheaper than someone rediscovering it against a
+        // fixture.
+        assert_eq!(Cbor::parse(&[0xf7]).unwrap(), Cbor::Null);
+        assert_eq!(Cbor::Null.to_bytes(), from_hex("f6"));
+    }
+
+    #[test]
+    fn a_real_attestation_object_re_encodes_byte_for_byte() {
+        // The fake authenticator writes its own CBOR by hand, the way a real
+        // one does: text keys in canonical order, a COSE key nested inside the
+        // authenticator data inside a byte string. Nothing below is this
+        // encoder's own opinion, so a disagreement about key order or about
+        // the shortest length for a hundred-odd bytes shows up here as
+        // different bytes.
+        let device = crate::ceremony::fake::Authenticator::new(3);
+        let auth_data =
+            device.authenticator_data("example.test", crate::ceremony::fake::REGISTRATION_FLAGS, 7);
+
+        for (format, entries) in [("none", 0), ("packed", 2)] {
+            let object = device.attestation_object(format, entries, &auth_data);
+            assert_eq!(
+                Cbor::parse(&object).unwrap().to_bytes(),
+                object,
+                "{format} attestation did not re-encode to itself"
+            );
+            // And the order really is the one the `BTreeMap` would not have
+            // produced: "attStmt" sorts before "fmt" in Rust, and after it
+            // here.
+            assert!(object.starts_with(b"\xa3\x63fmt"), "fmt must lead");
+        }
     }
 }

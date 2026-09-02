@@ -1,0 +1,94 @@
+@extends("layouts.app")
+@section("title", "Users")
+
+@section("content")
+  <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <form method="get" action="/admin/users" class="flex flex-wrap items-center gap-2">
+      <label for="q" class="sr-only">Search users</label>
+      <input id="q" name="q" type="search" value="{{ q }}" placeholder="Search name or email"
+             class="field-input w-64">
+      <label for="role" class="sr-only">Filter by role</label>
+      <select id="role" name="role" class="field-input w-40">
+        <option value="">All roles</option>
+        @foreach(all_roles as role)
+          <option value="{{ role.name }}" @if(role.selected) selected @endif>{{ role.name }}</option>
+        @endforeach
+      </select>
+      <button type="submit" class="btn-secondary">Filter</button>
+    </form>
+    @if(can_create)
+      <a href="/admin/users/create" class="btn-primary">New user</a>
+    @endif
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th class="hidden sm:table-cell">Roles</th>
+            <th>Status</th>
+            <th class="hidden lg:table-cell">Last sign-in</th>
+            <th><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach(users as user)
+            <tr>
+              <td>
+                <div class="flex items-center gap-3">
+                  <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink-200 text-xs font-semibold text-ink-700 dark:bg-ink-700 dark:text-ink-200">{{ user.initials }}</span>
+                  <div class="min-w-0">
+                    <p class="truncate font-medium text-ink-900 dark:text-ink-100">{{ user.name }}</p>
+                    <p class="truncate text-xs text-ink-500 dark:text-ink-400">{{ user.email }}</p>
+                  </div>
+                </div>
+              </td>
+              <td class="hidden sm:table-cell">
+                <span class="flex flex-wrap gap-1">
+                  @foreach(user.roles as role)<span class="badge-neutral">{{ role }}</span>@endforeach
+                </span>
+              </td>
+              <td>
+                @if(user.locked)
+                  <span class="badge-danger">Locked</span>
+                @elseif(user.activated == false)
+                  <span class="badge-warning">Invited</span>
+                @else
+                  <span class="badge-success">Active</span>
+                @endif
+              </td>
+              <td class="hidden whitespace-nowrap text-xs lg:table-cell">{{ user.last_login_at }}</td>
+              <td>
+                <div class="flex items-center justify-end gap-1">
+                  @if(can_impersonate && user.impersonatable)
+                    <form method="post" action="/impersonate/{{ user.id }}"
+                          data-confirm="View the site as {{ user.name }}? Everything you do will be recorded against your own account.">
+                      {!! csrf_field !!}
+                      <button type="submit" class="btn-ghost btn-sm" title="View as this user">View as</button>
+                    </form>
+                  @endif
+                  @if(can_update)
+                    <a href="/admin/users/{{ user.id }}/edit" class="btn-ghost btn-sm">Edit</a>
+                  @endif
+                  @if(can_delete && user.deletable)
+                    <form method="post" action="/admin/users/{{ user.id }}/delete"
+                          data-confirm="Delete {{ user.name }}? This cannot be undone.">
+                      {!! csrf_field !!}
+                      <button type="submit" class="btn-ghost btn-sm text-red-600 dark:text-red-400">Delete</button>
+                    </form>
+                  @endif
+                </div>
+              </td>
+            </tr>
+          @endforeach
+          @if(users_empty)
+            <tr><td colspan="5" class="py-12 text-center text-ink-500 dark:text-ink-400">No users match that.</td></tr>
+          @endif
+        </tbody>
+      </table>
+    </div>
+    @include("partials.pagination")
+  </div>
+@endsection

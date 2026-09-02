@@ -1,0 +1,12 @@
+{{-- Shown across the top of every page while an administrator is viewing as
+     somebody else. It is deliberately loud: forgetting you are impersonating
+     and then changing something is the failure mode this exists to prevent. --}}
+@if(impersonating)
+  <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-amber-500 px-4 py-2 text-center text-sm font-medium text-amber-950">
+    <span>You are viewing the site as <strong>{{ user_name }}</strong>. Anything you do here is recorded against your own account.</span>
+    <form method="post" action="/impersonate/stop">
+      {!! csrf_field !!}
+      <button type="submit" class="rounded-md bg-amber-950/15 px-2.5 py-1 font-semibold underline-offset-2 hover:bg-amber-950/25">Stop viewing</button>
+    </form>
+  </div>
+@endif

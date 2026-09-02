@@ -1,0 +1,31 @@
+@extends("layouts.app")
+@section("title", title)
+
+@section("content")
+  <div class="mx-auto max-w-xl">
+    @include("partials.errors")
+    <form method="post" action="{{ action }}" class="space-y-6" novalidate>
+      {!! csrf_field !!}
+      <div class="card">
+        <div class="card-body space-y-5">
+          <div>
+            <label for="name" class="field-label">Name</label>
+            <input id="name" name="name" type="text" value="{{ name }}" required autofocus
+                   placeholder="posts.publish" class="field-input font-mono @if(error_name) field-input-invalid @endif">
+            @if(error_name)<p class="field-error">{{ error_name }}</p>@endif
+            <p class="field-hint">Lowercase <code>area.action</code>. The area is what a wildcard matches on.</p>
+          </div>
+          <div>
+            <label for="description" class="field-label">Description</label>
+            <input id="description" name="description" type="text" value="{{ description }}"
+                   placeholder="Make a draft visible to the public" class="field-input">
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button type="submit" class="btn-primary">{{ submit_label }}</button>
+        <a href="/admin/permissions" class="btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+@endsection

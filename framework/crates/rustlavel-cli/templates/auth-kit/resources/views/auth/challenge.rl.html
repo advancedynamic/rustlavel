@@ -1,0 +1,54 @@
+@extends("layouts.guest")
+@section("title", "Two-factor authentication")
+@section("heading", "One more step")
+
+@section("subheading")
+  <p class="mt-2 text-center text-sm text-ink-500 dark:text-ink-400">
+    Your password was accepted. Confirm it is you.
+  </p>
+@endsection
+
+@section("content")
+  @include("partials.errors")
+
+  @if(has_passkey)
+    <div class="mb-6">
+      <button type="button" data-passkey-authenticate data-options-url="/mfa/passkey/options"
+              data-verify-url="/mfa/passkey/verify" class="btn-secondary w-full">
+        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 1a4 4 0 0 0-4 4v2H5.5A1.5 1.5 0 0 0 4 8.5v8A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 14.5 7H14V5a4 4 0 0 0-4-4Zm2.5 6h-5V5a2.5 2.5 0 0 1 5 0v2Z"/></svg>
+        Use a passkey
+      </button>
+      <p data-passkey-error class="field-error" hidden></p>
+
+      @if(has_totp)
+        <div class="my-6 flex items-center gap-3">
+          <span class="h-px flex-1 bg-ink-200 dark:bg-ink-800"></span>
+          <span class="text-xs uppercase tracking-wide text-ink-400">or</span>
+          <span class="h-px flex-1 bg-ink-200 dark:bg-ink-800"></span>
+        </div>
+      @endif
+    </div>
+  @endif
+
+  @if(has_totp)
+    <form method="post" action="/mfa/verify" class="space-y-5" novalidate>
+      {!! csrf_field !!}
+      <div>
+        <label for="code" class="field-label">Code from your authenticator app</label>
+        <input id="code" name="code" type="text" required autofocus
+               inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code"
+               maxlength="6" data-otp-input
+               class="field-input text-center font-mono text-2xl tracking-[0.4em]
+                      @if(error_code) field-input-invalid @endif">
+        @if(error_code)<p class="field-error">{{ error_code }}</p>@endif
+      </div>
+      <button type="submit" class="btn-primary w-full">Verify</button>
+    </form>
+  @endif
+
+  <div class="mt-6 border-t border-ink-200 pt-5 text-center dark:border-ink-800">
+    <a href="/mfa/recovery" class="text-sm font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400">
+      Lost your device? Use a recovery code
+    </a>
+  </div>
+@endsection

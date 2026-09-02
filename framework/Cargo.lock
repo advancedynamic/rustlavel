@@ -670,6 +670,7 @@ dependencies = [
  "rustlavel-openapi",
  "rustlavel-otel",
  "rustlavel-queue",
+ "rustlavel-rbac",
  "rustlavel-search",
  "rustlavel-storage",
  "rustlavel-telescope",
@@ -700,6 +701,7 @@ dependencies = [
  "hmac",
  "rustlavel-core",
  "rustlavel-http",
+ "sha1",
  "sha2",
  "subtle",
  "tokio",
@@ -871,6 +873,17 @@ dependencies = [
 name = "rustlavel-queue"
 version = "0.2.0"
 dependencies = [
+ "rustlavel-core",
+ "rustlavel-db",
+ "rustlavel-http",
+ "tokio",
+]
+
+[[package]]
+name = "rustlavel-rbac"
+version = "0.2.0"
+dependencies = [
+ "rustlavel-auth",
  "rustlavel-core",
  "rustlavel-db",
  "rustlavel-http",

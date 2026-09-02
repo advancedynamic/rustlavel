@@ -5,8 +5,9 @@
 //! parsing is loose or the verification is wrong, the package accepts forged
 //! logins, and nothing else it does matters.
 
-use crate::cbor::Cbor;
+use crate::cbor::{Cbor, CborKey};
 use rustlavel_core::{Error, Result};
+use std::collections::BTreeMap;
 
 /// COSE label 1: which family of key this is.
 const LABEL_KTY: i64 = 1;
@@ -118,6 +119,47 @@ impl CoseKey {
                 algorithm.cose_id()
             ))),
         }
+    }
+
+    /// The COSE_Key map this key came from.
+    ///
+    /// The labels and the values are the ones `parse` insists on, and no
+    /// others: kty, alg, crv, x and y for an EC2 key, and the same without y
+    /// for an OKP. Anything more would be a field this package never read and
+    /// so could not have checked.
+    ///
+    /// The pair `parse` / `to_cbor` is what makes a credential storable. A
+    /// store that keeps its credentials anywhere but memory needs bytes for a
+    /// column, and the bytes have to read back as the same key.
+    pub fn to_cbor(&self) -> Cbor {
+        let mut map = BTreeMap::new();
+        map.insert(CborKey::Int(LABEL_ALG), Cbor::Negative(self.algorithm().cose_id()));
+
+        match self {
+            CoseKey::Es256 { x, y } => {
+                map.insert(CborKey::Int(LABEL_KTY), Cbor::Unsigned(KTY_EC2 as u64));
+                map.insert(CborKey::Int(LABEL_CRV), Cbor::Unsigned(CRV_P256 as u64));
+                map.insert(CborKey::Int(LABEL_X), Cbor::Bytes(x.to_vec()));
+                map.insert(CborKey::Int(LABEL_Y), Cbor::Bytes(y.to_vec()));
+            }
+            CoseKey::EdDsa { x } => {
+                map.insert(CborKey::Int(LABEL_KTY), Cbor::Unsigned(KTY_OKP as u64));
+                map.insert(CborKey::Int(LABEL_CRV), Cbor::Unsigned(CRV_ED25519 as u64));
+                map.insert(CborKey::Int(LABEL_X), Cbor::Bytes(x.to_vec()));
+            }
+        }
+
+        Cbor::Map(map)
+    }
+
+    /// The key as canonical CTAP2 CBOR: what to put in a database column.
+    ///
+    /// Because both ends of this are canonical, storing what an authenticator
+    /// registered and reading it back gives the same bytes it sent — which is
+    /// worth having, because it means a stored credential can be compared with
+    /// the attestation it came from without parsing either.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.to_cbor().to_bytes()
     }
 
     /// Whether `signature` really covers `message` under this key.
@@ -320,6 +362,110 @@ mod tests {
 
         assert!(!printed.contains("171"), "coordinates reached the output: {printed}");
         assert!(printed.contains("Es256"));
+    }
+
+    /// `{1: 1, 3: -8, -1: 6, -2: x}` — the OKP shape, in canonical CTAP2
+    /// order, written out by hand.
+    ///
+    /// Unlike the EC2 case there is no fixture in this crate to borrow: the
+    /// fake authenticator the ceremony tests use only speaks ES256. These are
+    /// the bytes a security key that prefers Ed25519 puts on the wire, and the
+    /// point of writing them here rather than building them with the encoder
+    /// is that the encoder is what they are checking.
+    fn eddsa_key_bytes(x: &[u8; 32]) -> Vec<u8> {
+        let mut bytes = vec![0xa4, 0x01, 0x01, 0x03, 0x27, 0x20, 0x06, 0x21, 0x58, 0x20];
+        bytes.extend_from_slice(x);
+        bytes
+    }
+
+    #[test]
+    fn a_real_es256_key_re_encodes_to_the_bytes_the_authenticator_sent() {
+        // Byte-for-byte, not merely equivalent. A real authenticator already
+        // sends canonical CBOR, so anything less than identical bytes would
+        // mean this encoder and the specification disagree somewhere.
+        for seed in 1..=4 {
+            let device = crate::ceremony::fake::Authenticator::new(seed);
+            let sent = device.cose_key();
+            let key = CoseKey::parse(&Cbor::parse(&sent).unwrap()).unwrap();
+
+            assert_eq!(key.to_bytes(), sent, "seed {seed}");
+            assert_eq!(
+                CoseKey::parse(&Cbor::parse(&key.to_bytes()).unwrap()).unwrap(),
+                key,
+                "seed {seed} did not read back as itself"
+            );
+        }
+    }
+
+    #[test]
+    fn an_ed25519_key_re_encodes_to_the_bytes_a_security_key_sends() {
+        let signing = ed25519_dalek::SigningKey::from_bytes(&[11u8; 32]);
+        let sent = eddsa_key_bytes(&signing.verifying_key().to_bytes());
+
+        let key = CoseKey::parse(&Cbor::parse(&sent).unwrap()).unwrap();
+        assert_eq!(key.algorithm(), SignatureAlgorithm::EdDsa);
+        assert_eq!(key.to_bytes(), sent);
+        assert_eq!(CoseKey::parse(&Cbor::parse(&key.to_bytes()).unwrap()).unwrap(), key);
+    }
+
+    #[test]
+    fn a_stored_es256_key_still_verifies_a_real_assertion() {
+        // The one that matters. Self-consistency proves nothing on its own:
+        // an encoder that swapped x and y would still round-trip through its
+        // own parser. Only a genuine signature, made by the device that
+        // registered, says the stored bytes are the key that was registered.
+        let device = crate::ceremony::fake::Authenticator::new(4);
+        let auth_data =
+            device.authenticator_data("example.test", crate::ceremony::fake::ASSERTION_FLAGS, 9);
+        let client_data =
+            device.client_data("webauthn.get", b"a challenge", "https://example.test");
+        let signature = device.sign(&auth_data, &client_data);
+
+        let mut message = auth_data.clone();
+        message.extend_from_slice(&crate::ceremony::sha256(&client_data));
+
+        // Registered, written to bytes the way a database-backed store would,
+        // and read back out of them.
+        let registered = CoseKey::parse(&Cbor::parse(&device.cose_key()).unwrap()).unwrap();
+        let stored = CoseKey::parse(&Cbor::parse(&registered.to_bytes()).unwrap()).unwrap();
+
+        assert!(registered.verify(&message, &signature), "the fixture itself must verify");
+        assert!(stored.verify(&message, &signature), "the key survived storage in name only");
+    }
+
+    #[test]
+    fn a_stored_ed25519_key_still_verifies_a_real_signature() {
+        use ed25519_dalek::Signer;
+
+        let signing = ed25519_dalek::SigningKey::from_bytes(&[11u8; 32]);
+        let sent = eddsa_key_bytes(&signing.verifying_key().to_bytes());
+        let registered = CoseKey::parse(&Cbor::parse(&sent).unwrap()).unwrap();
+        let stored = CoseKey::parse(&Cbor::parse(&registered.to_bytes()).unwrap()).unwrap();
+
+        let message = b"authenticator data || client data hash";
+        let signature = signing.sign(message).to_bytes();
+
+        assert!(stored.verify(message, &signature));
+        assert!(!stored.verify(b"a different message", &signature));
+    }
+
+    #[test]
+    fn the_written_key_carries_the_labels_parse_reads_and_nothing_else() {
+        // A label this package never read is a label it never checked, so
+        // writing one out would be claiming more than was verified.
+        let key = CoseKey::parse(&es256_key([1u8; 32], [2u8; 32])).unwrap();
+        let Cbor::Map(map) = key.to_cbor() else { unreachable!("a COSE key is a map") };
+
+        assert_eq!(map.len(), 5);
+        for label in [LABEL_KTY, LABEL_ALG, LABEL_CRV, LABEL_X, LABEL_Y] {
+            assert!(map.contains_key(&CborKey::Int(label)), "label {label} is missing");
+        }
+
+        let key = CoseKey::EdDsa { x: [3u8; 32] };
+        let Cbor::Map(map) = key.to_cbor() else { unreachable!("a COSE key is a map") };
+
+        assert_eq!(map.len(), 4);
+        assert!(!map.contains_key(&CborKey::Int(LABEL_Y)), "an OKP key has no y");
     }
 
     #[test]

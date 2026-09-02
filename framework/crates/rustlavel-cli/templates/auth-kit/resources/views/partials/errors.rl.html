@@ -1,0 +1,8 @@
+{{-- The validation summary. Individual fields also show their own message; this
+     is here so a long form does not require scrolling to find out what is wrong. --}}
+@if(error_summary)
+  <div class="mb-5 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800
+              dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300" role="alert">
+    <p class="font-medium">{{ error_summary }}</p>
+  </div>
+@endif

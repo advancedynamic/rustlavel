@@ -60,6 +60,9 @@ pub use rustlavel_search as search;
 pub use rustlavel_webauthn as webauthn;
 #[cfg(feature = "openapi")]
 pub use rustlavel_openapi as openapi;
+#[cfg(feature = "rbac")]
+pub use rustlavel_rbac as rbac;
+
 #[cfg(feature = "queue")]
 pub use rustlavel_queue as queue;
 #[cfg(feature = "storage")]
@@ -122,6 +125,8 @@ pub mod prelude {
     pub use rustlavel_db::prelude::*;
     #[cfg(feature = "i18n")]
     pub use rustlavel_i18n::Translator;
+    #[cfg(feature = "rbac")]
+    pub use rustlavel_rbac::prelude::*;
     #[cfg(feature = "queue")]
     pub use rustlavel_queue::prelude::*;
     #[cfg(feature = "storage")]

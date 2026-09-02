@@ -57,6 +57,22 @@ impl Default for Cost {
     }
 }
 
+/// The SHA-256 of some bytes, as lowercase hex.
+///
+/// For high-entropy secrets only — an emailed link, a lookup key — never for a
+/// password. A password needs a slow hash with a salt, which is
+/// [`hash_password`]; this is the opposite, and using it on one would be a
+/// serious mistake.
+///
+/// The reasoning runs the other way too. A 32-byte random token has nothing to
+/// guess, so slowing the check down protects nobody, and a password-reset
+/// endpoint that spent a quarter of a second on argon2 per attempt would hand
+/// anybody a denial-of-service lever.
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 /// Hash a password at the default cost.
 pub fn hash_password(password: &str) -> Result<String> {
     hash_password_with(password, Cost::DEFAULT)
@@ -120,6 +136,17 @@ pub fn needs_rehash(hash: &str, cost: Cost) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sha256_matches_the_published_vectors() {
+        assert_eq!(
+            sha256_hex(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
     use super::*;
 
     #[test]

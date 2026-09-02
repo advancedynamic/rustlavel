@@ -1,0 +1,50 @@
+@extends("layouts.app")
+@section("title", "Permissions")
+
+@section("content")
+  <div class="mb-5 flex items-center justify-between gap-3">
+    <p class="text-sm text-ink-500 dark:text-ink-400">
+      The individual things that can be allowed. Name them <code>area.action</code>;
+      a role holding <code>users.*</code> covers every one of them in that area.
+    </p>
+    @if(can_create)<a href="/admin/permissions/create" class="btn-primary">New permission</a>@endif
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>Permission</th><th class="hidden sm:table-cell">Held by</th><th><span class="sr-only">Actions</span></th></tr>
+        </thead>
+        <tbody>
+          @foreach(permissions as permission)
+            <tr>
+              <td>
+                <code class="font-medium text-ink-900 dark:text-ink-100">{{ permission.name }}</code>
+                @if(permission.description)<p class="text-xs text-ink-500 dark:text-ink-400">{{ permission.description }}</p>@endif
+              </td>
+              <td class="hidden sm:table-cell">
+                <span class="flex flex-wrap gap-1">
+                  @foreach(permission.roles as role)<span class="badge-neutral">{{ role }}</span>@endforeach
+                  @if(permission.roles_empty)<span class="text-xs text-ink-500">No role</span>@endif
+                </span>
+              </td>
+              <td>
+                <div class="flex items-center justify-end gap-1">
+                  @if(can_update)<a href="/admin/permissions/{{ permission.id }}/edit" class="btn-ghost btn-sm">Edit</a>@endif
+                  @if(can_delete)
+                    <form method="post" action="/admin/permissions/{{ permission.id }}/delete"
+                          data-confirm="Delete {{ permission.name }}? It is removed from every role that has it.">
+                      {!! csrf_field !!}
+                      <button type="submit" class="btn-ghost btn-sm text-red-600 dark:text-red-400">Delete</button>
+                    </form>
+                  @endif
+                </div>
+              </td>
+            </tr>
+          @endforeach
+        </tbody>
+      </table>
+    </div>
+  </div>
+@endsection

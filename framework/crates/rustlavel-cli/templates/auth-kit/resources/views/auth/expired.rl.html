@@ -1,0 +1,14 @@
+@extends("layouts.guest")
+@section("title", "That link has expired")
+@section("heading", "That link has expired")
+
+@section("content")
+  <div class="text-center">
+    <span class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
+      <svg class="h-6 w-6" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-11.5a.75.75 0 0 0-1.5 0v3.75c0 .414.336.75.75.75h2.5a.75.75 0 0 0 0-1.5h-1.75V6.5Z"/></svg>
+    </span>
+    <p class="mt-4 text-sm text-ink-600 dark:text-ink-400">{{ reason }}</p>
+    <a href="{{ retry_url }}" class="btn-primary mt-6 w-full">{{ retry_label }}</a>
+    <a href="/login" class="btn-ghost mt-2 w-full">Back to sign in</a>
+  </div>
+@endsection

@@ -32,6 +32,7 @@ rustlavel-oauth-provider = { workspace = true, optional = true }
 rustlavel-openapi = { workspace = true, optional = true }
 rustlavel-otel = { workspace = true, optional = true }
 rustlavel-search = { workspace = true, optional = true }
+rustlavel-rbac = { workspace = true, optional = true }
 rustlavel-queue = { workspace = true, optional = true }
 rustlavel-storage = { workspace = true, optional = true }
 rustlavel-telescope = { workspace = true, optional = true }
@@ -71,6 +72,9 @@ openapi = ["dep:rustlavel-openapi"]
 otel = ["dep:rustlavel-otel", "client"]
 # Elasticsearch and OpenSearch, which speak the same API.
 search = ["dep:rustlavel-search", "client"]
+# Roles and permissions. Needs the database it stores them in and the guard
+# that says who is asking.
+rbac = ["dep:rustlavel-rbac", "db", "auth"]
 queue = ["dep:rustlavel-queue", "db"]
 storage = ["dep:rustlavel-storage"]
 telescope = ["dep:rustlavel-telescope"]
@@ -99,6 +103,7 @@ full = [
     "openapi",
     "otel",
     "search",
+    "rbac",
     "queue",
     "storage",
     "telescope",

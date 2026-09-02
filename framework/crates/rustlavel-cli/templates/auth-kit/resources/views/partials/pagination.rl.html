@@ -1,0 +1,22 @@
+{{-- Page links. Rendered only when there is more than one page, because a
+     single-page list with "Page 1 of 1" under it is noise. --}}
+@if(has_pages)
+  <nav class="flex flex-wrap items-center justify-between gap-3 border-t border-ink-200 px-4 py-3 dark:border-ink-800"
+       aria-label="Pagination">
+    <p class="text-sm text-ink-500 dark:text-ink-400">
+      Showing {{ page_from }}&ndash;{{ page_to }} of {{ page_total }}
+    </p>
+    <div class="flex gap-1">
+      @if(prev_url)
+        <a href="{{ prev_url }}" class="btn-secondary btn-sm" rel="prev">Previous</a>
+      @else
+        <span class="btn-secondary btn-sm opacity-50" aria-disabled="true">Previous</span>
+      @endif
+      @if(next_url)
+        <a href="{{ next_url }}" class="btn-secondary btn-sm" rel="next">Next</a>
+      @else
+        <span class="btn-secondary btn-sm opacity-50" aria-disabled="true">Next</span>
+      @endif
+    </div>
+  </nav>
+@endif

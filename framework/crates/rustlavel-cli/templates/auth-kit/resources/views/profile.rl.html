@@ -1,0 +1,113 @@
+@extends("layouts.app")
+@section("title", "Profile")
+
+@section("content")
+  <div class="grid gap-6 lg:grid-cols-3">
+    <div class="lg:col-span-2 space-y-6">
+      <div class="card">
+        <div class="card-header"><h3 class="font-semibold">Your details</h3></div>
+        <div class="card-body">
+          @include("partials.errors")
+          <form method="post" action="/profile" class="space-y-5" novalidate>
+            {!! csrf_field !!}
+            <div>
+              <label for="name" class="field-label">Name</label>
+              <input id="name" name="name" type="text" value="{{ name }}" required autocomplete="name"
+                     class="field-input @if(error_name) field-input-invalid @endif">
+              @if(error_name)<p class="field-error">{{ error_name }}</p>@endif
+            </div>
+            <div>
+              <label for="email" class="field-label">Email</label>
+              <input id="email" name="email" type="email" value="{{ email }}" required autocomplete="email"
+                     class="field-input @if(error_email) field-input-invalid @endif">
+              @if(error_email)<p class="field-error">{{ error_email }}</p>@endif
+              @if(email_unverified)
+                <p class="field-hint text-amber-700 dark:text-amber-400">
+                  This address is not confirmed yet.
+                </p>
+              @endif
+              <p class="field-hint">Changing this sends a confirmation link to the new address. The old one keeps working until you use it.</p>
+            </div>
+            <button type="submit" class="btn-primary">Save changes</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3 class="font-semibold">Change password</h3></div>
+        <div class="card-body">
+          <form method="post" action="/profile/password" class="space-y-5" novalidate>
+            {!! csrf_field !!}
+            <div>
+              <label for="current_password" class="field-label">Current password</label>
+              <input id="current_password" name="current_password" type="password" required
+                     autocomplete="current-password"
+                     class="field-input @if(error_current_password) field-input-invalid @endif">
+              @if(error_current_password)<p class="field-error">{{ error_current_password }}</p>@endif
+            </div>
+            <div>
+              <label for="password" class="field-label">New password</label>
+              <input id="password" name="password" type="password" required autocomplete="new-password"
+                     minlength="{{ min_length }}" data-strength-input data-strength-min="{{ min_length }}"
+                     class="field-input @if(error_password) field-input-invalid @endif">
+              <div data-strength-meter hidden class="mt-2">
+                <div class="h-1 overflow-hidden rounded-full bg-ink-200 dark:bg-ink-800">
+                  <div data-strength-bar class="h-full w-0 rounded-full transition-all"></div>
+                </div>
+                <p data-strength-text class="mt-1 text-xs text-ink-500 dark:text-ink-400"></p>
+              </div>
+              @if(error_password)<p class="field-error">{{ error_password }}</p>@endif
+            </div>
+            <div>
+              <label for="password_confirmation" class="field-label">Confirm new password</label>
+              <input id="password_confirmation" name="password_confirmation" type="password" required
+                     autocomplete="new-password" data-strength-confirm class="field-input">
+            </div>
+            <p class="field-hint">Changing your password signs out every other session.</p>
+            <button type="submit" class="btn-primary">Update password</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="space-y-6">
+      <div class="card">
+        <div class="card-header"><h3 class="font-semibold">Account</h3></div>
+        <div class="card-body space-y-3 text-sm">
+          <div class="flex justify-between gap-4">
+            <span class="text-ink-500 dark:text-ink-400">Roles</span>
+            <span class="flex flex-wrap justify-end gap-1">
+              @foreach(roles as role)<span class="badge-neutral">{{ role }}</span>@endforeach
+              @if(roles_empty)<span class="text-ink-500">None</span>@endif
+            </span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span class="text-ink-500 dark:text-ink-400">Joined</span>
+            <span>{{ created_at }}</span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span class="text-ink-500 dark:text-ink-400">Two-factor</span>
+            @if(mfa_enabled)<span class="badge-success">On</span>@else<span class="badge-warning">Off</span>@endif
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3 class="font-semibold">Sign-in history</h3></div>
+        <div class="max-h-96 overflow-y-auto">
+          <ul class="divide-y divide-ink-200 text-sm dark:divide-ink-800">
+            @foreach(logins as entry)
+              <li class="px-5 py-3">
+                <div class="flex items-center justify-between gap-3">
+                  <span>{{ entry.at }}</span>
+                  @if(entry.successful)<span class="badge-success">OK</span>@else<span class="badge-danger">Failed</span>@endif
+                </div>
+                <p class="mt-0.5 font-mono text-xs text-ink-500 dark:text-ink-400">{{ entry.ip }}</p>
+              </li>
+            @endforeach
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+@endsection

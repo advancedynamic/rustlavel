@@ -89,7 +89,14 @@ Publishing model: one repository, many crates — the way `laravel/framework` ho
 - [x] Testing: the test client with its cookie jar, and `Http::fake()`
 - [x] API tokens (Sanctum-shaped): opaque, hashed at rest with SHA-256, scoped, expiring, `Bearer` middleware
 - [x] Passkeys / WebAuthn — registration and authentication, CBOR and COSE written here
-- [ ] An `--auth` starter kit (login, register, reset) — not yet
+- [x] An `--auth` starter kit: `rustlavel new app --with auth-kit`. Sign-in with
+      TOTP and passkeys, invitation and self-registration both ending at a
+      "choose your own password" link, password reset, a sign-in audit log,
+      account lockout, roles and permissions, impersonation, and eleven pages
+      of Tailwind UI. The library half lives in `rustlavel-auth` (TOTP, QR,
+      impersonation), `rustlavel-webauthn` and `rustlavel-rbac`; the
+      controllers and views are written into the project, as Laravel Breeze
+      does, so the login page is a file the application owns
 - [ ] An HTML form that fails validation is not re-rendered with its errors; it gets a plain 422 today. JSON clients already get Laravel's shape.
 
 ## Phase 0.4 — AI and agent-era DX ✅ done
@@ -281,6 +288,26 @@ opened under a revoked account keeps that access alive for as long as the proces
 Deliberately **not** automatic — this crate does not depend on `rustlavel-vault`, and an
 application may get its credentials from somewhere this framework has never heard of. The
 application calls `credentials.rotate(user, password)`; nothing here reaches for a store.
+
+## Phase 1.4 — The API layer and the starter kit ✅ done
+
+- [x] CORS, response compression (a DEFLATE written here), ETag and conditional
+      requests, API resources, request identifiers, idempotency keys, health
+      probes, per-route timeouts and body limits, API versioning with
+      `Deprecation`/`Sunset`
+- [x] `TrustProxies`, after finding that `Request::ip()` believed
+      `X-Forwarded-For` from anyone — which made the rate limiter escapable by
+      sending a header
+- [x] A circuit breaker for outbound calls, on a failure rate over a sliding
+      window, one breaker per host
+- [x] `rustlavel-rbac`: roles, permissions, direct grants and denies, wildcard
+      matching, a super role, a cached check and route guards
+- [x] TOTP (RFC 6238), recovery codes, and a QR encoder written here — checked
+      byte for byte against libqrencode, because a passkey secret must not be
+      posted to a chart API and a JavaScript QR library would need a looser CSP
+      than the kit ships with
+- [x] COSE key serialisation, without which a passkey could be verified and
+      never stored
 
 ## Phase 1.3 — Directories, search, telemetry and passkeys ✅ done
 

@@ -1,0 +1,76 @@
+@extends("layouts.app")
+@section("title", "Dashboard")
+
+@section("content")
+  <div class="mb-6">
+    <h2 class="text-xl font-semibold tracking-tight">Welcome back, {{ first_name }}</h2>
+    <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">
+      @if(last_login_at)
+        Your last sign-in was {{ last_login_at }} from {{ last_login_ip }}.
+        Not you? <a href="/settings/security" class="font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400">Review your security settings</a>.
+      @else
+        This is your first sign-in.
+      @endif
+    </p>
+  </div>
+
+  @if(mfa_enabled == false)
+    <div class="card mb-6 border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10">
+      <div class="card-body flex flex-wrap items-center gap-4">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-400">
+          <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"/></svg>
+        </span>
+        <div class="min-w-0 flex-1">
+          <p class="font-medium text-amber-900 dark:text-amber-300">Two-factor authentication is off</p>
+          <p class="mt-0.5 text-sm text-amber-800 dark:text-amber-400">A password alone is one leaked list away from being somebody else's.</p>
+        </div>
+        <a href="/settings/security" class="btn-primary btn-sm shrink-0">Turn it on</a>
+      </div>
+    </div>
+  @endif
+
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    @foreach(stats as stat)
+      <div class="card">
+        <div class="card-body">
+          <p class="text-sm font-medium text-ink-500 dark:text-ink-400">{{ stat.label }}</p>
+          <p class="mt-2 text-3xl font-semibold tracking-tight">{{ stat.value }}</p>
+          @if(stat.note)<p class="mt-1 text-xs text-ink-500 dark:text-ink-400">{{ stat.note }}</p>@endif
+        </div>
+      </div>
+    @endforeach
+  </div>
+
+  <div class="card mt-6">
+    <div class="card-header flex items-center justify-between">
+      <h3 class="font-semibold">Recent sign-in activity</h3>
+      <a href="/profile" class="text-sm font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400">See all</a>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>When</th><th>Result</th><th>Address</th><th class="hidden sm:table-cell">Device</th></tr>
+        </thead>
+        <tbody>
+          @foreach(recent_logins as entry)
+            <tr>
+              <td class="whitespace-nowrap">{{ entry.at }}</td>
+              <td>
+                @if(entry.successful)
+                  <span class="badge-success">Signed in</span>
+                @else
+                  <span class="badge-danger">Failed</span>
+                @endif
+              </td>
+              <td class="font-mono text-xs">{{ entry.ip }}</td>
+              <td class="hidden max-w-xs truncate sm:table-cell">{{ entry.agent }}</td>
+            </tr>
+          @endforeach
+          @if(recent_logins_empty)
+            <tr><td colspan="4" class="py-8 text-center text-ink-500 dark:text-ink-400">Nothing recorded yet.</td></tr>
+          @endif
+        </tbody>
+      </table>
+    </div>
+  </div>
+@endsection

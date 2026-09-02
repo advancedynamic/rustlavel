@@ -1,0 +1,95 @@
+@extends("layouts.app")
+@section("title", title)
+
+@section("content")
+  <div class="mx-auto max-w-2xl">
+    @include("partials.errors")
+
+    <form method="post" action="{{ action }}" class="space-y-6" novalidate>
+      {!! csrf_field !!}
+
+      <div class="card">
+        <div class="card-header"><h3 class="font-semibold">Details</h3></div>
+        <div class="card-body space-y-5">
+          <div>
+            <label for="name" class="field-label">Name</label>
+            <input id="name" name="name" type="text" value="{{ name }}" required autofocus
+                   class="field-input @if(error_name) field-input-invalid @endif">
+            @if(error_name)<p class="field-error">{{ error_name }}</p>@endif
+          </div>
+          <div>
+            <label for="email" class="field-label">Email</label>
+            <input id="email" name="email" type="email" value="{{ email }}" required
+                   class="field-input @if(error_email) field-input-invalid @endif">
+            @if(error_email)<p class="field-error">{{ error_email }}</p>@endif
+            @if(is_new)
+              <p class="field-hint">An invitation goes here. They choose their own password, so you never see it.</p>
+            @endif
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3 class="font-semibold">Roles</h3>
+          <p class="mt-0.5 text-sm text-ink-500 dark:text-ink-400">What this person can do comes from their roles.</p>
+        </div>
+        <div class="card-body">
+          <div class="grid gap-2 sm:grid-cols-2">
+            @foreach(roles as role)
+              <label class="flex items-start gap-3 rounded-lg border border-ink-200 p-3 transition
+                            hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800/50">
+                <input type="checkbox" name="roles[]" value="{{ role.name }}" @if(role.assigned) checked @endif
+                       class="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800">
+                <span class="min-w-0">
+                  <span class="block text-sm font-medium">{{ role.name }}</span>
+                  @if(role.description)<span class="block text-xs text-ink-500 dark:text-ink-400">{{ role.description }}</span>@endif
+                </span>
+              </label>
+            @endforeach
+          </div>
+        </div>
+      </div>
+
+      @if(is_new == false)
+        <div class="card">
+          <div class="card-header">
+            <h3 class="font-semibold">Direct permissions</h3>
+            <p class="mt-0.5 text-sm text-ink-500 dark:text-ink-400">
+              Exceptions for this one person. A denial here overrides every role,
+              which is what makes it useful and what makes it easy to forget.
+            </p>
+          </div>
+          <div class="card-body">
+            <div class="space-y-2">
+              @foreach(permissions as permission)
+                <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-ink-200 px-3 py-2 dark:border-ink-800">
+                  <div class="min-w-0">
+                    <code class="text-sm">{{ permission.name }}</code>
+                    @if(permission.from_role)
+                      <span class="ml-2 text-xs text-ink-500 dark:text-ink-400">granted by {{ permission.from_role }}</span>
+                    @endif
+                  </div>
+                  <div class="flex gap-1">
+                    @foreach(permission.choices as choice)
+                      <label class="cursor-pointer">
+                        <input type="radio" name="permission[{{ permission.name }}]" value="{{ choice.value }}"
+                               @if(choice.selected) checked @endif class="peer sr-only">
+                        <span class="badge-neutral peer-checked:bg-brand-600 peer-checked:text-white peer-checked:ring-brand-600">{{ choice.label }}</span>
+                      </label>
+                    @endforeach
+                  </div>
+                </div>
+              @endforeach
+            </div>
+          </div>
+        </div>
+      @endif
+
+      <div class="flex items-center gap-3">
+        <button type="submit" class="btn-primary">{{ submit_label }}</button>
+        <a href="/admin/users" class="btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+@endsection

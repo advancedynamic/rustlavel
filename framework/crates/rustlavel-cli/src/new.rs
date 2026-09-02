@@ -3,6 +3,7 @@
 //! Deliberately slim, following Laravel 11+: routes, one controller, config,
 //! public, tests. Everything else arrives when a package is added.
 
+use crate::auth_kit;
 use crate::naming;
 use crate::stubs::{self, render};
 use crate::console;
@@ -12,6 +13,10 @@ use std::path::{Path, PathBuf};
 /// The packages `--with` can turn on, and what each one needs on disk.
 const PACKAGES: &[(&str, &[&str])] = &[
     ("ai", &[]),
+    // Not a crate of its own: `auth-kit` writes a working sign-in, roles and
+    // an administration area into the project, and turns on the packages that
+    // code needs.
+    ("auth-kit", &["storage/sessions", "resources/views", "public/css", "public/js"]),
     ("auth", &["storage/sessions"]),
     ("cache", &["storage/cache"]),
     ("client", &[]),
@@ -69,6 +74,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
             other if other.starts_with('-') => return Err(format!("unknown option `{other}`")),
             other => name = Some(other.to_string()),
         }
+    }
+
+    // `auth-kit` is scaffolding rather than a feature flag, so it is expanded
+    // into the packages its generated code actually imports and then dropped
+    // from the list passed to Cargo.
+    let auth_kit = packages.iter().any(|p| p == "auth-kit");
+    if auth_kit {
+        for required in ["auth", "db", "view", "validation", "rbac", "webauthn", "cache", "mail"] {
+            packages.push(required.to_string());
+        }
+        packages.retain(|p| p != "auth-kit");
     }
 
     packages.sort();
@@ -171,6 +187,38 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 .map_err(|e| format!("cannot create {directory}: {e}"))?;
             write(&root.join(directory).join(".gitkeep"), "")?;
             console::created(directory);
+        }
+    }
+
+    if auth_kit {
+        for (path, contents) in auth_kit::FILES {
+            write(&root.join(path), contents)?;
+        }
+        console::created("src/controllers/auth/ (sign in, register, reset, two-factor)");
+        console::created("src/controllers/admin/ (users, roles, permissions)");
+        console::created("resources/views/ (every page, Tailwind)");
+        console::created("public/css/app.css, public/js/app.js");
+        console::created("database/migrations/ (users, tokens, sign-in log, factors)");
+
+        // The kit's own main.rs, registry and seeder replace the plain ones
+        // the scaffold has just written.
+        write(&root.join("src/main.rs"), &render(auth_kit::MAIN_RS, &values))?;
+        write(&root.join("src/lib.rs"), &format!("{LIB_RS}pub mod database;\npub mod models;\npub mod support;\n"))?;
+        write(&root.join("database/migrations/mod.rs"), auth_kit::MIGRATIONS_REGISTRY)?;
+        write(&root.join("database/seeders/auth_kit_seeder.rs"), auth_kit::SEEDER)?;
+        write(&root.join("database/seeders/mod.rs"), auth_kit::SEEDERS_REGISTRY)?;
+        console::created("src/main.rs, database/seeders/auth_kit_seeder.rs");
+
+        write(&root.join("config/auth.json"), auth_kit::CONFIG_AUTH)?;
+        write(&root.join("config/rbac.json"), auth_kit::CONFIG_RBAC)?;
+        write(&root.join("config/webauthn.json"), auth_kit::CONFIG_WEBAUTHN)?;
+        console::created("config/auth.json, config/rbac.json, config/webauthn.json");
+
+        for file in [".env", ".env.example"] {
+            let path = root.join(file);
+            let mut contents = std::fs::read_to_string(&path).unwrap_or_default();
+            contents.push_str(auth_kit::ENV_ADDITIONS);
+            write(&path, &contents)?;
         }
     }
 

@@ -1,0 +1,14 @@
+{{-- One-shot messages. `flash_kind` decides the colour; the text is escaped by
+     the engine, so a message built from user input is safe here. --}}
+@if(flash_message)
+  <div class="mb-5 flex items-start gap-3 rounded-lg border px-4 py-3 text-sm
+              @if(flash_kind == "error") border-red-300 bg-red-50 text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300
+              @elseif(flash_kind == "warning") border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300
+              @else border-green-300 bg-green-50 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300 @endif"
+       role="status">
+    <p class="min-w-0 flex-1">{{ flash_message }}</p>
+    <button type="button" data-dismiss class="shrink-0 opacity-60 hover:opacity-100" aria-label="Dismiss">
+      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z"/></svg>
+    </button>
+  </div>
+@endif

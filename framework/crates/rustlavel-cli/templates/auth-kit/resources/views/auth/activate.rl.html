@@ -1,0 +1,51 @@
+@extends("layouts.guest")
+@section("title", "Set your password")
+@section("heading", "Set your password")
+
+@section("subheading")
+  <p class="mt-2 text-center text-sm text-ink-500 dark:text-ink-400">
+    Welcome, {{ name }}. Choose a password and you are in.
+  </p>
+@endsection
+
+@section("content")
+  @include("partials.errors")
+
+  <form method="post" action="{{ action }}" class="space-y-5" novalidate>
+    {!! csrf_field !!}
+    <input type="hidden" name="token" value="{{ token }}">
+
+    <div>
+      <label for="password" class="field-label">Password</label>
+      <div class="relative">
+        <input id="password" name="password" type="password" required autofocus
+               autocomplete="new-password" minlength="{{ min_length }}"
+               data-strength-input data-strength-min="{{ min_length }}"
+               class="field-input pr-11 @if(error_password) field-input-invalid @endif">
+        <button type="button" data-toggle-password="password"
+                class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-ink-400 hover:text-ink-600 dark:hover:text-ink-200"
+                aria-label="Show the password">
+          <svg class="h-5 w-5" data-eye viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 4C5.5 4 2 10 2 10s3.5 6 8 6 8-6 8-6-3.5-6-8-6Zm0 10a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/></svg>
+        </button>
+      </div>
+      <div data-strength-meter hidden class="mt-2">
+        <div class="h-1 overflow-hidden rounded-full bg-ink-200 dark:bg-ink-800">
+          <div data-strength-bar class="h-full w-0 rounded-full transition-all"></div>
+        </div>
+        <p data-strength-text class="mt-1 text-xs text-ink-500 dark:text-ink-400"></p>
+      </div>
+      @if(error_password)<p class="field-error">{{ error_password }}</p>@endif
+      <p class="field-hint">At least {{ min_length }} characters. Longer beats complicated.</p>
+    </div>
+
+    <div>
+      <label for="password_confirmation" class="field-label">Confirm password</label>
+      <input id="password_confirmation" name="password_confirmation" type="password" required
+             autocomplete="new-password" data-strength-confirm
+             class="field-input @if(error_password_confirmation) field-input-invalid @endif">
+      @if(error_password_confirmation)<p class="field-error">{{ error_password_confirmation }}</p>@endif
+    </div>
+
+    <button type="submit" class="btn-primary w-full">{{ submit_label }}</button>
+  </form>
+@endsection

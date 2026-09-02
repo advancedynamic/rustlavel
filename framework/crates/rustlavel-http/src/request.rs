@@ -242,6 +242,38 @@ impl Request {
     }
 
     /// All decoded form fields of a `application/x-www-form-urlencoded` body.
+    /// Every value submitted under one name.
+    ///
+    /// A form with several checkboxes sharing a name — `roles[]`, which is how
+    /// PHP and every HTML tutorial spell it — sends the name once per ticked
+    /// box. [`Request::input`] returns only the first, which for a checkbox
+    /// group silently means "whichever happened to come first".
+    ///
+    /// A trailing `[]` is optional here: `inputs("roles")` and
+    /// `inputs("roles[]")` both find them, because which one a form used is a
+    /// detail of the markup rather than a decision the handler should have to
+    /// track.
+    pub fn inputs(&mut self, name: &str) -> Vec<String> {
+        let bare = name.strip_suffix("[]").unwrap_or(name).to_string();
+        let bracketed = format!("{bare}[]");
+
+        let from_query: Vec<String> = self
+            .query_pairs()
+            .iter()
+            .filter(|(key, _)| *key == bare || *key == bracketed)
+            .map(|(_, value)| value.clone())
+            .collect();
+
+        let mut values = from_query;
+        values.extend(
+            self.form()
+                .iter()
+                .filter(|(key, _)| *key == bare || *key == bracketed)
+                .map(|(_, value)| value.clone()),
+        );
+        values
+    }
+
     pub fn form(&mut self) -> &[(String, String)] {
         self.parse_body();
         match self.parsed_body.as_ref() {
@@ -354,6 +386,22 @@ impl std::fmt::Debug for Request {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn inputs_collects_every_value_under_one_name() {
+        let mut request = Request::new(Method::Post, "/roles?scope=a&scope=b")
+            .with_body(b"roles[]=admin&roles[]=editor&name=Ada".to_vec())
+            .with_header("content-type", "application/x-www-form-urlencoded");
+
+        // The bracketed and bare spellings find the same fields, because which
+        // one the markup used is not the handler's problem.
+        assert_eq!(request.inputs("roles"), vec!["admin", "editor"]);
+        assert_eq!(request.inputs("roles[]"), vec!["admin", "editor"]);
+        assert_eq!(request.inputs("name"), vec!["Ada"]);
+        assert!(request.inputs("missing").is_empty());
+        // Query and body both count, query first.
+        assert_eq!(request.inputs("scope"), vec!["a", "b"]);
+    }
+
     use super::*;
 
     #[test]

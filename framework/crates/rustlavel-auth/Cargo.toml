@@ -18,5 +18,12 @@ tokio.workspace = true
 argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash"] }
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
 sha2 = "0.10"
+# SHA-1 is here only because RFC 6238 says so. It is the default and, in
+# practice, the only algorithm every authenticator app implements, so a TOTP
+# secret that cannot be verified with HMAC-SHA1 cannot be enrolled at all. The
+# collision attacks that retired SHA-1 for signatures do not apply to HMAC, and
+# writing the compression function by hand would be the same mistake the crypto
+# exception exists to prevent.
+sha1 = "0.10"
 hmac = "0.12"
 subtle = "2"

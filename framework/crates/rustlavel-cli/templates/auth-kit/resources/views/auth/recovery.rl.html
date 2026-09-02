@@ -1,0 +1,31 @@
+@extends("layouts.guest")
+@section("title", "Use a recovery code")
+@section("heading", "Use a recovery code")
+
+@section("subheading")
+  <p class="mt-2 text-center text-sm text-ink-500 dark:text-ink-400">
+    Each code works once. Using one here does not remove your other factors.
+  </p>
+@endsection
+
+@section("content")
+  @include("partials.errors")
+
+  <form method="post" action="/mfa/recovery" class="space-y-5" novalidate>
+    {!! csrf_field !!}
+    <div>
+      <label for="code" class="field-label">Recovery code</label>
+      <input id="code" name="code" type="text" required autofocus autocomplete="off"
+             spellcheck="false" placeholder="xxxxx-xxxxx"
+             class="field-input text-center font-mono tracking-widest
+                    @if(error_code) field-input-invalid @endif">
+      @if(error_code)<p class="field-error">{{ error_code }}</p>@endif
+      <p class="field-hint">Once you are in, generate a fresh set from Security settings.</p>
+    </div>
+    <button type="submit" class="btn-primary w-full">Sign in</button>
+  </form>
+
+  <div class="mt-6 border-t border-ink-200 pt-5 text-center dark:border-ink-800">
+    <a href="/login" class="text-sm font-medium text-ink-500 hover:text-ink-700 dark:text-ink-400">Back to sign in</a>
+  </div>
+@endsection

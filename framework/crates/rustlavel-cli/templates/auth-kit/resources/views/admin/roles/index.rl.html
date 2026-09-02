@@ -1,0 +1,55 @@
+@extends("layouts.app")
+@section("title", "Roles")
+
+@section("content")
+  <div class="mb-5 flex items-center justify-between gap-3">
+    <p class="text-sm text-ink-500 dark:text-ink-400">A role is a named bundle of permissions.</p>
+    @if(can_create)<a href="/admin/roles/create" class="btn-primary">New role</a>@endif
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>Role</th><th class="hidden sm:table-cell">Permissions</th><th>Users</th><th><span class="sr-only">Actions</span></th></tr>
+        </thead>
+        <tbody>
+          @foreach(roles as role)
+            <tr>
+              <td>
+                <p class="font-medium text-ink-900 dark:text-ink-100">{{ role.name }}</p>
+                @if(role.description)<p class="text-xs text-ink-500 dark:text-ink-400">{{ role.description }}</p>@endif
+                @if(role.is_super)
+                  <span class="badge-warning mt-1">Passes every check</span>
+                @endif
+              </td>
+              <td class="hidden sm:table-cell">
+                @if(role.is_super)
+                  <span class="text-xs text-ink-500 dark:text-ink-400">Everything, without being listed</span>
+                @else
+                  <span class="flex flex-wrap gap-1">
+                    @foreach(role.permissions as permission)<code class="badge-neutral">{{ permission }}</code>@endforeach
+                    @if(role.permissions_empty)<span class="text-xs text-ink-500">None yet</span>@endif
+                  </span>
+                @endif
+              </td>
+              <td>{{ role.user_count }}</td>
+              <td>
+                <div class="flex items-center justify-end gap-1">
+                  @if(can_update)<a href="/admin/roles/{{ role.id }}/edit" class="btn-ghost btn-sm">Edit</a>@endif
+                  @if(can_delete && role.deletable)
+                    <form method="post" action="/admin/roles/{{ role.id }}/delete"
+                          data-confirm="Delete the {{ role.name }} role? Its {{ role.user_count }} user(s) lose the permissions it grants.">
+                      {!! csrf_field !!}
+                      <button type="submit" class="btn-ghost btn-sm text-red-600 dark:text-red-400">Delete</button>
+                    </form>
+                  @endif
+                </div>
+              </td>
+            </tr>
+          @endforeach
+        </tbody>
+      </table>
+    </div>
+  </div>
+@endsection

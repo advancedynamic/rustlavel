@@ -1,0 +1,32 @@
+{{-- The shell for pages a signed-out visitor sees: one centred card, no nav. --}}
+<!doctype html>
+<html lang="en" class="{{ theme_class }} h-full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>@yield("title", "Sign in") &middot; {{ app_name }}</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="h-full bg-ink-50 font-sans text-ink-900 antialiased dark:bg-ink-950 dark:text-ink-100">
+  <div class="flex min-h-full flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
+    <div class="sm:mx-auto sm:w-full sm:max-w-md">
+      <a href="/" class="flex items-center justify-center gap-2.5">
+        <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-base font-bold text-white">{{ app_initial }}</span>
+        <span class="text-lg font-semibold tracking-tight">{{ app_name }}</span>
+      </a>
+      <h1 class="mt-6 text-center text-2xl font-semibold tracking-tight">@yield("heading", "Sign in")</h1>
+      @yield("subheading")
+    </div>
+
+    <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+      <div class="card px-6 py-8 sm:px-8">
+        @include("partials.flash")
+        @yield("content")
+      </div>
+      @yield("below")
+    </div>
+  </div>
+  <script src="/js/app.js" defer></script>
+</body>
+</html>
