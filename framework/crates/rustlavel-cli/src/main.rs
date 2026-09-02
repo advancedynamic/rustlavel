@@ -8,15 +8,19 @@
 mod auth_kit;
 mod build;
 mod console;
+mod crud;
 mod database;
 mod doctor;
+mod fields;
 mod make;
 mod naming;
 mod new;
+mod package;
 mod project;
 mod serve;
 mod storage;
 mod stubs;
+mod tinker;
 
 use project::Project;
 
@@ -34,6 +38,7 @@ fn main() {
         "new" => new::run(rest),
         "serve" => serve::run(rest),
         "doctor" => doctor::run(),
+        "tinker" => tinker::run(rest),
         "build" => build::run(rest),
         "make:docker" => Project::discover().and_then(|p| build::make_docker(&p)),
         "storage:link" => Project::discover().and_then(|p| storage::link(&p, rest)),
@@ -100,6 +105,8 @@ fn help() {
     row("queue:work", "Process background jobs");
     row("queue:failed", "List jobs that gave up");
     row("schedule:run", "Run the scheduler");
+    row("tinker", "Compile and run a snippet against the app");
+    row("  -e <code>", "Run one snippet instead of the loop");
     row("doctor", "Diagnose why the app will not start");
     row("build", "Build the single deployable binary");
     row("key:generate", "Generate APP_KEY into .env");
@@ -107,6 +114,11 @@ fn help() {
     println!();
 
     println!("{}", console::bold("GENERATORS"));
+    row("make:crud <Name>", "Model, migration, controller, views and routes");
+    row("  --fields <list>", "\"title:string,body:text,done:bool\" (`?` = nullable)");
+    // Appended rather than printed, because a resource nobody wired up is a
+    // resource that does not work, and the file it goes in is generated.
+    row("  (routes)", "Appended to src/routes/web.rs, or printed to paste");
     row("make:controller <Name>", "Create a controller");
     row("make:middleware <name>", "Create a middleware function");
     row("make:model <Name>", "Create a model");
@@ -116,6 +128,7 @@ fn help() {
     row("make:mail <Name>", "Create a mailable");
     row("make:notification <Name>", "Create a notification");
     row("make:mcp-tool <name>", "Create a tool agents can call over MCP");
+    row("make:package <name>", "Scaffold a crate for a third-party package");
     row("make:docker", "Create a two-stage Dockerfile");
     println!();
 

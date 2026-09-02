@@ -8,6 +8,19 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 pub fn run(command: &str, args: &[String]) -> Result<(), String> {
+    // A package is not part of an application, so this is the one generator
+    // that does not first insist on standing inside one.
+    if command == "make:package" {
+        return crate::package::run(args);
+    }
+
+    // `make:crud --help` has no name to give, and asking for one before
+    // explaining what the command wants is the wrong way round.
+    if command == "make:crud" && matches!(args.first().map(String::as_str), Some("-h" | "--help")) {
+        crate::crud::help();
+        return Ok(());
+    }
+
     let name = args
         .first()
         .ok_or_else(|| format!("usage: rustlavel {command} <name>"))?;
@@ -15,6 +28,7 @@ pub fn run(command: &str, args: &[String]) -> Result<(), String> {
 
     match command {
         "make:controller" => controller(&project, name),
+        "make:crud" => crate::crud::run(&project, name, &args[1..]),
         "make:middleware" => middleware(&project, name),
         "make:model" => crate::database::model(&project, name),
         "make:migration" => crate::database::migration(&project, name),

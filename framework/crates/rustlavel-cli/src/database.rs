@@ -84,7 +84,7 @@ pub fn seeder(project: &Project, name: &str) -> Result<(), String> {
 ///
 /// Deriving it from the directory means a deleted file cannot leave a dangling
 /// entry behind, which is the failure mode a hand-maintained list would have.
-fn regenerate_registry(
+pub fn regenerate_registry(
     project: &Project,
     directory: &str,
     template: &str,
@@ -168,7 +168,7 @@ fn ensure_module(project: &Project, name: &str) -> Result<(), String> {
 }
 
 /// `database/` sits outside `src/`, so it needs a module that points at it.
-fn ensure_database_module(project: &Project) -> Result<(), String> {
+pub fn ensure_database_module(project: &Project) -> Result<(), String> {
     let path = project.root.join("src/database.rs");
     if !path.exists() {
         std::fs::write(
@@ -221,7 +221,7 @@ fn relative(project: &Project, path: &Path) -> String {
 }
 
 /// `YYYY_MM_DD_HHMMSS`, so migration names sort into the order they were made.
-fn timestamp() -> String {
+pub fn timestamp() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
