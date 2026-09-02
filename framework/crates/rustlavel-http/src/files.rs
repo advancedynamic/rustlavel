@@ -48,14 +48,29 @@ impl Handler for Files {
                 return Response::not_found();
             };
             match tokio::fs::read(&path).await {
-                Ok(bytes) => Response::ok()
-                    .with_header("content-type", content_type(&path))
-                    .with_header("cache-control", "public, max-age=3600")
-                    .with_body(bytes),
+                Ok(bytes) => {
+                    let mut response = Response::ok()
+                        .with_header("content-type", content_type(&path))
+                        .with_header("cache-control", "public, max-age=3600");
+                    // The modification time is what lets a browser's
+                    // `If-Modified-Since` be answered with a 304 by the ETag
+                    // middleware, instead of the file being sent again.
+                    if let Some(modified) = modified_at(&path).await {
+                        response.headers.set("last-modified", crate::date::http_date(modified));
+                    }
+                    response.with_body(bytes)
+                }
                 Err(_) => Response::new(Status::NOT_FOUND).with_text("Not Found"),
             }
         })
     }
+}
+
+/// The file's modification time as a unix timestamp, when the filesystem has one.
+async fn modified_at(path: &Path) -> Option<i64> {
+    let modified = tokio::fs::metadata(path).await.ok()?.modified().ok()?;
+    let since_epoch = modified.duration_since(std::time::UNIX_EPOCH).ok()?;
+    i64::try_from(since_epoch.as_secs()).ok()
 }
 
 /// Guess a content type from the file extension.

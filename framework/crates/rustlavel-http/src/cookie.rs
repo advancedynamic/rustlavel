@@ -108,7 +108,7 @@ impl Cookie {
             out.push_str(&format!("; Max-Age={}", age.as_secs()));
         }
         if let Some(expires) = self.expires_unix {
-            out.push_str(&format!("; Expires={}", http_date(expires)));
+            out.push_str(&format!("; Expires={}", crate::date::http_date(expires)));
         }
         if self.secure {
             out.push_str("; Secure");
@@ -135,47 +135,6 @@ pub fn parse_header(header: &str) -> BTreeMap<String, String> {
         .filter_map(|pair| pair.trim().split_once('='))
         .map(|(name, value)| (name.trim().to_string(), url::decode(value.trim())))
         .collect()
-}
-
-/// Format a unix timestamp as an HTTP date (RFC 7231 IMF-fixdate).
-fn http_date(unix: i64) -> String {
-    const DAYS: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
-    const MONTHS: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-
-    let days_since_epoch = unix.div_euclid(86_400);
-    let seconds_of_day = unix.rem_euclid(86_400);
-    let (year, month, day) = civil_from_days(days_since_epoch);
-
-    format!(
-        "{}, {:02} {} {} {:02}:{:02}:{:02} GMT",
-        DAYS[(days_since_epoch.rem_euclid(7)) as usize],
-        day,
-        MONTHS[(month - 1) as usize],
-        year,
-        seconds_of_day / 3600,
-        (seconds_of_day % 3600) / 60,
-        seconds_of_day % 60,
-    )
-}
-
-/// Days since the unix epoch to a civil (year, month, day).
-///
-/// Howard Hinnant's `civil_from_days`, shifted to a March-based year so leap
-/// days land at the end and need no special case.
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let day_of_era = z.rem_euclid(146_097);
-    let year_of_era =
-        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
-    let year = year_of_era + era * 400;
-    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    let mp = (5 * day_of_year + 2) / 153;
-    let day = (day_of_year - (153 * mp + 2) / 5 + 1) as u32;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    (year + i64::from(month <= 2), month, day)
 }
 
 #[cfg(test)]
@@ -215,9 +174,4 @@ mod tests {
         assert!(header.contains("Expires=Thu, 01 Jan 1970 00:00:00 GMT"));
     }
 
-    #[test]
-    fn formats_known_http_dates() {
-        assert_eq!(http_date(0), "Thu, 01 Jan 1970 00:00:00 GMT");
-        assert_eq!(http_date(1_000_000_000), "Sun, 09 Sep 2001 01:46:40 GMT");
-    }
 }

@@ -6,7 +6,9 @@
 pub mod compression;
 pub mod cookie;
 pub mod cors;
+pub mod date;
 pub mod error_page;
+pub mod etag;
 pub mod files;
 pub mod handler;
 pub mod headers;
@@ -25,6 +27,7 @@ pub mod url;
 
 pub use cookie::{Cookie, SameSite};
 pub use cors::Cors;
+pub use etag::ETag;
 pub use files::Files;
 pub use handler::Handler;
 pub use headers::Headers;
