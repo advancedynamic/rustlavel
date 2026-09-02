@@ -3,6 +3,16 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## 0.3.1 — 2026-09-03
+
+### Fixed
+
+- `rustlavel new --with rbac` and `--with flags` were refused: both are
+  features of the `rustlavel` crate, and neither was in the list the scaffold
+  accepts. `rbac` had been missing for a release. A test now reads the
+  meta-crate's manifest and fails if the two lists disagree in either
+  direction, so this cannot drift again.
+
 ## 0.3.0 — 2026-09-03
 
 The minor number, because `Errors` gained a field and a `Validator` built from

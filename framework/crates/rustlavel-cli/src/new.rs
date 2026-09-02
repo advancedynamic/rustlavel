@@ -16,12 +16,13 @@ const PACKAGES: &[(&str, &[&str])] = &[
     // Not a crate of its own: `auth-kit` writes a working sign-in, roles and
     // an administration area into the project, and turns on the packages that
     // code needs.
-    ("auth-kit", &["storage/sessions", "resources/views", "public/css", "public/js"]),
     ("auth", &["storage/sessions"]),
+    ("auth-kit", &["storage/sessions", "resources/views", "public/css", "public/js"]),
     ("cache", &["storage/cache"]),
     ("client", &[]),
     ("db", &["database/migrations", "database/seeders"]),
     ("debugbar", &[]),
+    ("flags", &[]),
     ("i18n", &["lang"]),
     ("ldap", &[]),
     ("mail", &["resources/views"]),
@@ -32,6 +33,7 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("openapi", &[]),
     ("otel", &[]),
     ("queue", &["database/migrations"]),
+    ("rbac", &["database/migrations"]),
     ("search", &[]),
     ("storage", &["storage/app"]),
     ("telescope", &[]),
@@ -258,4 +260,66 @@ fn write(path: &Path, contents: &str) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
     }
     std::fs::write(path, contents).map_err(|e| format!("cannot write {}: {e}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The list `--with` accepts has to be the list the meta-crate offers.
+    ///
+    /// These two drifted once already: `rbac` and `flags` were features of
+    /// `rustlavel` for a release each before `rustlavel new --with rbac` would
+    /// take them, which is a confusing way to find out a package exists. The
+    /// manifest is the source of truth, so this reads it rather than repeating
+    /// the list a third time.
+    #[test]
+    fn every_feature_on_the_meta_crate_is_a_package_the_scaffold_accepts() {
+        let manifest = include_str!("../../rustlavel/Cargo.toml");
+
+        let features: Vec<&str> = manifest
+            .lines()
+            .skip_while(|line| line.trim() != "[features]")
+            .skip(1)
+            .take_while(|line| !line.trim_start().starts_with('['))
+            .filter_map(|line| line.split_once('=').map(|(name, _)| name.trim()))
+            // `default` and `full` are not packages, they are collections of
+            // them; every other key is a package the scaffold should know.
+            .filter(|name| !name.is_empty() && *name != "default" && *name != "full")
+            .collect();
+
+        assert!(features.len() > 20, "the feature list was not found: {features:?}");
+
+        let known: Vec<&str> = PACKAGES.iter().map(|(name, _)| *name).collect();
+        let missing: Vec<&&str> = features.iter().filter(|f| !known.contains(f)).collect();
+        assert!(
+            missing.is_empty(),
+            "these are features of the rustlavel crate but `--with` refuses them: {missing:?}"
+        );
+    }
+
+    /// And the other direction, except for the one that is not a feature.
+    #[test]
+    fn the_scaffold_offers_nothing_the_meta_crate_cannot_turn_on() {
+        let manifest = include_str!("../../rustlavel/Cargo.toml");
+        for (package, _) in PACKAGES {
+            // `auth-kit` is scaffolding rather than a feature flag: it writes
+            // files and expands into the packages that code imports.
+            if *package == "auth-kit" {
+                continue;
+            }
+            assert!(
+                manifest.contains(&format!("\n{package} = [")),
+                "`--with {package}` is offered, but `rustlavel` has no such feature"
+            );
+        }
+    }
+
+    #[test]
+    fn the_package_list_is_sorted_so_the_error_message_reads_in_order() {
+        let names: Vec<&str> = PACKAGES.iter().map(|(name, _)| *name).collect();
+        let mut sorted = names.clone();
+        sorted.sort_unstable();
+        assert_eq!(names, sorted, "keep PACKAGES alphabetical");
+    }
 }
