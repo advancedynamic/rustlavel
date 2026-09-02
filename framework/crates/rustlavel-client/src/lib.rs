@@ -14,6 +14,7 @@
 //!     .await?;
 //! ```
 
+pub mod breaker;
 pub mod fake;
 pub mod stream;
 pub mod url;
@@ -28,6 +29,7 @@ use tokio::net::TcpStream;
 use url::Url;
 
 pub use fake::{Fake, FakeResponse};
+pub use breaker::{CircuitBreaker, Permit, State as CircuitState};
 pub use stream::{Body, ServerSentEvent, SseReader};
 
 /// A response from an outbound request.
@@ -71,6 +73,7 @@ pub struct Client {
     retries: u32,
     default_headers: Headers,
     max_body_bytes: usize,
+    breaker: Option<crate::breaker::CircuitBreaker>,
     fake: Option<Arc<Fake>>,
 }
 
@@ -89,6 +92,7 @@ impl Default for Client {
             retries: 0,
             default_headers,
             max_body_bytes: 32 * 1024 * 1024,
+            breaker: None,
             fake: None,
         }
     }
@@ -111,6 +115,20 @@ impl Client {
     pub fn retries(mut self, retries: u32) -> Self {
         self.retries = retries;
         self
+    }
+
+    /// Stop calling a host that is failing, and probe it before resuming.
+    ///
+    /// Pass one breaker to every client that shares an upstream, so what one
+    /// of them learns the others act on. See [`crate::breaker`].
+    pub fn breaker(mut self, breaker: crate::breaker::CircuitBreaker) -> Self {
+        self.breaker = Some(breaker);
+        self
+    }
+
+    /// The breaker this client is using, to ask about a host's state.
+    pub fn circuit(&self) -> Option<&crate::breaker::CircuitBreaker> {
+        self.breaker.as_ref()
     }
 
     pub fn default_header(mut self, name: &str, value: impl Into<String>) -> Self {
@@ -225,10 +243,26 @@ impl RequestBuilder {
             return Ok(response);
         }
 
+        // The breaker wraps the whole retry loop, not each attempt. Asking it
+        // per attempt would let one call spend every retry on a host already
+        // known to be down, which is the cost the breaker exists to avoid; and
+        // the retries of a single call are one verdict about the upstream, not
+        // three.
+        let permit = match (&self.client.breaker, Url::parse(&self.url)) {
+            (Some(breaker), Ok(parsed)) => Some(breaker.acquire(&parsed.authority())?),
+            _ => None,
+        };
+
         let mut attempt = 0;
         loop {
             match self.send_once().await {
                 Ok(response) => {
+                    // A 5xx is the upstream failing even though the exchange
+                    // succeeded, so the breaker is told about the status
+                    // rather than about the transport.
+                    if let Some(permit) = permit {
+                        permit.record_status(response.status);
+                    }
                     record(method, &url, Some(response.status), started);
                     return Ok(response);
                 }
@@ -239,6 +273,11 @@ impl RequestBuilder {
                     attempt += 1;
                 }
                 Err(error) => {
+                    // A transport failure — refused, reset, timed out — is the
+                    // clearest evidence there is that a host is unreachable.
+                    if let Some(permit) = permit {
+                        permit.failure();
+                    }
                     record(method, &url, None, started);
                     return Err(error);
                 }
@@ -832,5 +871,158 @@ mod compression_tests {
         });
         Client::new().get(format!("http://{address}/")).send().await.unwrap();
         assert!(seen.await.unwrap().contains("accept-encoding: gzip, deflate"));
+    }
+}
+
+#[cfg(test)]
+mod breaker_integration_tests {
+    use super::*;
+    use crate::breaker::{CircuitBreaker, State};
+    use tokio::net::TcpListener;
+
+    /// A server that answers `status` to everything, and counts the requests
+    /// it was actually asked to serve.
+    async fn counting_server(status: &'static str) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let served = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = served.clone();
+
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else { return };
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                tokio::spawn(async move {
+                    let mut request = vec![0u8; 4096];
+                    let _ = socket.read(&mut request).await;
+                    let _ = socket
+                        .write_all(format!("HTTP/1.1 {status}\r\ncontent-length: 0\r\n\r\n").as_bytes())
+                        .await;
+                    let _ = socket.shutdown().await;
+                });
+            }
+        });
+        (format!("http://{address}/"), served)
+    }
+
+    #[tokio::test]
+    async fn a_failing_upstream_stops_being_called_at_all() {
+        let (url, served) = counting_server("500 Internal Server Error").await;
+        let breaker = CircuitBreaker::new().minimum_calls(4).failure_rate(0.5);
+        let http = Client::new().breaker(breaker.clone());
+
+        // Four 500s: each is a real request, and the fourth opens the circuit.
+        for _ in 0..4 {
+            let response = http.get(&url).send().await.expect("the exchange succeeded");
+            assert_eq!(response.status.code(), 500);
+        }
+        assert_eq!(served.load(std::sync::atomic::Ordering::SeqCst), 4);
+
+        // The next twenty never reach the socket.
+        for _ in 0..20 {
+            let error = http.get(&url).send().await.expect_err("refused by the breaker");
+            assert!(matches!(error, Error::Unavailable(_)), "{error:?}");
+        }
+        assert_eq!(
+            served.load(std::sync::atomic::Ordering::SeqCst),
+            4,
+            "the server was not touched again"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_healthy_upstream_is_never_interrupted() {
+        let (url, served) = counting_server("200 OK").await;
+        let http = Client::new().breaker(CircuitBreaker::new().minimum_calls(4));
+
+        for _ in 0..30 {
+            http.get(&url).send().await.expect("fine").status.code();
+        }
+        assert_eq!(served.load(std::sync::atomic::Ordering::SeqCst), 30);
+    }
+
+    #[tokio::test]
+    async fn a_4xx_never_opens_the_circuit() {
+        let (url, _) = counting_server("404 Not Found").await;
+        let http = Client::new().breaker(CircuitBreaker::new().minimum_calls(4));
+
+        for _ in 0..30 {
+            assert_eq!(http.get(&url).send().await.unwrap().status.code(), 404);
+        }
+        let host = Url::parse(&url).unwrap().authority();
+        assert_eq!(http.circuit().unwrap().state(&host), State::Closed);
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_host_opens_the_circuit_and_retries_do_not_multiply_the_verdict() {
+        // Nothing is listening on this port.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        let url = format!("http://{address}/");
+
+        let breaker = CircuitBreaker::new().minimum_calls(3).failure_rate(0.5);
+        let http = Client::new().retries(2).breaker(breaker.clone());
+
+        // Three calls, each retrying twice. Nine attempts, but three verdicts:
+        // one call is one opinion about the host, not three.
+        for _ in 0..3 {
+            http.get(&url).send().await.expect_err("nothing is listening");
+        }
+        assert_eq!(breaker.state(&address.to_string()), State::Open);
+    }
+
+    #[tokio::test]
+    async fn one_host_failing_does_not_stop_calls_to_another() {
+        let (broken, _) = counting_server("503 Service Unavailable").await;
+        let (healthy, served) = counting_server("200 OK").await;
+        let breaker = CircuitBreaker::new().minimum_calls(4).failure_rate(0.5);
+        let http = Client::new().breaker(breaker);
+
+        for _ in 0..6 {
+            let _ = http.get(&broken).send().await;
+        }
+        http.get(&broken).send().await.expect_err("that one is out");
+
+        for _ in 0..5 {
+            http.get(&healthy).send().await.expect("this one is fine");
+        }
+        assert_eq!(served.load(std::sync::atomic::Ordering::SeqCst), 5);
+    }
+
+    #[tokio::test]
+    async fn it_recovers_once_the_upstream_does() {
+        let (url, _) = counting_server("500 Internal Server Error").await;
+        let breaker = CircuitBreaker::new()
+            .minimum_calls(4)
+            .failure_rate(0.5)
+            .reset_after(Duration::from_millis(60))
+            .probes(1);
+        let http = Client::new().breaker(breaker.clone());
+        let host = Url::parse(&url).unwrap().authority();
+
+        for _ in 0..4 {
+            let _ = http.get(&url).send().await;
+        }
+        assert_eq!(breaker.state(&host), State::Open);
+
+        // The upstream comes back; a probe finds it and the circuit closes.
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        let (healthy, _) = counting_server("200 OK").await;
+        let healthy_host = Url::parse(&healthy).unwrap().authority();
+        // Same breaker, and the probe succeeds, so that host stays closed.
+        http.get(&healthy).send().await.expect("healthy");
+        assert_eq!(breaker.state(&healthy_host), State::Closed);
+        assert_eq!(breaker.state(&host), State::HalfOpen, "the broken one is still probing");
+    }
+
+    #[tokio::test]
+    async fn without_a_breaker_nothing_changes() {
+        let (url, served) = counting_server("500 Internal Server Error").await;
+        let http = Client::new();
+        for _ in 0..25 {
+            assert_eq!(http.get(&url).send().await.unwrap().status.code(), 500);
+        }
+        assert_eq!(served.load(std::sync::atomic::Ordering::SeqCst), 25, "every one was sent");
     }
 }

@@ -22,6 +22,13 @@ pub enum Error {
     Template { file: String, line: usize, column: usize, message: String },
     /// A malformed HTTP request reached the parser.
     Protocol(String),
+    /// A dependency was not tried, because it is known to be failing.
+    ///
+    /// Distinct from a failure on purpose: nothing was sent, so nothing can
+    /// have had an effect, and a caller may safely fall back to a cache, a
+    /// default, or a degraded answer. Raised by the circuit breaker in
+    /// `rustlavel-client`.
+    Unavailable(String),
     /// Anything raised by application code.
     Message(String),
 }
@@ -35,6 +42,9 @@ impl Error {
     pub fn status(&self) -> u16 {
         match self {
             Error::Protocol(_) => 400,
+            // The upstream this request needed is known to be down, and the
+            // caller may reasonably try again later — which is what 503 means.
+            Error::Unavailable(_) => 503,
             _ => 500,
         }
     }
@@ -47,6 +57,7 @@ impl Error {
             Error::Json { .. } => "JSON Error",
             Error::Template { .. } => "Template Error",
             Error::Protocol(_) => "Protocol Error",
+            Error::Unavailable(_) => "Dependency Unavailable",
             Error::Message(_) => "Application Error",
         }
     }
@@ -89,6 +100,7 @@ impl fmt::Display for Error {
                 write!(f, "{file}:{line}:{column}: {message}")
             }
             Error::Protocol(m) => write!(f, "malformed request: {m}"),
+            Error::Unavailable(m) => f.write_str(m),
             Error::Message(m) => f.write_str(m),
         }
     }

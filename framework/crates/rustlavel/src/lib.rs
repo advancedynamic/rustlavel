@@ -117,7 +117,7 @@ pub mod prelude {
     #[cfg(feature = "cache")]
     pub use rustlavel_cache::prelude::*;
     #[cfg(feature = "client")]
-    pub use rustlavel_client::Client;
+    pub use rustlavel_client::{CircuitBreaker, Client};
     #[cfg(feature = "db")]
     pub use rustlavel_db::prelude::*;
     #[cfg(feature = "i18n")]

@@ -242,6 +242,29 @@ whether it can do useful work, and is what routes traffic to it.</p>
 limit of its own that protects the process; this one is policy, so a JSON endpoint that takes a
 kilobyte does not accept the fifty megabytes the avatar upload needs.</p>
 
+<p><strong>Calling another service</strong>, add a circuit breaker. Retrying is the right
+answer to a request that failed by accident and the wrong answer to a service that is down:
+when an upstream stops answering, every caller retrying it turns one outage into three &mdash;
+the upstream cannot recover under the load, this application&rsquo;s tasks all sit blocked on
+timeouts, and whoever called <em>this</em> application times out in turn.</p>
+
+<pre><code>let http = Client::new().retries(2).breaker(CircuitBreaker::new());
+
+match http.get("https://api.example.com/rates").send().await {
+    Ok(response) =&gt; use_them(response),
+    // Nothing was sent, so nothing can have had an effect — which is
+    // exactly when falling back to a cached answer is safe.
+    Err(Error::Unavailable(_)) =&gt; cached_rates(),
+    Err(error) =&gt; return Err(error),
+}</code></pre>
+
+<p>It trips on a failure <em>rate</em> over a sliding window, not a raw count: five failures
+means something very different in ten calls than in ten thousand. Then it refuses calls
+outright for a pause, and lets a few probes through before resuming, so a service that has not
+come back does not get the full load the moment the pause ends. Breakers are kept per host, so
+a slow payment provider does not stop you talking to your search cluster. A 5xx counts against
+the upstream; a 404 is your own request being wrong and never trips it.</p>
+
 <p><strong>Behind a load balancer</strong>, add <code>TrustProxies</code>. Without it
 <code>req.ip()</code> is the balancer's address, which is true but not useful; with it, and only
 for a connection from an address you named, the client address the balancer reported is used

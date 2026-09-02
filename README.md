@@ -94,7 +94,7 @@ App::new()?
 | `rustlavel-queue` | Background jobs, workers, retries, dead letters, cron scheduling |
 | `rustlavel-mail` | SMTP written from scratch, MIME, mailables, notifications |
 | `rustlavel-storage` | Local disk and S3-compatible object stores |
-| `rustlavel-client` | Outbound HTTP with TLS, streaming, and `Http::fake()` |
+| `rustlavel-client` | Outbound HTTP with TLS, streaming, and `Http::fake()`; circuit breaker |
 | `rustlavel-ai` | Anthropic, OpenAI and Ollama through one API |
 | `rustlavel-mcp` | Model Context Protocol, server and client |
 | `rustlavel-oauth` | Sign in through Google, GitHub and the rest — OAuth 2.1 with mandatory PKCE |

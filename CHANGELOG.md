@@ -25,6 +25,13 @@ workspace shares one number.
 - `Request::scheme()`, `is_secure()`, `forwarded_host()`, `forwarded_port()`,
   from a trusted proxy's `X-Forwarded-Proto`/`-Host`/`-Port`.
 - `Request::with_peer`, so a test can say where a request came from.
+- **A circuit breaker** for outbound calls, in `rustlavel-client`:
+  `Client::new().breaker(CircuitBreaker::new())`. It trips on a failure rate
+  over a sliding window rather than a raw count, keeps one breaker per host,
+  and probes with a few calls before resuming. A 5xx counts against the
+  upstream; a 4xx does not.
+- `Error::Unavailable`, raised when a call was refused rather than attempted,
+  so a caller can safely fall back. It renders as a 503.
 
 ## 0.1.1 — 2026-09-02
 
