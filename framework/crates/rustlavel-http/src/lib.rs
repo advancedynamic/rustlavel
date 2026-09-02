@@ -3,7 +3,9 @@
 //! Parsing, routing, the middleware pipeline, request and response types, the
 //! development error page, and a test client that dispatches without a socket.
 
+pub mod compression;
 pub mod cookie;
+pub mod cors;
 pub mod error_page;
 pub mod files;
 pub mod handler;
@@ -22,6 +24,7 @@ pub mod upgrade;
 pub mod url;
 
 pub use cookie::{Cookie, SameSite};
+pub use cors::Cors;
 pub use files::Files;
 pub use handler::Handler;
 pub use headers::Headers;
