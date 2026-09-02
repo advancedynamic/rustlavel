@@ -18,6 +18,12 @@ pub struct Page {
 }
 
 impl Page {
+    /// The rows as models, for handing to a resource:
+    /// `UserResource::collection(&page.hydrate::<User>()?)`.
+    pub fn hydrate<M: crate::ModelExt>(&self) -> Result<Vec<M>> {
+        M::hydrate(&self.rows)
+    }
+
     pub fn last_page(&self) -> i64 {
         if self.per_page <= 0 {
             return 1;
@@ -90,6 +96,10 @@ pub struct CursorPage {
 }
 
 impl CursorPage {
+    pub fn hydrate<M: crate::ModelExt>(&self) -> Result<Vec<M>> {
+        M::hydrate(&self.rows)
+    }
+
     pub fn to_json(&self) -> Json {
         Json::object([
             ("data", rows_to_json(&self.rows)),
