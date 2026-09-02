@@ -104,8 +104,8 @@ pub mod prelude {
     pub use crate::App;
     pub use rustlavel_core::{Config, Context, Error, Json, Result};
     pub use rustlavel_http::{
-        Cookie, Cors, ETag, IntoResponse, Method, Middleware, Next, Request, RequestId, Response,
-        Router, Status,
+        BodyLimit, Cookie, Cors, ETag, Health, IntoResponse, Method, Middleware, Next, Request,
+        RequestId, Response, Router, Status, Timeout,
     };
     pub use rustlavel_core::{debug, error, info, warn};
 

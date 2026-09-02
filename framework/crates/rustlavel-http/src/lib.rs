@@ -3,6 +3,7 @@
 //! Parsing, routing, the middleware pipeline, request and response types, the
 //! development error page, and a test client that dispatches without a socket.
 
+pub mod body_limit;
 pub mod compression;
 pub mod cookie;
 pub mod cors;
@@ -11,6 +12,7 @@ pub mod error_page;
 pub mod etag;
 pub mod files;
 pub mod handler;
+pub mod health;
 pub mod headers;
 pub mod method;
 pub mod middleware;
@@ -23,14 +25,17 @@ pub mod router;
 pub mod server;
 pub mod status;
 pub mod testing;
+pub mod timeout;
 pub mod upgrade;
 pub mod url;
 
+pub use body_limit::BodyLimit;
 pub use cookie::{Cookie, SameSite};
 pub use cors::Cors;
 pub use etag::ETag;
 pub use files::Files;
 pub use handler::Handler;
+pub use health::Health;
 pub use headers::Headers;
 pub use method::Method;
 pub use middleware::{Middleware, Next};
@@ -42,4 +47,5 @@ pub use router::{Resource, Route, RouteHandle, Router};
 pub use server::{Limits, Server};
 pub use status::Status;
 pub use testing::{TestClient, TestResponse};
+pub use timeout::Timeout;
 pub use upgrade::{Upgrade, Upgraded};
