@@ -123,6 +123,7 @@ App::new()?
 | `rustlavel-otel` | Traces and metrics over OTLP, from the events already being emitted |
 | `rustlavel-debugbar` | A development overlay on the page: this request's queries, cache, timing |
 | `rustlavel-telescope` | The debugging dashboard |
+| `rustlavel-model-cache` | A second-level cache for models — entities and query results over any cache driver |
 | `rustlavel-metrics` | Prometheus metrics from the events already being emitted |
 | `rustlavel-openapi` | API documentation generated from the routes |
 | `rustlavel-ws` | WebSocket and broadcasting — private and presence channels |

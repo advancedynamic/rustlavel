@@ -23,6 +23,7 @@ rustlavel-otel = { path = "crates/rustlavel-otel", version = "0.4.0" }
 rustlavel-search = { path = "crates/rustlavel-search", version = "0.4.0" }
 rustlavel-macros = { path = "crates/rustlavel-macros", version = "0.4.0" }
 rustlavel-view = { path = "crates/rustlavel-view", version = "0.4.0" }
+rustlavel-model-cache = { path = "crates/rustlavel-model-cache", version = "0.4.0" }
 rustlavel-metrics = { path = "crates/rustlavel-metrics", version = "0.4.0" }
 rustlavel-oauth = { path = "crates/rustlavel-oauth", version = "0.4.0" }
 rustlavel-oauth-provider = { path = "crates/rustlavel-oauth-provider", version = "0.4.0" }

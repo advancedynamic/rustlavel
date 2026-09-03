@@ -27,6 +27,7 @@ rustlavel-ldap = { workspace = true, optional = true }
 rustlavel-mail = { workspace = true, optional = true }
 rustlavel-mcp = { workspace = true, optional = true }
 rustlavel-metrics = { workspace = true, optional = true }
+rustlavel-model-cache = { workspace = true, optional = true }
 rustlavel-oauth = { workspace = true, optional = true }
 rustlavel-oauth-provider = { workspace = true, optional = true }
 rustlavel-openapi = { workspace = true, optional = true }
@@ -80,6 +81,7 @@ search = ["dep:rustlavel-search", "client"]
 # above: those are compile-time and decide what is in the binary at all.
 audit = ["dep:rustlavel-audit", "db", "auth"]
 flags = ["dep:rustlavel-flags", "auth"]
+model-cache = ["dep:rustlavel-model-cache", "db", "cache"]
 rbac = ["dep:rustlavel-rbac", "db", "auth"]
 queue = ["dep:rustlavel-queue", "db"]
 storage = ["dep:rustlavel-storage"]
@@ -104,6 +106,7 @@ full = [
     "mail",
     "mcp",
     "metrics",
+    "model-cache",
     "oauth",
     "oauth-provider",
     "openapi",
