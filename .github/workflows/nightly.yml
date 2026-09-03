@@ -92,7 +92,7 @@ jobs:
         run: ./docker/up.sh db
 
       - name: Variables
-        run: ./docker/env.sh db >> "$GITHUB_ENV"
+        run: ./docker/env.sh --bare db >> "$GITHUB_ENV"
 
       # One `cargo test` per suite rather than one for the crate. It costs
       # nothing — they share a build — and it means the summary says which of
@@ -146,7 +146,7 @@ jobs:
         run: ./docker/up.sh ldap
 
       - name: Variables
-        run: ./docker/env.sh ldap >> "$GITHUB_ENV"
+        run: ./docker/env.sh --bare ldap >> "$GITHUB_ENV"
 
       - name: Bind, search and modify against a live directory
         working-directory: framework
@@ -196,7 +196,7 @@ jobs:
         run: ./docker/up.sh search
 
       - name: Variables
-        run: ./docker/env.sh search >> "$GITHUB_ENV"
+        run: ./docker/env.sh --bare search >> "$GITHUB_ENV"
 
       - name: Index, search and delete against a live cluster
         working-directory: framework
@@ -235,7 +235,7 @@ jobs:
         run: ./docker/up.sh otel
 
       - name: Variables
-        run: ./docker/env.sh otel >> "$GITHUB_ENV"
+        run: ./docker/env.sh --bare otel >> "$GITHUB_ENV"
 
       - name: Export spans and metrics to a live collector
         working-directory: framework
@@ -277,7 +277,7 @@ jobs:
         run: ./docker/up.sh secrets
 
       - name: Variables
-        run: ./docker/env.sh secrets >> "$GITHUB_ENV"
+        run: ./docker/env.sh --bare secrets >> "$GITHUB_ENV"
 
       - name: Auth, leases and dynamic database credentials
         working-directory: framework

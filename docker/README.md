@@ -37,6 +37,23 @@ cd framework && cargo test -p rustlavel-ldap --all-features
 | `otel` | OpenTelemetry Collector | `rustlavel-otel/tests/collector.rs` |
 | `secrets` | OpenBao, PostgreSQL | `rustlavel-vault/tests/openbao.rs` |
 
+Every line `env.sh` prints carries `export`, because that is what `eval` needs
+for a child process — `cargo` — to see the variable. Without it the shell sets
+a variable nothing inherits, every suite skips, and the run reports a pass.
+`--bare` drops the keyword for `$GITHUB_ENV`, which cannot take it.
+
+## Reading the result
+
+`test result: ok. 11 passed` means the same thing whether eleven tests ran or
+eleven skipped, which is the one way this can mislead you. The check that
+distinguishes them is the skip count:
+
+```sh
+cargo test --workspace --all-features -- --nocapture 2>&1 | grep -c "skipping:"
+```
+
+Zero, with the servers up, is what a full run looks like.
+
 Ask `env.sh` only for groups you have actually started. A suite *skips* when its
 variable is unset and *fails* when the variable is set and nothing is listening,
 so exporting the whole set against half a stack is the one way to manufacture a

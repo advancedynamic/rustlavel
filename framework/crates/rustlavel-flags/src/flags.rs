@@ -137,8 +137,28 @@ impl Flags {
     /// A name in both lists is off. It has to be — see the precedence chain on
     /// [`Flags`] — and a deployment that has contradicted itself is one where
     /// the safe reading of the contradiction is the closed one.
+    /// The environment is read directly when the configuration key is absent,
+    /// which is what makes the claim above true. `flags.off` is described as
+    /// the switch that survives a database being down; it would not survive an
+    /// application with no `config/flags.json` in it, and an application that
+    /// added this crate by hand has no reason to have one. So `FLAGS_OFF` in
+    /// the environment works whether or not anything maps it into config.
     pub fn configured(self, config: &Config) -> Self {
-        self.force_on(config.list("flags.on")).force_off(config.list("flags.off"))
+        let listed = |key: &str, variable: &str| {
+            let from_config = config.list(key);
+            if !from_config.is_empty() {
+                return from_config;
+            }
+            rustlavel_core::env::env_or(variable, "")
+                .split(',')
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
+                .collect()
+        };
+
+        self.force_on(listed("flags.on", "FLAGS_ON"))
+            .force_off(listed("flags.off", "FLAGS_OFF"))
     }
 
     /// Put a store behind the flags: a database table, Redis, anything that
@@ -537,6 +557,57 @@ pub(crate) fn missing_registry() -> Error {
 
 #[cfg(test)]
 mod tests {
+    /// A guard so two tests never hold the same process-wide variable at once.
+    ///
+    /// `std::env` is global, and the suite runs concurrently — rule six in
+    /// CLAUDE.md is about exactly this.
+    static ENVIRONMENT: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn the_environment_is_read_when_no_config_file_maps_it() {
+        // The documented incident switch is `FLAGS_OFF=name` in `.env`. An
+        // application that added this crate by hand has no `config/flags.json`
+        // to map that into configuration, and the switch has to work anyway.
+        let _guard = ENVIRONMENT.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe {
+            std::env::set_var("FLAGS_ON", "beta, later");
+            std::env::set_var("FLAGS_OFF", "broken");
+        }
+
+        let flags = Flags::from_config(&Config::new()).define("broken", |_| async { true });
+
+        assert!(flags.forced_on.contains("beta"), "FLAGS_ON was not read");
+        assert!(flags.forced_on.contains("later"), "the comma-separated spelling was not split");
+        assert!(flags.forced_off.contains("broken"), "FLAGS_OFF was not read");
+
+        unsafe {
+            std::env::remove_var("FLAGS_ON");
+            std::env::remove_var("FLAGS_OFF");
+        }
+    }
+
+    #[test]
+    fn a_configuration_file_wins_over_the_environment() {
+        // Config is the more specific statement: somebody wrote a file for this
+        // application, and an inherited shell variable must not quietly replace
+        // it.
+        let _guard = ENVIRONMENT.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe {
+            std::env::set_var("FLAGS_ON", "from-environment");
+        }
+
+        let config = Config::new();
+        config.set("flags.on", "from-config");
+        let flags = Flags::from_config(&config);
+
+        assert!(flags.forced_on.contains("from-config"));
+        assert!(!flags.forced_on.contains("from-environment"));
+
+        unsafe {
+            std::env::remove_var("FLAGS_ON");
+        }
+    }
+
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

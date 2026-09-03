@@ -302,11 +302,16 @@ impl Seeder for AuthKitSeeder {
                     None,
                 )
                 .await?;
-                info!("");
-                info!("The first administrator is {email}.");
-                info!("Set their password here: /activate/{token}");
-                info!("The link is good for one hour.");
-                info!("");
+                let url = std::env::var("APP_URL").unwrap_or_else(|_| "http://localhost:8000".into());
+                // Printed, not logged. This is the output of the command
+                // rather than a note about it, and it is the only way into a
+                // brand new application — a person running with LOG_LEVEL=warn
+                // would otherwise seed an administrator they cannot sign in as.
+                println!();
+                println!("  The first administrator is {email}.");
+                println!("  Set their password here: {}/activate/{token}", url.trim_end_matches('/'));
+                println!("  The link is good for one hour, and works once.");
+                println!();
             }
 
             Ok(())
