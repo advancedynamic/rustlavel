@@ -29,6 +29,7 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("mail", &["resources/views"]),
     ("mcp", &[]),
     ("metrics", &[]),
+    ("model-cache", &[]),
     ("oauth", &["storage/sessions"]),
     ("oauth-provider", &["storage/sessions"]),
     ("openapi", &[]),
@@ -120,6 +121,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     };
 
     let mut values = BTreeMap::new();
+    values.insert("plugins", plugin_lines(&packages));
     values.insert("name", crate_name.clone());
     values.insert("crate_name", crate_name.clone());
     values.insert("app_name", naming::pascal(&name));
@@ -265,8 +267,103 @@ fn write(path: &Path, contents: &str) -> Result<(), String> {
     std::fs::write(path, contents).map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
+/// The `.plugin(...)` lines for the packages that were asked for.
+///
+/// **A package that is switched on and never registered is a package that does
+/// nothing**, and the generated `main.rs` used to say nothing about it: asking
+/// for `--with telescope` compiled the dependency in, `/telescope` answered
+/// 404, and the file gave no hint that a line was missing. The scaffold knows
+/// exactly what was requested, so it writes the line.
+///
+/// Only the plugins that can be built from nothing are here. `Rbac` and
+/// `Audit` need a database handle and `FeatureFlags` needs a store, so a line
+/// for those would not compile — the auth-kit's own `main.rs` registers them,
+/// because it is the one that creates the handle. A comment names them instead.
+fn plugin_lines(packages: &[String]) -> String {
+    const REGISTERABLE: &[(&str, &str)] = &[
+        ("telescope", "Telescope::new()"),
+        ("debugbar", "DebugBar::new()"),
+        ("metrics", "Metrics::new()"),
+    ];
+    /// Needs something `main.rs` does not have yet, so it gets a comment.
+    const NEEDS_WIRING: &[(&str, &str)] = &[
+        ("rbac", "Rbac::from_config(db.clone(), app.config())?"),
+        ("audit", "rustlavel::audit::Audit::new(db.clone())"),
+        ("flags", "FeatureFlags::new(flags)"),
+        ("vault", "Vault::from_config(app.config())?"),
+        ("queue", "QueueDashboard::new(db.clone())"),
+    ];
+
+    let mut lines = String::new();
+    for (package, expression) in REGISTERABLE {
+        if packages.iter().any(|p| p == package) {
+            lines.push_str(&format!("        .plugin({expression})\n"));
+        }
+    }
+
+    let owed: Vec<&str> = NEEDS_WIRING
+        .iter()
+        .filter(|(package, _)| packages.iter().any(|p| p == package))
+        .map(|(_, expression)| *expression)
+        .collect();
+    if !owed.is_empty() {
+        lines.push_str(&format!(
+            "        // Also asked for, and needing something this file does not\n\
+             \x20       // build yet — a database handle, a store. Add them here:\n\
+             \x20       // {}\n",
+            owed.join("\n        // ")
+        ));
+    }
+
+    lines
+}
+
 #[cfg(test)]
 mod tests {
+    /// A package that is switched on and never registered does nothing, and
+    /// the generated file used to say nothing about it.
+    #[test]
+    fn the_scaffold_registers_the_plugins_it_was_asked_for() {
+        let asked = ["telescope", "debugbar", "metrics"].map(str::to_string);
+        let lines = plugin_lines(&asked);
+
+        assert!(lines.contains(".plugin(Telescope::new())"), "{lines}");
+        assert!(lines.contains(".plugin(DebugBar::new())"), "{lines}");
+        assert!(lines.contains(".plugin(Metrics::new())"), "{lines}");
+
+        // Nothing asked for, nothing written — a bare `main.rs` stays bare.
+        assert_eq!(plugin_lines(&[]), "");
+    }
+
+    /// The ones that need a database handle cannot be registered from a file
+    /// that has none, so they are named in a comment rather than emitted as a
+    /// line that would not compile.
+    #[test]
+    fn a_plugin_that_needs_wiring_is_named_rather_than_guessed_at() {
+        let lines = plugin_lines(&["rbac".to_string(), "audit".to_string()]);
+
+        assert!(!lines.contains(".plugin(Rbac"), "an uncompilable line was written: {lines}");
+        assert!(lines.contains("// Rbac::from_config"), "{lines}");
+        assert!(lines.contains("// rustlavel::audit::Audit::new"), "{lines}");
+    }
+
+    /// Every expression the generator can write has to name a type the prelude
+    /// exports, because the generated `main.rs` imports the prelude and
+    /// nothing else. `Metrics` was not in it, and the line did not compile.
+    #[test]
+    fn every_registered_plugin_is_reachable_from_the_prelude() {
+        let prelude = include_str!("../../rustlavel/src/lib.rs");
+        let preludes_at = prelude.find("pub mod prelude").expect("the prelude moved");
+        let exports = &prelude[preludes_at..];
+
+        for kind in ["Telescope", "DebugBar", "Metrics"] {
+            assert!(
+                exports.contains(&format!("pub use crate::{kind};")),
+                "{kind} is written into main.rs but the prelude does not export it"
+            );
+        }
+    }
+
     use super::*;
 
     /// The list `--with` accepts has to be the list the meta-crate offers.

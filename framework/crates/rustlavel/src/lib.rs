@@ -32,6 +32,8 @@ pub use rustlavel_client as client;
 pub use rustlavel_db as db;
 #[cfg(feature = "debugbar")]
 pub use rustlavel_debugbar as debugbar;
+#[cfg(feature = "debugbar")]
+pub use rustlavel_debugbar::DebugBar;
 #[cfg(feature = "i18n")]
 pub use rustlavel_i18n as i18n;
 #[cfg(feature = "vault")]
@@ -50,6 +52,8 @@ pub use rustlavel_mail::Mail;
 pub use rustlavel_mcp as mcp;
 #[cfg(feature = "metrics")]
 pub use rustlavel_metrics as metrics;
+#[cfg(feature = "model-cache")]
+pub use rustlavel_model_cache as model_cache;
 #[cfg(feature = "metrics")]
 pub use rustlavel_metrics::Metrics;
 #[cfg(feature = "otel")]
@@ -127,6 +131,16 @@ pub mod prelude {
     pub use rustlavel_cache::prelude::*;
     #[cfg(feature = "client")]
     pub use rustlavel_client::{CircuitBreaker, Client};
+    // The plugin types, so `main.rs` — which imports the prelude and nothing
+    // else — can name the thing it is registering. They were reachable only as
+    // `rustlavel::Telescope`, which is not where anybody looks after writing
+    // `use rustlavel::prelude::*`.
+    #[cfg(feature = "debugbar")]
+    pub use crate::DebugBar;
+    #[cfg(feature = "metrics")]
+    pub use crate::Metrics;
+    #[cfg(feature = "telescope")]
+    pub use crate::Telescope;
     #[cfg(feature = "db")]
     pub use rustlavel_db::prelude::*;
     #[cfg(feature = "i18n")]
@@ -135,6 +149,8 @@ pub mod prelude {
     pub use rustlavel_audit::prelude::*;
     #[cfg(feature = "flags")]
     pub use rustlavel_flags::prelude::*;
+    #[cfg(feature = "model-cache")]
+    pub use rustlavel_model_cache::prelude::*;
     #[cfg(feature = "rbac")]
     pub use rustlavel_rbac::prelude::*;
     #[cfg(feature = "queue")]

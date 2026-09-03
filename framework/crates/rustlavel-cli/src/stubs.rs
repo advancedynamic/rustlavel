@@ -37,7 +37,7 @@ use {{crate_name}}::routes;
 async fn main() -> Result<()> {
     App::new()?
         .routes(routes::web::routes)
-        .run()
+{{plugins}}        .run()
         .await
 }
 "#;
@@ -56,7 +56,7 @@ async fn main() -> Result<()> {
         .routes(routes::web::routes)
         .migrations(database::migrations::all())
         .seeders(database::seeders::all())
-        .run()
+{{plugins}}        .run()
         .await
 }
 "#;
