@@ -72,7 +72,7 @@ impl PermissionsController {
         context = with_current_user(context, &req, &db).await?;
         context = context
             .with("permissions", Json::Array(rows))
-            .with("stats", cards)
+            .with("stats", stats::formatted(&req, cards).await)
             .with("can_create", Json::from(req.can("permissions.create").await?))
             .with("can_update", Json::from(req.can("permissions.update").await?))
             .with("can_delete", Json::from(req.can("permissions.delete").await?));

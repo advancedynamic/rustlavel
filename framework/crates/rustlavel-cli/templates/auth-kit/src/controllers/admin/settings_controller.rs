@@ -22,12 +22,15 @@ const TABS: &[(&str, &str, &str)] = &[
     ("general", "General", "app."),
     ("email", "Email", "mail."),
     ("security", "Security", "auth."),
-    // No prefix, and deliberately not the empty string: an empty prefix makes
-    // `starts_with` match *every* setting, so a POST to this tab would have
-    // rewritten the whole catalogue. This tab stores nothing through the shared
-    // save path; its actions have routes of their own.
-    ("backup", "Backup", "\u{0}none"),
-    ("language", "Language", "app.locale"),
+    // The tab has settings of its own now — a schedule, a retention window, a
+    // destination — alongside the actions that have routes of their own.
+    ("backup", "Backup", "backup."),
+    // `app.` rather than `app.locale`: the tab also holds the number format,
+    // the currency and the first day of the week, and they are not under
+    // `locale`. Sharing the prefix with General is safe because the save path
+    // writes only the fields a form actually posted — a setting absent from
+    // the body is skipped, not blanked.
+    ("language", "Language", "app."),
     ("appearance", "Appearance", "theme."),
 ];
 

@@ -9,6 +9,7 @@ use rustlavel::prelude::*;
 use crate::controllers::admin::appearance_controller::AppearanceController;
 use crate::controllers::admin::audit_controller::AuditController;
 use crate::controllers::admin::backup_controller::BackupController;
+use crate::controllers::admin::search_controller::SearchController;
 use crate::controllers::admin::menu_controller::MenuController;
 use crate::controllers::admin::permissions_controller::PermissionsController;
 use crate::controllers::admin::settings_controller::AdminSettingsController;
@@ -150,6 +151,12 @@ pub fn routes(r: &mut Router) {
 
         // Registered last, so the specific paths above win over `{tab}`.
         admin.post("/settings/{tab}", AdminSettingsController::save).middleware(guard("settings.manage"));
+
+        // The header's search box and notification list. Read-only, JSON, and
+        // guarded by nothing beyond being signed in: each one filters its own
+        // results by what the person may actually open.
+        admin.get("/search", SearchController::index).name("admin.search");
+        admin.get("/notifications", SearchController::notifications).name("admin.notifications");
 
         // Menus. The order matters: `/menus/item/...` is registered before
         // `/menus/{location}`, or the literal `item` would be read as a

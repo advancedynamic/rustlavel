@@ -104,7 +104,7 @@ impl MenuController {
         context = with_current_user(context, &req, &db).await?;
         context = context
             .with("items", Json::Array(rows))
-            .with("stats", cards)
+            .with("stats", stats::formatted(&req, cards).await)
             .with("location", Json::from(location.as_str()))
             .with("locations", Json::Array(location_options(&location)))
             .with("icons", Json::Array(icon_options()))

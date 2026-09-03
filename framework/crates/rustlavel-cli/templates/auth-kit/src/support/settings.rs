@@ -102,6 +102,49 @@ const TIMEOUTS: &[(&str, &str)] = &[
     ("1440", "24 hours"),
 ];
 
+/// How often a backup should be taken.
+///
+/// A schedule is a *statement of intent*: something has to run it, and this
+/// application has no clock of its own. The Backup tab says so, and says what
+/// to add — a schedule that quietly does nothing is worse than no schedule.
+const SCHEDULES: &[(&str, &str)] = &[
+    ("disabled", "Disabled — take them by hand"),
+    ("6h", "Every 6 hours"),
+    ("daily", "Daily"),
+    ("weekly", "Weekly (Sunday)"),
+];
+
+/// How many backups to keep. Applied after each successful one.
+const RETENTIONS: &[(&str, &str)] = &[
+    ("0", "Keep everything"),
+    ("7", "Keep the last 7"),
+    ("14", "Keep the last 14"),
+    ("30", "Keep the last 30"),
+];
+
+/// Where a finished backup is written.
+///
+/// **Two entries, not the four a mock-up would show.** The design this came
+/// from offered Google Cloud Storage and SFTP as well; nothing in this
+/// framework implements either, and a dropdown that offers a destination
+/// backups do not reach is how somebody discovers at restore time that there
+/// are no backups. `s3` covers every S3-compatible store, which is what GCS
+/// and MinIO both speak.
+const DESTINATIONS: &[(&str, &str)] =
+    &[("local", "Local disk"), ("s3", "S3-compatible object store")];
+
+/// How a number is written.
+const NUMBERS: &[(&str, &str)] = &[
+    ("id", "1.234.567,89 — dot for thousands"),
+    ("en", "1,234,567.89 — comma for thousands"),
+    ("plain", "1234567.89 — no separator"),
+];
+
+const CURRENCIES: &[(&str, &str)] =
+    &[("Rp ", "Rp 1.234.567"), ("IDR ", "IDR 1.234.567"), ("$", "$1,234,567"), ("", "1.234.567")];
+
+const WEEK_START: &[(&str, &str)] = &[("1", "Monday"), ("0", "Sunday")];
+
 const ATTEMPTS: &[(&str, &str)] =
     &[("3", "3"), ("5", "5"), ("10", "10"), ("0", "No limit (not advised)")];
 
@@ -151,9 +194,19 @@ pub const CATALOGUE: &[Setting] = &[
     choice("auth.lockout.attempts", "5", ATTEMPTS),
     choice("auth.lockout.minutes", "15", LOCKOUTS),
 
+    // --- Backup --------------------------------------------------------
+    choice("backup.schedule", "disabled", SCHEDULES),
+    choice("backup.retention", "0", RETENTIONS),
+    choice("backup.destination", "local", DESTINATIONS),
+    env("backup.path", Kind::Text, "storage/backups", "BACKUP_PATH"),
+    env("backup.bucket", Kind::Text, "", "BACKUP_BUCKET"),
+
     // --- Language ------------------------------------------------------
     choice("app.locale", "en", LOCALES),
     s("app.locale.fallback", Kind::Text, "en"),
+    choice("app.number_format", "id", NUMBERS),
+    choice("app.currency", "Rp ", CURRENCIES),
+    choice("app.week_start", "1", WEEK_START),
 
     // --- Appearance ----------------------------------------------------
     // The one colour that reaches the whole application. Everything else on

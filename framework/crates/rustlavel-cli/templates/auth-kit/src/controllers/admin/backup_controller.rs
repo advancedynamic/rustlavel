@@ -17,7 +17,11 @@
 use rustlavel::prelude::*;
 
 use crate::controllers::admin::users_controller::rbac;
-use crate::support::{backup, page, tokens};
+use crate::support::{backup, format, page, schedule, tokens};
+
+/// The note a scheduled run writes, so the tab can tell one from a manual one
+/// and answer "has the schedule ever fired?" without a column of its own.
+pub const SCHEDULED: &str = "scheduled";
 
 pub struct BackupController;
 
@@ -46,6 +50,45 @@ impl BackupController {
 
         let db = req.state::<Database>().expect("the database is registered in main.rs").clone();
 
+        // The schedule, and — the part that matters — whether anything is
+        // actually running it. A schedule this application cannot drive is a
+        // setting that looks like a promise, and the panel says so rather than
+        // letting somebody find out at restore time.
+        let settings = req.state::<crate::support::settings::Settings>();
+        let schedule = match &settings {
+            Some(store) => store.get("backup.schedule").await,
+            None => "disabled".to_string(),
+        };
+        let last_scheduled = db
+            .table("backups")
+            .filter("note", SCHEDULED)
+            .latest("created_at")
+            .limit(1)
+            .get(&db)
+            .await?
+            .first()
+            .and_then(|row| row.get::<String>("created_at").ok());
+
+        let now = tokens::now();
+        let context = context
+            .with("schedule", Json::from(schedule.as_str()))
+            .with("schedule_on", Json::from(schedule::interval(&schedule).is_some()))
+            .with("schedule_says", Json::from(schedule::describe(&schedule)))
+            .with(
+                "next_due",
+                Json::from(
+                    schedule::next_due(&schedule, last_scheduled.as_deref(), &now)
+                        .map(|at| tokens::humanise(&at))
+                        .unwrap_or_default(),
+                ),
+            )
+            // Set, and nothing has ever run one. Either the wiring is missing
+            // or it is broken; both are worth saying out loud.
+            .with(
+                "schedule_unproven",
+                Json::from(schedule::interval(&schedule).is_some() && last_scheduled.is_none()),
+            );
+
         let search = req.query("q").unwrap_or_default().trim().to_string();
         let mut query = db.table("backups").latest("created_at");
         if !search.is_empty() {
@@ -63,7 +106,10 @@ impl BackupController {
             rows.push(Json::object([
                 ("id", Json::from(id)),
                 ("name", Json::from(name.as_str())),
-                ("size", Json::from(backup::humanise_bytes(bytes))),
+                // Through the shared formatter, so Settings → Language reaches
+                // this column too rather than it being the one number on the
+                // administration pages that ignores the setting.
+                ("size", Json::from(format::bytes(bytes))),
                 (
                     "when",
                     Json::from(tokens::humanise(&row.get::<String>("created_at").unwrap_or_default())),
@@ -167,10 +213,17 @@ impl BackupController {
                         ],
                     )
                     .await?;
+                // Retention, and only here. Pruning before the new backup was
+                // `ready` counted the old ones and not the new one, so a
+                // window of two left three — and pruning before the dump had
+                // finished would have deleted an old backup to make room for
+                // one that then failed.
+                Self::prune(&req, &db).await?;
+
                 page::flash(
                     &req,
                     "success",
-                    format!("Backup {name} is ready ({}).", backup::humanise_bytes(bytes as i64)),
+                    format!("Backup {name} is ready ({}).", format::bytes(bytes as i64)),
                 );
             }
             Err(error) => {
@@ -386,6 +439,40 @@ impl BackupController {
             return Ok(None);
         }
         Ok(Some((name, row.get::<String>("status").unwrap_or_default() == "ready")))
+    }
+
+    /// Delete the backups past the retention window, file and row together.
+    ///
+    /// Zero keeps everything, which is the default. A retention that defaulted
+    /// to deleting would delete somebody's backups the first time they opened
+    /// this tab and pressed Save.
+    async fn prune(req: &Request, db: &Database) -> Result<()> {
+        let Some(settings) = req.state::<crate::support::settings::Settings>() else {
+            return Ok(());
+        };
+        let keep = settings.get("backup.retention").await.parse::<usize>().unwrap_or(0);
+        if keep == 0 {
+            return Ok(());
+        }
+
+        let rows =
+            db.table("backups").filter("status", "ready").latest("created_at").get(db).await?;
+        let ids: Vec<i64> = rows.iter().filter_map(|row| row.get::<i64>("id").ok()).collect();
+
+        for id in schedule::beyond_retention(&ids, keep) {
+            if let Some(path) = rows
+                .iter()
+                .find(|row| row.get::<i64>("id").ok() == Some(id))
+                .and_then(|row| row.get::<String>("path").ok())
+            {
+                // A missing file is not an error: the row is what the page
+                // lists, and leaving it behind for a file somebody already
+                // deleted is the worse outcome.
+                let _ = rustlavel::tokio::fs::remove_file(&path).await;
+            }
+            db.table("backups").filter("id", id).delete(db).await?;
+        }
+        Ok(())
     }
 }
 

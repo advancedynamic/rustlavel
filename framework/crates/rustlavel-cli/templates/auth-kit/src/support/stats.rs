@@ -8,13 +8,42 @@
 use rustlavel::prelude::*;
 
 /// One card: an icon in a tinted square, a number, and what it counts.
+///
+/// The number is left raw here and formatted by [`formatted`], which the
+/// controllers call once they have the request. Splitting it that way keeps
+/// this function free of the settings store while still letting Settings →
+/// Language reach every count on every administration page — which is the
+/// difference between a format setting and a decoration.
 pub fn card(label: &str, value: i64, tint: &str, icon: &str) -> Json {
     Json::object([
         ("label", Json::from(label)),
         ("value", Json::from(value)),
+        ("shown", Json::from(value.to_string())),
         ("tint", Json::from(tint)),
         ("icon", Json::from(icon)),
     ])
+}
+
+/// The same cards with their numbers written the way Settings → Language asks.
+pub async fn formatted(req: &Request, cards: Json) -> Json {
+    let (number, _) = crate::support::format::preferences(req).await;
+    let Json::Array(cards) = cards else { return cards };
+    Json::Array(
+        cards
+            .into_iter()
+            .map(|card| {
+                let value = card.get("value").and_then(Json::as_i64).unwrap_or_default();
+                let shown = crate::support::format::integer(value, &number);
+                match card {
+                    Json::Object(mut fields) => {
+                        fields.insert("shown".to_string(), Json::from(shown));
+                        Json::Object(fields)
+                    }
+                    other => other,
+                }
+            })
+            .collect(),
+    )
 }
 
 /// The tints, named by what they mean rather than by their colour, so a page

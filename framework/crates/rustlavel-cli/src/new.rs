@@ -669,7 +669,14 @@ mod tests {
                 let rest = &source[at + marker.len()..];
                 let Some(end) = rest.find('"') else { continue };
                 let table = &rest[..end];
-                if !backup.contains(&format!("\"{table}\"")) {
+
+                // Either form counts. Naming the crate's own constant is the
+                // better one — a rename there cannot then drop the table out
+                // of every backup — so a check that insisted on the literal
+                // would be pushing towards the worse spelling.
+                let by_literal = backup.contains(&format!("\"{table}\""));
+                let by_constant = backup.contains(&format!("{package}::TABLE"));
+                if !by_literal && !by_constant {
                     missing.push(format!("{table} (from rustlavel-{package})"));
                 }
             }

@@ -37,9 +37,47 @@
           </svg>
         </button>
 
-        <h1 class="min-w-0 truncate text-base font-semibold">@yield("title", "Dashboard")</h1>
+        <h1 class="min-w-0 shrink-0 truncate text-base font-semibold">@yield("title", "Dashboard")</h1>
 
-        <div class="ml-auto flex items-center gap-1.5">
+        {{-- Global search. A `<form>` so Return still works with scripting off,
+             and a listbox the script fills as somebody types. Every result is
+             filtered server-side by what the person may open, so this cannot
+             be used to enumerate what exists. --}}
+        <div class="relative ml-4 hidden min-w-0 flex-1 md:block" data-search>
+          <label for="global-search" class="sr-only">Search people, roles, permissions and settings</label>
+          <input id="global-search" type="search" autocomplete="off" spellcheck="false"
+                 placeholder="Search people, roles, settings…"
+                 class="field-input pl-9" role="combobox" aria-expanded="false"
+                 aria-controls="search-results" aria-autocomplete="list">
+          <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 3.383 9.836l3.14 3.141a.75.75 0 1 0 1.061-1.06l-3.14-3.141A5.5 5.5 0 0 0 9 3.5ZM5 9a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z" clip-rule="evenodd"/></svg>
+          <div id="search-results" hidden role="listbox" data-search-results
+               class="absolute left-0 right-0 z-30 mt-2 max-h-96 overflow-y-auto rounded-lg border
+                      border-ink-200 bg-white py-1 shadow-lg dark:border-ink-800 dark:bg-ink-900"></div>
+        </div>
+
+        <div class="ml-auto flex shrink-0 items-center gap-1.5">
+          @if(can_view_audit)
+            <div class="relative">
+              <button type="button" data-menu-toggle="notifications" data-notifications
+                      class="btn-ghost btn-sm relative" aria-label="Notifications"
+                      aria-expanded="false" aria-controls="notifications" aria-haspopup="true">
+                <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 2a5 5 0 0 0-5 5v3l-1.5 3h13L15 10V7a5 5 0 0 0-5-5Zm-2 13a2 2 0 1 0 4 0H8Z"/></svg>
+                <span hidden data-notification-dot
+                      class="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500"></span>
+              </button>
+              <div id="notifications" hidden data-menu
+                   class="absolute right-0 z-30 mt-2 w-80 overflow-hidden rounded-lg border
+                          border-ink-200 bg-white shadow-lg dark:border-ink-800 dark:bg-ink-900">
+                <div class="border-b border-ink-200 px-3 py-2 dark:border-ink-800">
+                  <p class="text-sm font-medium">Recent activity</p>
+                  <p class="text-xs text-ink-500 dark:text-ink-400">Sign-ins are left out on purpose.</p>
+                </div>
+                <div data-notification-list class="max-h-80 overflow-y-auto"></div>
+                <a href="/admin/audit" class="block border-t border-ink-200 px-3 py-2 text-center text-sm font-medium text-brand-600 hover:bg-ink-50 dark:border-ink-800 dark:text-brand-400 dark:hover:bg-ink-800">See the whole trail</a>
+              </div>
+            </div>
+          @endif
+
           <form method="post" action="/settings/theme" class="contents">
             {!! csrf_field !!}
             <input type="hidden" name="theme" value="{{ theme_next }}">

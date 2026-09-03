@@ -71,7 +71,7 @@ impl AuditController {
         context = with_current_user(context, &req, &db).await?;
         context = context
             .with("logs", Json::Array(rows))
-            .with("stats", cards)
+            .with("stats", stats::formatted(&req, cards).await)
             .with("last_activity", Json::from(last))
             .with("total", Json::from(listing.total))
             .with("first", Json::from(listing.first()))

@@ -1,7 +1,11 @@
 {{-- One-shot messages. `flash_kind` decides the colour; the text is escaped by
      the engine, so a message built from user input is safe here. --}}
 @if(flash_message)
-  <div class="mb-5 flex items-start gap-3 rounded-lg border px-4 py-3 text-sm
+  {{-- Rendered where it always was and then moved to the corner by the script.
+       Server-rendered first so the message survives with scripting off: a
+       toast that only exists in JavaScript is a message some people never
+       get. --}}
+  <div data-toast class="mb-5 flex items-start gap-3 rounded-lg border px-4 py-3 text-sm
               @if(flash_kind == "error") border-red-300 bg-red-50 text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300
               @elseif(flash_kind == "warning") border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300
               @else border-green-300 bg-green-50 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300 @endif"

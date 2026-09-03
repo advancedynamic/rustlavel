@@ -5,6 +5,17 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.5.1"
 edition = "2024"
+# The floor edition 2024 imposes: it stabilised in Rust 1.85.
+#
+# Declared so cargo knows it rather than discovering it. A toolchain that is
+# too old already fails — `feature `edition2024` is required`, three "Caused
+# by" levels down — but that is a parse error at the end of a resolve; with
+# this, a consumer's cargo can say the crate needs 1.85 while it is still
+# choosing versions, and can pick an older compatible release instead.
+#
+# Verified here: 1.75 is refused, 1.95 builds. 1.85 is the edition's own floor
+# rather than something measured — the toolchains between are not installed.
+rust-version = "1.85"
 license = "MIT"
 authors = ["Advance Dynamic Software"]
 repository = "https://github.com/advancedynamic/rustlavel"

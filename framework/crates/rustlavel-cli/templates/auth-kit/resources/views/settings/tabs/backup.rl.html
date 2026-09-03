@@ -22,6 +22,85 @@
     @endif
   </div>
 
+  {{-- ---- Schedule, retention and destination -------------------------- --}}
+  <div class="card mb-5">
+    <div class="card-header">
+      <h3 class="font-semibold">Schedule &amp; Storage</h3>
+      <p class="mt-0.5 text-sm text-ink-500 dark:text-ink-400">
+        How often a backup is taken, how many are kept, and where they are written.
+      </p>
+    </div>
+
+    <form method="post" action="/admin/settings/backup" class="card-body space-y-5">
+      {!! csrf_field !!}
+
+      <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <label for="backup_schedule" class="field-label">Backup Schedule</label>
+          <select id="backup_schedule" name="backup.schedule" class="field-input">
+            @foreach(s.backup_schedule.choices as choice)
+              <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+            @endforeach
+          </select>
+        </div>
+
+        <div>
+          <label for="backup_retention" class="field-label">Retention</label>
+          <select id="backup_retention" name="backup.retention" class="field-input">
+            @foreach(s.backup_retention.choices as choice)
+              <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+            @endforeach
+          </select>
+          <p class="field-hint">Applied after each successful backup, oldest first.</p>
+        </div>
+
+        <div>
+          <label for="backup_destination" class="field-label">Storage Destination</label>
+          <select id="backup_destination" name="backup.destination" class="field-input">
+            @foreach(s.backup_destination.choices as choice)
+              <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+            @endforeach
+          </select>
+        </div>
+
+        <div>
+          <label for="backup_path" class="field-label">Path / Bucket</label>
+          <input id="backup_path" name="backup.path" type="text" value="{{ s.backup_path.value }}"
+                 spellcheck="false" autocomplete="off" class="field-input font-mono"
+                 @if(s.backup_path.locked) disabled @endif>
+          @if(s.backup_path.locked)
+            <p class="field-hint">Set by {{ s.backup_path.env }} in the environment.</p>
+          @endif
+        </div>
+      </div>
+
+      {{-- **The honest part.** A schedule is a statement of intent: this
+           application has no clock, so something outside it has to ask whether
+           a backup is due. Saying nothing here is how a switch that does
+           nothing survives — and this screen has enough riding on it. --}}
+      @if(schedule_on)
+        <div class="rounded-lg border border-ink-200 px-4 py-3 dark:border-ink-800">
+          <p class="text-sm">
+            Set to run <strong>{{ schedule_says }}</strong>. Next due {{ next_due }}.
+          </p>
+          @if(schedule_unproven)
+            <p class="mt-2 text-sm text-amber-700 dark:text-amber-400">
+              <strong>Nothing has ever run one.</strong> This application has no clock of its
+              own — a schedule here is what to do, not what does it. Give it a runner:
+              add <code>.schedule(...)</code> from the queue package in <code>main.rs</code>,
+              or a cron entry that asks this application whether a backup is due. Until then
+              the only backups you have are the ones on this page.
+            </p>
+          @endif
+        </div>
+      @endif
+
+      <div class="flex justify-end border-t border-ink-200 pt-4 dark:border-ink-800">
+        <button type="submit" class="btn-primary">Save Schedule</button>
+      </div>
+    </form>
+  </div>
+
   @if(!can_view_backups)
     <p class="py-16 text-center text-sm text-ink-500 dark:text-ink-400">
       You do not have permission to view backups.

@@ -97,7 +97,6 @@ const OWN_TABLES: &[&str] = &[
     "user_recovery_codes",
     "settings",
     "menu_items",
-    "audit_logs",
     "password_history",
     // `backups` is deliberately absent. A dump that included it would record
     // the very row describing itself, in the `running` state it was in
@@ -121,6 +120,11 @@ const OWN_TABLES: &[&str] = &[
 /// have yet.
 pub fn tables(store: Option<&Permissions>) -> Vec<String> {
     let mut names: Vec<String> = OWN_TABLES.iter().map(|name| name.to_string()).collect();
+    // Named by the audit crate's own constant rather than as a literal, for
+    // the same reason the RBAC tables are asked for rather than assumed: a
+    // rename there would otherwise drop the whole trail out of every backup
+    // and nothing would say so.
+    names.push(rustlavel::audit::TABLE.to_string());
     if let Some(store) = store {
         names.extend(store.tables().all().iter().map(|name| name.to_string()));
     }

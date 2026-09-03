@@ -32,6 +32,40 @@
       </div>
     </div>
 
+    {{-- Number, currency and week start. These are read by
+         `support::format`, which every count on every administration page goes
+         through — so changing one here changes what the pages show on the next
+         request rather than being a preference nothing consults. --}}
+    <div class="grid gap-6 sm:grid-cols-3">
+      <div>
+        <label for="app_number_format" class="field-label">Number Format</label>
+        <select id="app_number_format" name="app.number_format" class="field-input">
+          @foreach(s.app_number_format.choices as choice)
+            <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+          @endforeach
+        </select>
+        <p class="field-hint">Used for every count on the administration pages.</p>
+      </div>
+
+      <div>
+        <label for="app_currency" class="field-label">Currency Display</label>
+        <select id="app_currency" name="app.currency" class="field-input">
+          @foreach(s.app_currency.choices as choice)
+            <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+          @endforeach
+        </select>
+      </div>
+
+      <div>
+        <label for="app_week_start" class="field-label">First Day of Week</label>
+        <select id="app_week_start" name="app.week_start" class="field-input">
+          @foreach(s.app_week_start.choices as choice)
+            <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+          @endforeach
+        </select>
+      </div>
+    </div>
+
     <div class="card border-ink-200 bg-ink-50 dark:bg-ink-800/40">
       <div class="card-body">
         <p class="text-sm font-medium">Translation files</p>

@@ -429,3 +429,148 @@
     form.submit();
   });
 })();
+
+/* ---- The header: search, notifications, toasts -------------------------
+ *
+ * Every element below is created with `document.createElement` and given
+ * classes, never `innerHTML` with interpolated text and never `style="…"`.
+ * Both matter: this application's Content-Security-Policy has no
+ * `unsafe-inline`, so an inline style is dropped without a word, and a result
+ * built by string concatenation is an injection waiting for the first person
+ * called `<script>`. */
+(function () {
+  "use strict";
+
+  const el = (tag, className, text) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+
+  /* ---- Global search --------------------------------------------------- */
+  const search = document.querySelector("[data-search]");
+  if (search) {
+    const input = search.querySelector("input");
+    const results = search.querySelector("[data-search-results]");
+    let timer = null;
+    let sequence = 0;
+
+    const close = () => {
+      results.hidden = true;
+      input.setAttribute("aria-expanded", "false");
+    };
+
+    const render = (groups) => {
+      results.replaceChildren();
+      if (!groups.length) {
+        results.append(el("p", "px-3 py-4 text-center text-sm text-ink-500", "Nothing matches."));
+      }
+      for (const group of groups) {
+        results.append(el("p", "px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-ink-400", group.label));
+        for (const hit of group.hits) {
+          const link = el("a", "block px-3 py-2 hover:bg-ink-100 dark:hover:bg-ink-800");
+          link.href = hit.href;
+          link.setAttribute("role", "option");
+          link.append(el("span", "block truncate text-sm font-medium", hit.title));
+          link.append(el("span", "block truncate text-xs text-ink-500 dark:text-ink-400", hit.note));
+          results.append(link);
+        }
+      }
+      results.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+    };
+
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      const term = input.value.trim();
+      if (term.length < 2) return close();
+
+      // Debounced, and the response is dropped unless it is the newest: two
+      // requests in flight can come back out of order, and the older one
+      // would then overwrite the results for what was typed last.
+      timer = setTimeout(async () => {
+        const mine = ++sequence;
+        try {
+          const response = await fetch("/admin/search?q=" + encodeURIComponent(term), {
+            credentials: "same-origin",
+            headers: { accept: "application/json" },
+          });
+          if (!response.ok || mine !== sequence) return;
+          render((await response.json()).groups || []);
+        } catch (_) {
+          close();
+        }
+      }, 180);
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") { close(); input.blur(); }
+    });
+    document.addEventListener("click", (event) => {
+      if (!search.contains(event.target)) close();
+    });
+  }
+
+  /* ---- Notifications ---------------------------------------------------- */
+  const bell = document.querySelector("[data-notifications]");
+  if (bell) {
+    const list = document.querySelector("[data-notification-list]");
+    const dot = document.querySelector("[data-notification-dot]");
+    let loaded = false;
+
+    const load = async () => {
+      try {
+        const response = await fetch("/admin/notifications", {
+          credentials: "same-origin",
+          headers: { accept: "application/json" },
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+
+        list.replaceChildren();
+        if (!data.items.length) {
+          list.append(el("p", "px-3 py-6 text-center text-sm text-ink-500", "Nothing recent."));
+        }
+        for (const item of data.items) {
+          const link = el("a", "flex gap-3 px-3 py-2.5 hover:bg-ink-100 dark:hover:bg-ink-800");
+          link.href = item.href;
+          const badge = el("span", "mt-0.5 h-2 w-2 shrink-0 rounded-full " + item.tint);
+          const body = el("div", "min-w-0");
+          body.append(el("p", "text-sm", item.text));
+          body.append(el("p", "text-xs text-ink-500 dark:text-ink-400", item.when));
+          link.append(badge, body);
+          list.append(link);
+        }
+        if (dot) dot.hidden = data.count === 0;
+      } catch (_) {
+        /* A dropdown that cannot load is a dropdown that shows nothing. */
+      }
+    };
+
+    // Once on open rather than on a timer: a poll every thirty seconds is a
+    // request every thirty seconds from every open tab, for a list nobody is
+    // looking at.
+    bell.addEventListener("click", () => {
+      if (!loaded) { loaded = true; load(); }
+    });
+    load();
+  }
+
+  /* ---- Toasts ----------------------------------------------------------- */
+  const toast = document.querySelector("[data-toast]");
+  if (toast) {
+    const tray = el("div", "fixed bottom-4 right-4 z-50 w-80 max-w-[calc(100vw-2rem)]");
+    document.body.append(tray);
+    toast.classList.remove("mb-5");
+    toast.classList.add("shadow-lg", "bg-white", "dark:bg-ink-900");
+    tray.append(toast);
+
+    // Long enough to read, and only for the ones that are not a problem: an
+    // error that disappears on its own is an error somebody misses.
+    const kind = toast.className;
+    if (!kind.includes("red-") && !kind.includes("amber-")) {
+      setTimeout(() => toast.remove(), 6000);
+    }
+  }
+})();

@@ -100,7 +100,7 @@ impl UsersController {
         context = with_current_user(context, &req, &db).await?;
 
         context = context
-            .with("stats", Json::Array(stats))
+            .with("stats", stats::formatted(&req, Json::Array(stats)).await)
             .with("q", Json::from(search.as_str()))
             .with("users_empty", Json::from(rows.is_empty()))
             .with("users", Json::Array(rows))
