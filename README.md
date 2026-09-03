@@ -68,11 +68,13 @@ async fn main() -> Result<()> {
 rustlavel new app --with auth-kit
 ```
 
-Sign-in with an authenticator app or a passkey, recovery codes, invitation and
-self-registration, password reset, a sign-in audit log, account lockout, roles
-and permissions with a management area, "view as this user", and eleven pages of
-Tailwind. The controllers and views are written into your project — the login
-page is a file you edit, not a template you override.
+Sign-in with an authenticator app or a passkey, magic links, recovery codes,
+invitation and self-registration, password reset with reuse prevention, account
+lockout and an idle timeout, roles and permissions with a management area, "view
+as this user", editable navigation menus, a six-tab settings screen with database
+backups and a brand colour that repaints the application, and an audit trail of
+every consequential action. The controllers and views are written into your
+project — the login page is a file you edit, not a template you override.
 
 ## Packages, not a monolith
 
@@ -102,6 +104,7 @@ App::new()?
 | `rustlavel-view` | Blade-shaped template engine |
 | `rustlavel-validation` | Laravel-style rules and 422 responses |
 | `rustlavel-auth` | Password hashing, encryption, sessions, CSRF, signed URLs, guards, API tokens |
+| `rustlavel-audit` | An audit trail: who did what, to which record, from where |
 | `rustlavel-cache` | Memory, file, and a from-scratch Redis client; rate limiting and idempotency keys |
 | `rustlavel-flags` | Runtime feature switches, per user or per tenant, with an incident switch |
 | `rustlavel-rbac` | Roles and permissions: assignment, wildcard checks, and route guards |
@@ -114,7 +117,7 @@ App::new()?
 | `rustlavel-oauth` | Sign in through Google, GitHub and the rest — OAuth 2.1 with mandatory PKCE |
 | `rustlavel-oauth-provider` | Be the provider: authorization code, refresh rotation, revocation, introspection |
 | `rustlavel-vault` | Secrets from OpenBao or HashiCorp Vault, including dynamic database credentials |
-| `rustlavel-webauthn` | Passkeys — WebAuthn registration and authentication |
+| `rustlavel-webauthn` | Passkeys — WebAuthn registration and authentication, ES256/RS256/EdDSA |
 | `rustlavel-ldap` | LDAP v3 with BER written here; authenticating against a directory |
 | `rustlavel-search` | Elasticsearch and OpenSearch |
 | `rustlavel-otel` | Traces and metrics over OTLP, from the events already being emitted |

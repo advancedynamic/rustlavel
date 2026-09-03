@@ -3,6 +3,80 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## 0.4.0 — 2026-09-03
+
+A new package, two bugs that made features look like they worked when they did
+not, and the administration area the starter kit was missing.
+
+### Added
+
+- **`rustlavel-audit`** — who did what, to which record, from where. Different
+  from the application log on purpose: a log line is for whoever is debugging,
+  an audit entry is a record somebody may be asked about a year later.
+  `req.audit("users.deleted").on("User", id).describe(...).record()`. The
+  address and the user agent are read off the request rather than passed in,
+  because an entry that says "someone updated the settings" answers nothing.
+  The actor column is nullable and deliberately not a foreign key: an entry
+  outlives the account it describes, and a cascade would delete the evidence
+  along with the subject.
+- **RS256 in `rustlavel-webauthn`.** TPM-backed Windows Hello and a number of
+  older security keys sign with nothing else, so a relying party that does not
+  offer it turns them away at registration — which is what Chrome's
+  `pubKeyCredParams` warning is about. The arithmetic is written here, and the
+  crypto rule survives intact: verifying an RSA signature involves no secret
+  at all. The padding is checked by re-encoding the block a valid signature
+  would produce, never by parsing the recovered one — a lenient parser is how
+  Bleichenbacher's 2006 forgery worked.
+- Menu management and an audit page in the starter kit, plus a brand colour on
+  Settings → Appearance that reaches every page. The hue comes from the choice
+  and the lightness ladder stays, which is what keeps white-on-brand legible
+  when somebody picks an unusual colour.
+- `QueryBuilder::or_filter_op` and `or_filter_like`: `or_filter` could only
+  ever mean equality, so a search across three columns with `like` had no way
+  to say so.
+- `Permissions::users_in_role`, which answers "is anybody still holding this
+  role" with a count rather than a list.
+
+### Fixed
+
+- **Passkeys could not be registered at all.** The starter kit's script sent an
+  invention of its own — `raw_id`, `client_data_json`, flat rather than nested
+  under `response` — where the parser reads what
+  `PublicKeyCredential.toJSON()` produces, so every credential arrived with no
+  `rawId`.
+- **Settings → Appearance had never coloured anything.** `/css/theme.css` was
+  served as `text/plain`, because `Response::with_text` sets its own content
+  type and was chained after the header that set the right one. A browser
+  refuses a stylesheet served as plain text and says so only in a console
+  warning, so nothing in the application noticed.
+- **`Files` sent `cache-control: public, max-age=3600` on everything, with no
+  way to change it.** Nothing it serves is fingerprinted, so that is a promise
+  the filename cannot keep: rebuild a stylesheet and the browser keeps showing
+  the old one for the rest of the hour. The default is now `no-cache` — cache,
+  but ask first — and `Files::cache_control` is there for URLs that do carry a
+  content hash.
+- **`BoxFuture` was not reachable outside `rustlavel-http`**, so a middleware
+  written in an application could not spell its own signature. The trait was a
+  documented extension point that could not be extended.
+- `rustlavel-auth` called `GenericArray::from_slice`, deprecated in newer
+  generic-array releases. The framework's lockfile pins an older one, so clippy
+  here stayed clean while every freshly scaffolded project got three warnings
+  out of a dependency it never asked for.
+- The Roles page's Users column had been empty since the page was written: the
+  handler filled it with a literal null because nothing in `rustlavel-rbac`
+  could answer it.
+- Sign-in tab order. "Forgot?" sat between the address and the password in the
+  document, so everybody tabbing out of their email landed on it.
+
+### Changed
+
+- Five settings on the starter kit's Security tab were stored and read by
+  nothing, which is worse than not having them. Magic-link sign-in, email
+  verification, password-reuse prevention, the idle session timeout and the
+  From address on the Email tab all do something now. `auth.require_mfa` was
+  enforced by the login form and by nothing else, so an activation link, a
+  password reset and a magic link were three ways around it.
+
 ## 0.3.2 — 2026-09-03
 
 Three bugs that only appear when the thing is run rather than compiled.
