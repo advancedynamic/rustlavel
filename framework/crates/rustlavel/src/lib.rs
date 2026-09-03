@@ -58,6 +58,8 @@ pub use rustlavel_model_cache as model_cache;
 pub use rustlavel_metrics::Metrics;
 #[cfg(feature = "otel")]
 pub use rustlavel_otel as otel;
+#[cfg(feature = "otel")]
+pub use rustlavel_otel::OpenTelemetry;
 #[cfg(feature = "search")]
 pub use rustlavel_search as search;
 #[cfg(feature = "webauthn")]
@@ -139,6 +141,8 @@ pub mod prelude {
     pub use crate::DebugBar;
     #[cfg(feature = "metrics")]
     pub use crate::Metrics;
+    #[cfg(feature = "otel")]
+    pub use crate::OpenTelemetry;
     #[cfg(feature = "telescope")]
     pub use crate::Telescope;
     #[cfg(feature = "db")]

@@ -284,6 +284,7 @@ fn plugin_lines(packages: &[String]) -> String {
         ("telescope", "Telescope::new()"),
         ("debugbar", "DebugBar::new()"),
         ("metrics", "Metrics::new()"),
+        ("otel", "OpenTelemetry::new()"),
     ];
     /// Needs something `main.rs` does not have yet, so it gets a comment.
     const NEEDS_WIRING: &[(&str, &str)] = &[
@@ -292,6 +293,14 @@ fn plugin_lines(packages: &[String]) -> String {
         ("flags", "FeatureFlags::new(flags)"),
         ("vault", "Vault::from_config(app.config())?"),
         ("queue", "QueueDashboard::new(db.clone())"),
+        // These three take something only the application can build: a set of
+        // tools, a configured provider, an authorization server. A bare
+        // `Socialite::new()` would mount two routes that answer "unknown
+        // provider" to everything, which is a line that looks registered and
+        // is not.
+        ("mcp", "Mcp::new(server)"),
+        ("oauth", "Socialite::new().provider(client)"),
+        ("oauth-provider", "OAuthProvider::new(server)"),
     ];
 
     let mut lines = String::new();
@@ -308,8 +317,9 @@ fn plugin_lines(packages: &[String]) -> String {
         .collect();
     if !owed.is_empty() {
         lines.push_str(&format!(
-            "        // Also asked for, and needing something this file does not\n\
-             \x20       // build yet — a database handle, a store. Add them here:\n\
+            "        // Also asked for, and each needing something only this\n\
+             \x20       // application can build — a database handle, a store, a\n\
+             \x20       // configured client. Add them here:\n\
              \x20       // {}\n",
             owed.join("\n        // ")
         ));
@@ -320,6 +330,57 @@ fn plugin_lines(packages: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// **Every package that ships a plugin has to be accounted for.**
+    ///
+    /// The lists above are maintained by hand, and the first version of them
+    /// covered eight of the twelve: `otel` ships a no-argument plugin and was
+    /// silently left out, and `mcp`, `oauth` and `oauth-provider` were not
+    /// even named. This test counts rather than trusts — it reads the crates
+    /// directory, finds every `impl Plugin for`, and fails on any package the
+    /// scaffold offers but says nothing about.
+    #[test]
+    fn every_package_that_ships_a_plugin_is_registered_or_named() {
+        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("crates/ is the parent of this crate");
+
+        let mut unaccounted = Vec::new();
+        for (package, _) in PACKAGES {
+            // `auth-kit` is scaffolding, not a crate.
+            if *package == "auth-kit" {
+                continue;
+            }
+            let source = crates.join(format!("rustlavel-{package}")).join("src");
+            if !ships_a_plugin(&source) {
+                continue;
+            }
+            let named = plugin_lines(&[(*package).to_string()]);
+            if named.is_empty() {
+                unaccounted.push(*package);
+            }
+        }
+
+        assert!(
+            unaccounted.is_empty(),
+            "these packages ship a plugin and the scaffold neither registers nor names them: \
+             {unaccounted:?}"
+        );
+    }
+
+    /// Whether any file under this directory implements `Plugin`.
+    fn ships_a_plugin(directory: &std::path::Path) -> bool {
+        let Ok(entries) = std::fs::read_dir(directory) else { return false };
+        entries.filter_map(Result::ok).any(|entry| {
+            let path = entry.path();
+            if path.is_dir() {
+                return ships_a_plugin(&path);
+            }
+            path.extension().is_some_and(|e| e == "rs")
+                && std::fs::read_to_string(&path)
+                    .is_ok_and(|text| text.contains("impl Plugin for"))
+        })
+    }
+
     /// A package that is switched on and never registered does nothing, and
     /// the generated file used to say nothing about it.
     #[test]
