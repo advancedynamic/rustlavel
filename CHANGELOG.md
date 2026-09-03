@@ -3,6 +3,63 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## 0.5.0 — 2026-09-03
+
+A second-level cache for models, and three things that were switched on and
+doing nothing.
+
+### Added
+
+- **`rustlavel-model-cache`** — Hibernate's second-level cache, in this
+  framework's vocabulary. Entities kept by primary key and query results kept
+  by the SQL that produced them, over the `Cache` trait that already exists, so
+  memory, file and Redis all work with no new configuration.
+
+  Caching an entity is the easy half: one key, and the write that changes it
+  knows which key to drop. Caching a *query* is the hard one, because a write
+  to one row invalidates an unknown number of cached result sets and there is
+  no way to enumerate them — a cached `WHERE role = 'admin'` is invalidated by
+  an insert whose shape the cache never sees. The answer is Hibernate's: a
+  **generation counter per table**, recorded on every cached result and bumped
+  by every write. One counter invalidates every stale result set at once.
+  Blunt on purpose — a write to any row of `users` costs you every cached
+  `users` query, which beats serving a list that is missing a row somebody
+  just added.
+
+  The query key is a 64-bit fingerprint *and* the statement, stored beside the
+  rows and compared on the way out, so a collision is a miss rather than one
+  query's rows served as another's. A model with no registered region is not
+  cached at all: a package that quietly starts holding every table the moment
+  it is registered is a cache nobody chose.
+
+  Six integration tests run against PostgreSQL 16, MySQL 8.4 and Azure SQL
+  Edge, and prove the two things unit tests cannot — that a second read does
+  not reach the database, and that a write makes it reach the database again.
+
+### Fixed
+
+- **A model with a `bool` field could not be read on MySQL.** MySQL has no
+  boolean: `BOOLEAN` is an alias for `tinyint(1)`, and nothing on the wire
+  tells a flag from a small counter, so the driver hands back an integer. The
+  model does know — it declared the field `bool` — and that is the layer where
+  the two are now reconciled. Zero and one only: a counter column declared
+  `bool` is a mistake, and guessing `true` for 7 would hide it.
+- **A package the scaffold was asked for was never registered.** `rustlavel
+  new app --with telescope` compiled the dependency in and left `main.rs`
+  saying nothing about it — the application ran, `/telescope` answered 404, and
+  the generated file gave no hint a line was missing. The scaffold writes the
+  line now, for the plugins that can be built from nothing; the ones needing a
+  database handle are named in a comment rather than emitted as code that
+  would not compile.
+- `DebugBar` was not re-exported from the meta-crate at all, and neither it,
+  `Metrics` nor `Telescope` was in the prelude — which is the one thing a
+  generated `main.rs` imports.
+- One OTel test failed a few runs in a hundred for no reason. It asserts that
+  a tag byte is absent from an encoded span, and reasoned carefully about the
+  identifiers while forgetting that `Span::new` timestamps itself from the
+  clock, so the nanoseconds supplied a stray `0x7a` whenever they contained
+  one. The times are pinned.
+
 ## 0.4.0 — 2026-09-03
 
 A new package, two bugs that made features look like they worked when they did
