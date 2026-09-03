@@ -3,6 +3,7 @@ name = "rustlavel-vault"
 description = "Secrets from OpenBao or HashiCorp Vault: KV, dynamic database credentials, leases"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true

@@ -3,6 +3,7 @@ name = "rustlavel-model-cache"
 description = "A second-level cache for Rustlavel models: entities and query results over any cache driver"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true

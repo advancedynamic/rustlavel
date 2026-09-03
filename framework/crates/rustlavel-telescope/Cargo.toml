@@ -3,6 +3,7 @@ name = "rustlavel-telescope"
 description = "Rustlavel Telescope: an in-process debugging dashboard for requests, queries, and logs"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true

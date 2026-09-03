@@ -3,6 +3,7 @@ name = "rustlavel-mcp"
 description = "Rustlavel Model Context Protocol support: server, client, stdio and HTTP transports"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true

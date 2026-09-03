@@ -3,6 +3,7 @@ name = "rustlavel-ai"
 description = "Rustlavel AI: one API for Anthropic, OpenAI and Ollama, with streaming, tools and a fake provider"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true

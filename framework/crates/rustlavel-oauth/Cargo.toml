@@ -3,6 +3,7 @@ name = "rustlavel-oauth"
 description = "OAuth 2.1 for Rustlavel: the shared protocol types, and the client half"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true

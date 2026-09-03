@@ -3,6 +3,7 @@ name = "rustlavel-webauthn"
 description = "Passkeys for Rustlavel: WebAuthn registration and authentication, written on the W3C specification"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true

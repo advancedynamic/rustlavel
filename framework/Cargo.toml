@@ -16,6 +16,14 @@ edition = "2024"
 #
 # A declared floor that is too low is worse than none: cargo tells a consumer
 # on 1.86 that the crate is compatible, and rustc then refuses it.
+#
+# **Declaring it here is half the job.** `[workspace.package]` is opt-in: a
+# member inherits a field only by asking for it, so every crate carries
+# `rust-version.workspace = true`. Without that line in all thirty-three, this
+# one reaches no published manifest at all — crates.io reported `rust_version:
+# null` for 0.5.2 and a consumer on 1.87 still got `let expressions in this
+# position are unstable` from inside `rustlavel-core`. With it, cargo says
+# `rustc 1.87.0 is not supported ... requires rustc 1.88` and stops.
 rust-version = "1.88"
 license = "MIT"
 authors = ["Advance Dynamic Software"]

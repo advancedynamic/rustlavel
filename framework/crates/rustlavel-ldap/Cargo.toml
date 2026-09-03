@@ -3,6 +3,7 @@ name = "rustlavel-ldap"
 description = "LDAP for Rustlavel: bind, search, and authenticating a user against a directory"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true

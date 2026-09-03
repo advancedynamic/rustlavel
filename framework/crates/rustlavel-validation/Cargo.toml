@@ -3,6 +3,7 @@ name = "rustlavel-validation"
 description = "Rustlavel validation: Laravel-style rules with 422 JSON error responses"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true

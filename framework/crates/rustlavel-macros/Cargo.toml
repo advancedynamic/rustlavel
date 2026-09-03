@@ -3,6 +3,7 @@ name = "rustlavel-macros"
 description = "Derive macros for Rustlavel, notably #[derive(Model)]"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true

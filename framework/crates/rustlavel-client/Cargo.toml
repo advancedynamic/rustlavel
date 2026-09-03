@@ -3,6 +3,7 @@ name = "rustlavel-client"
 description = "Rustlavel outbound HTTP client, written on Tokio with TLS from rustls"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
