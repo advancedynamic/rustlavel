@@ -22,6 +22,13 @@ const LABEL_Y: i64 = -3;
 
 const KTY_OKP: i64 = 1;
 const KTY_EC2: i64 = 2;
+const KTY_RSA: i64 = 3;
+
+/// COSE label -1 again, meaning the modulus when the key type is RSA. The
+/// labels are per key type, not global — an RSA key has no curve.
+const LABEL_N: i64 = -1;
+/// COSE label -2 again, meaning the public exponent for an RSA key.
+const LABEL_E: i64 = -2;
 const CRV_P256: i64 = 1;
 const CRV_ED25519: i64 = 6;
 
@@ -32,6 +39,12 @@ pub enum SignatureAlgorithm {
     /// passkey in the world uses: Apple, Google, Yubico, the password
     /// managers.
     Es256,
+    /// COSE -257. RSASSA-PKCS1-v1_5 with SHA-256. Not what a modern passkey
+    /// uses, and not optional either: TPM-backed Windows Hello credentials and
+    /// a number of older security keys sign with nothing else, and a relying
+    /// party that does not offer it turns those authenticators away at
+    /// registration.
+    Rs256,
     /// COSE -8. Ed25519, which some security keys prefer.
     EdDsa,
 }
@@ -41,6 +54,7 @@ impl SignatureAlgorithm {
     pub fn cose_id(self) -> i64 {
         match self {
             SignatureAlgorithm::Es256 => -7,
+            SignatureAlgorithm::Rs256 => -257,
             SignatureAlgorithm::EdDsa => -8,
         }
     }
@@ -49,13 +63,21 @@ impl SignatureAlgorithm {
         match id {
             -7 => Some(SignatureAlgorithm::Es256),
             -8 => Some(SignatureAlgorithm::EdDsa),
+            -257 => Some(SignatureAlgorithm::Rs256),
             _ => None,
         }
     }
 
     /// What a relying party offers during registration, best first.
-    pub fn offered() -> [SignatureAlgorithm; 2] {
-        [SignatureAlgorithm::Es256, SignatureAlgorithm::EdDsa]
+    ///
+    /// ES256 leads because essentially every passkey in the world uses it.
+    /// RS256 is second because browsers warn when it is missing and because
+    /// the authenticators that need it can do nothing else. Everything listed
+    /// here can be verified by [`CoseKey::verify`]; offering an algorithm this
+    /// package cannot check would mean a ceremony that succeeds in the browser
+    /// and fails on the way back.
+    pub fn offered() -> [SignatureAlgorithm; 3] {
+        [SignatureAlgorithm::Es256, SignatureAlgorithm::Rs256, SignatureAlgorithm::EdDsa]
     }
 }
 
@@ -70,6 +92,8 @@ pub enum CoseKey {
     Es256 { x: [u8; 32], y: [u8; 32] },
     /// A compressed Ed25519 point.
     EdDsa { x: [u8; 32] },
+    /// An RSA modulus and public exponent, big-endian and unpadded.
+    Rs256 { n: Vec<u8>, e: Vec<u8> },
 }
 
 impl CoseKey {
@@ -77,6 +101,7 @@ impl CoseKey {
         match self {
             CoseKey::Es256 { .. } => SignatureAlgorithm::Es256,
             CoseKey::EdDsa { .. } => SignatureAlgorithm::EdDsa,
+            CoseKey::Rs256 { .. } => SignatureAlgorithm::Rs256,
         }
     }
 
@@ -99,9 +124,8 @@ impl CoseKey {
 
         let algorithm = SignatureAlgorithm::from_cose_id(alg).ok_or_else(|| {
             Error::msg(format!(
-                "COSE algorithm {alg} is not one this package verifies. It speaks ES256 (-7) \
-                 and EdDSA (-8); RS256 (-257), used by some TPM-backed Windows Hello \
-                 credentials, is not implemented."
+                "COSE algorithm {alg} is not one this package verifies. It speaks ES256 (-7), \
+                 RS256 (-257) and EdDSA (-8)."
             ))
         })?;
 
@@ -113,6 +137,13 @@ impl CoseKey {
             (SignatureAlgorithm::EdDsa, KTY_OKP, Some(CRV_ED25519)) => {
                 Ok(CoseKey::EdDsa { x: coordinate(value, LABEL_X, "x")? })
             }
+            // An RSA key has no curve, so `crv` is read as absent: labels -1
+            // and -2 hold the modulus and the exponent here, not a curve and
+            // an x coordinate.
+            (SignatureAlgorithm::Rs256, KTY_RSA, None) => Ok(CoseKey::Rs256 {
+                n: big_endian(value, LABEL_N, "modulus")?,
+                e: big_endian(value, LABEL_E, "exponent")?,
+            }),
             (algorithm, kty, crv) => Err(Error::msg(format!(
                 "the COSE key claims algorithm {} but has key type {kty} and curve {crv:?}, \
                  which do not go together",
@@ -147,6 +178,11 @@ impl CoseKey {
                 map.insert(CborKey::Int(LABEL_CRV), Cbor::Unsigned(CRV_ED25519 as u64));
                 map.insert(CborKey::Int(LABEL_X), Cbor::Bytes(x.to_vec()));
             }
+            CoseKey::Rs256 { n, e } => {
+                map.insert(CborKey::Int(LABEL_KTY), Cbor::Unsigned(KTY_RSA as u64));
+                map.insert(CborKey::Int(LABEL_N), Cbor::Bytes(n.clone()));
+                map.insert(CborKey::Int(LABEL_E), Cbor::Bytes(e.clone()));
+            }
         }
 
         Cbor::Map(map)
@@ -171,6 +207,7 @@ impl CoseKey {
         match self {
             CoseKey::Es256 { x, y } => verify_es256(x, y, message, signature),
             CoseKey::EdDsa { x } => verify_eddsa(x, message, signature),
+            CoseKey::Rs256 { n, e } => crate::rsa::verify_pkcs1_sha256(n, e, message, signature),
         }
     }
 }
@@ -183,6 +220,18 @@ impl std::fmt::Debug for CoseKey {
             .field("key", &"<public key>")
             .finish()
     }
+}
+
+/// A byte string of any length, for the two RSA fields.
+fn big_endian(value: &Cbor, label: i64, name: &str) -> Result<Vec<u8>> {
+    let bytes = value
+        .get_int(label)
+        .and_then(Cbor::as_bytes)
+        .ok_or_else(|| Error::msg(format!("the RSA key has no {name} (label {label})")))?;
+    if bytes.is_empty() {
+        return Err(Error::msg(format!("the RSA key's {name} is empty")));
+    }
+    Ok(bytes.to_vec())
 }
 
 fn coordinate(value: &Cbor, label: i64, name: &str) -> Result<[u8; 32]> {
@@ -345,14 +394,42 @@ mod tests {
     }
 
     #[test]
-    fn rs256_says_plainly_that_it_is_not_implemented() {
-        // Windows Hello on a TPM can offer it, and "unknown algorithm -257"
-        // would send somebody hunting for a parsing bug that is not there.
-        let key = Cbor::parse(&[0xa2, 0x01, 0x03, 0x03, 0x39, 0x01, 0x00]).unwrap();
-        let error = CoseKey::parse(&key).unwrap_err().to_string();
+    fn an_rs256_key_round_trips_and_verifies_a_signature_openssl_made() {
+        // The COSE shape a TPM-backed Windows Hello credential registers with:
+        // `{1: 3, 3: -257, -1: n, -2: e}`. Labels -1 and -2 mean modulus and
+        // exponent here, not a curve and an x coordinate.
+        let n = crate::rsa::tests::openssl_modulus();
+        let e = vec![0x01, 0x00, 0x01];
 
-        assert!(error.contains("RS256"), "got {error}");
-        assert!(error.contains("not implemented"), "got {error}");
+        let mut map = BTreeMap::new();
+        map.insert(CborKey::Int(1), Cbor::Unsigned(3));
+        map.insert(CborKey::Int(3), Cbor::Negative(-257));
+        map.insert(CborKey::Int(-1), Cbor::Bytes(n.clone()));
+        map.insert(CborKey::Int(-2), Cbor::Bytes(e.clone()));
+
+        let key = CoseKey::parse(&Cbor::Map(map)).unwrap();
+        assert_eq!(key.algorithm(), SignatureAlgorithm::Rs256);
+
+        // Stored and read back is the same key, which is what makes a
+        // credential survive a restart.
+        let stored = CoseKey::parse(&Cbor::parse(&key.to_bytes()).unwrap()).unwrap();
+        assert_eq!(stored, key);
+
+        assert!(stored.verify(
+            b"rustlavel webauthn rs256 test vector",
+            &crate::rsa::tests::openssl_signature()
+        ));
+        assert!(!stored.verify(b"something else", &crate::rsa::tests::openssl_signature()));
+    }
+
+    /// The three algorithms offered are exactly the three that can be checked,
+    /// and ES256 and RS256 are both among them — a browser warns when RS256 is
+    /// absent, because the authenticators that need it can do nothing else.
+    #[test]
+    fn the_offer_includes_es256_and_rs256() {
+        let ids: Vec<i64> = SignatureAlgorithm::offered().iter().map(|a| a.cose_id()).collect();
+
+        assert_eq!(ids, vec![-7, -257, -8]);
     }
 
     #[test]

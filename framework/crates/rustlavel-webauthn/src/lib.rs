@@ -24,6 +24,9 @@ pub mod cose;
 pub mod credential;
 pub mod registration;
 
+/// The big-integer arithmetic RS256 needs. Public-key only — see the module.
+pub(crate) mod rsa;
+
 pub use cbor::Cbor;
 pub use cose::{CoseKey, SignatureAlgorithm};
 
