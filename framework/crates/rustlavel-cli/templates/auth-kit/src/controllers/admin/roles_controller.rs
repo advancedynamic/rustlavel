@@ -29,7 +29,7 @@ impl RolesController {
                     "permissions",
                     Json::Array(permissions.iter().take(8).map(|p| Json::from(p.as_str())).collect()),
                 ),
-                ("user_count", Json::Null),
+                ("user_count", Json::from(store.users_in_role(&role.name).await?)),
                 // A super role is not deletable from here. Removing the role
                 // that grants everything, from a screen only that role can
                 // reach, is a way to lock an application's owner out of it.

@@ -395,6 +395,17 @@ impl Permissions {
         Ok(self.grants_for(user_id).await?.roles.iter().cloned().collect())
     }
 
+    /// How many users hold a role.
+    ///
+    /// A count rather than the users themselves: the question this answers —
+    /// "is anybody still using this role?" — comes up on a list of every role,
+    /// and loading the members of each to take `len()` is the same answer for
+    /// far more rows.
+    pub async fn users_in_role(&self, role: &str) -> Result<i64> {
+        let role_id = self.role_id(role).await?;
+        self.db.table(&self.tables.user_role).filter("role_id", role_id).count(&self.db).await
+    }
+
     /// A user's direct entries: the permission name and whether it is a grant.
     ///
     /// `false` is a deny. Exposed because "why can this user not do X" is
