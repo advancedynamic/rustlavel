@@ -3,6 +3,43 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## 0.5.1 — 2026-09-03
+
+Three fixes, two of them to things 0.5.0 claimed were already done.
+
+### Fixed
+
+- **The scaffold registered eight of the twelve packages that ship a plugin.**
+  `otel` has a no-argument constructor and was left out of the list — and
+  `OpenTelemetry` was missing from the prelude as well, so the line could not
+  have compiled had it been written. That is the same bug 0.5.0 fixed for
+  `Metrics`, still present for `otel`. `mcp`, `oauth` and `oauth-provider` were
+  not even named in the comment.
+
+  The lists are maintained by hand, so the test no longer trusts them: it reads
+  the crates directory, finds every `impl Plugin for`, and fails on any package
+  the scaffold offers but says nothing about.
+- **A cache miss cost two queries.** `ModelCache::find` called `Model::find`
+  and then read the same row again to cache it — because `Model::to_json`
+  cannot be rehydrated, so the model in hand was not enough to store. Two round
+  trips on every cold read made the cache worse than no cache on the path it
+  exists to help. Fetching the row once and hydrating from it gets both from a
+  single query.
+
+  A cache hit whose stored row no longer parses was also counted as a hit *and*
+  fell through to the database, which overstated the hit rate by exactly the
+  entries that were costing a query. The hit is recorded once a model has
+  actually come back.
+- A test in `rustlavel-ai` failed on whichever runs interleaved: it collected
+  every `ai.call` event on the process-global bus and asserted there was
+  exactly one, while ten other tests in the same file make a call. Being the
+  only test that subscribes is not the same as being the only test that emits.
+
+### Added
+
+- `OpenTelemetry` is re-exported from the meta-crate and its prelude, like
+  `Telescope`, `DebugBar` and `Metrics`.
+
 ## 0.5.0 — 2026-09-03
 
 A second-level cache for models, and three things that were switched on and
