@@ -312,12 +312,19 @@
       (options.excludeCredentials || []).forEach((c) => { c.id = fromBase64Url(c.id); });
 
       const credential = await navigator.credentials.create({ publicKey: options });
+      // The shape `PublicKeyCredential.toJSON()` produces, spelled out rather
+      // than called: `toJSON` is recent enough that some browsers in use do
+      // not have it. The names are the specification's, not ours — the server
+      // reads what a browser sends, and a snake_case invention of our own
+      // means every credential arrives with no `rawId`.
       const response = await postJson(button.dataset.verifyUrl, {
         id: credential.id,
-        raw_id: toBase64Url(credential.rawId),
+        rawId: toBase64Url(credential.rawId),
         type: credential.type,
-        client_data_json: toBase64Url(credential.response.clientDataJSON),
-        attestation_object: toBase64Url(credential.response.attestationObject),
+        response: {
+          clientDataJSON: toBase64Url(credential.response.clientDataJSON),
+          attestationObject: toBase64Url(credential.response.attestationObject),
+        },
         label: navigator.userAgent.slice(0, 60),
       });
 
@@ -347,12 +354,14 @@
       const assertion = await navigator.credentials.get({ publicKey: options });
       const response = await postJson(button.dataset.verifyUrl, {
         id: assertion.id,
-        raw_id: toBase64Url(assertion.rawId),
+        rawId: toBase64Url(assertion.rawId),
         type: assertion.type,
-        client_data_json: toBase64Url(assertion.response.clientDataJSON),
-        authenticator_data: toBase64Url(assertion.response.authenticatorData),
-        signature: toBase64Url(assertion.response.signature),
-        user_handle: assertion.response.userHandle ? toBase64Url(assertion.response.userHandle) : null,
+        response: {
+          clientDataJSON: toBase64Url(assertion.response.clientDataJSON),
+          authenticatorData: toBase64Url(assertion.response.authenticatorData),
+          signature: toBase64Url(assertion.response.signature),
+          userHandle: assertion.response.userHandle ? toBase64Url(assertion.response.userHandle) : null,
+        },
       });
 
       if (response.ok) window.location.assign((await response.json()).redirect || "/dashboard");
@@ -362,5 +371,61 @@
     } finally {
       button.disabled = false;
     }
+  });
+})();
+
+/* ---- Reordering a menu -------------------------------------------------
+ *
+ * Native HTML drag-and-drop rather than a library, and a handle rather than a
+ * draggable row: the row holds links and buttons, and making all of it
+ * draggable takes the text selection and the click targets with it.
+ *
+ * The whole order is submitted, not the moved row: dragging one item changes
+ * the position of every item after it, so a single number would already be
+ * stale by the time it arrived. */
+(function () {
+  "use strict";
+
+  const form = document.querySelector("[data-menu-reorder]");
+  if (!form) return;
+
+  const field = form.querySelector("[data-menu-order]");
+  const rowOf = (element) => element.closest("[data-menu-row]");
+  let dragging = null;
+
+  form.addEventListener("dragstart", (event) => {
+    const handle = event.target.closest(".menu-handle");
+    if (!handle) return;
+    dragging = rowOf(handle);
+    if (!dragging) return;
+    dragging.classList.add("opacity-50");
+    // Firefox will not start a drag without data on the transfer.
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", dragging.dataset.menuId);
+  });
+
+  form.addEventListener("dragover", (event) => {
+    if (!dragging) return;
+    event.preventDefault();
+    const over = rowOf(event.target);
+    if (!over || over === dragging) return;
+
+    // Above the midpoint means before, below means after. Comparing against
+    // the midpoint rather than the edge is what stops the row flickering
+    // between two positions while the pointer sits on a boundary.
+    const box = over.getBoundingClientRect();
+    const before = event.clientY < box.top + box.height / 2;
+    over.parentNode.insertBefore(dragging, before ? over : over.nextSibling);
+  });
+
+  form.addEventListener("dragend", () => {
+    if (!dragging) return;
+    dragging.classList.remove("opacity-50");
+    dragging = null;
+
+    field.value = Array.from(form.querySelectorAll("[data-menu-row]"))
+      .map((row) => row.dataset.menuId)
+      .join(",");
+    form.submit();
   });
 })();

@@ -1,0 +1,97 @@
+@extends("layouts.app")
+@section("title", "Menu item")
+
+@section("content")
+  <div class="card mb-5">
+    <div class="card-body">
+      <h2 class="text-2xl font-semibold tracking-tight">{{ heading }}</h2>
+      <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">In the {{ location }} menu.</p>
+    </div>
+  </div>
+
+  @include("partials.errors")
+
+  <div class="card">
+    <form method="post" action="{{ action }}" class="card-body space-y-5">
+      {!! csrf_field !!}
+
+      <div class="grid gap-5 sm:grid-cols-2">
+        <div>
+          <label for="label" class="field-label">Label</label>
+          <input id="label" name="label" type="text" value="{{ label }}" required maxlength="80"
+                 class="field-input @if(error_label) field-input-invalid @endif">
+          @if(error_label)<p class="field-error">{{ error_label }}</p>@endif
+        </div>
+
+        <div>
+          <label for="parent_id" class="field-label">Sits under</label>
+          <select id="parent_id" name="parent_id" class="field-input">
+            <option value="">Nothing — top level</option>
+            @foreach(parents as p)
+              <option value="{{ p.id }}" @if(p.selected) selected @endif>{{ p.label }}</option>
+            @endforeach
+          </select>
+          @if(error_parent_id)<p class="field-error">{{ error_parent_id }}</p>@endif
+        </div>
+
+        <div>
+          <label for="route" class="field-label">Path</label>
+          <input id="route" name="route" type="text" value="{{ route }}" placeholder="/admin/users"
+                 spellcheck="false" autocomplete="off"
+                 class="field-input font-mono @if(error_route) field-input-invalid @endif">
+          <p class="field-hint">A path inside this application. Leave it blank for an external link.</p>
+          @if(error_route)<p class="field-error">{{ error_route }}</p>@endif
+        </div>
+
+        <div>
+          <label for="url" class="field-label">External URL</label>
+          <input id="url" name="url" type="url" value="{{ url }}" placeholder="https://example.com/docs"
+                 spellcheck="false" autocomplete="off" class="field-input font-mono">
+          <p class="field-hint">Set this and it wins over the path above.</p>
+        </div>
+
+        <div>
+          <label for="permission" class="field-label">Needs the permission</label>
+          <input id="permission" name="permission" type="text" value="{{ permission }}" placeholder="users.view"
+                 spellcheck="false" autocomplete="off" class="field-input font-mono">
+          <p class="field-hint">Leave it blank and everybody signed in sees the item.</p>
+        </div>
+
+        <div>
+          <p class="field-label">Icon</p>
+          <div class="grid grid-cols-5 gap-2">
+            <label class="icon-choice">
+              <input type="radio" name="icon" value="" class="sr-only" @if(!has_icon) checked @endif>
+              <span class="text-xs">None</span>
+            </label>
+            @foreach(icons as i)
+              <label class="icon-choice" title="{{ i.name }}">
+                <input type="radio" name="icon" value="{{ i.name }}" class="sr-only" @if(i.selected) checked @endif>
+                {!! i.svg !!}
+              </label>
+            @endforeach
+          </div>
+          @if(error_icon)<p class="field-error">{{ error_icon }}</p>@endif
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-6 border-t border-ink-200 pt-4 dark:border-ink-800">
+        <div class="flex items-center gap-2.5">
+          <input id="is_active" name="is_active" type="checkbox" value="1" @if(is_active) checked @endif
+                 class="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800">
+          <label for="is_active" class="text-sm text-ink-700 dark:text-ink-300">Show this item</label>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <input id="target" name="target" type="checkbox" value="_blank" @if(new_tab) checked @endif
+                 class="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800">
+          <label for="target" class="text-sm text-ink-700 dark:text-ink-300">Open in a new tab</label>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2 border-t border-ink-200 pt-4 dark:border-ink-800">
+        <a href="/admin/menus/{{ location }}" class="btn-ghost">Cancel</a>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+@endsection

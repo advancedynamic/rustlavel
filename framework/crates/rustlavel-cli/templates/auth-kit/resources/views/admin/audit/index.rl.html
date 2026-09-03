@@ -1,0 +1,162 @@
+@extends("layouts.app")
+@section("title", "Audit Logs")
+
+@section("content")
+  <div class="card mb-5">
+    <div class="card-body flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-semibold tracking-tight">Audit Logs</h2>
+        <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">Track and monitor all system activities and changes</p>
+      </div>
+      {{-- The exports carry the filter bar with them. Exporting the whole
+           trail when somebody has narrowed it to one day is not what the
+           button appears to promise. --}}
+      <div class="flex items-center gap-2">
+        <a href="/admin/audit/export.csv?e=1{{ query }}" class="btn-success">
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 2.5a.75.75 0 0 1 .75.75v7.44l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V3.25A.75.75 0 0 1 10 2.5ZM3.5 14a.75.75 0 0 1 .75.75v1.5h11.5v-1.5a.75.75 0 0 1 1.5 0v2.25a.75.75 0 0 1-.75.75H3.5a.75.75 0 0 1-.75-.75v-2.25A.75.75 0 0 1 3.5 14Z"/></svg>
+          Export CSV
+        </a>
+        <a href="/admin/audit/export.pdf?e=1{{ query }}" class="btn-danger">
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4.5 3.5A1.5 1.5 0 0 1 6 2h4.6L15.5 6.9V16.5A1.5 1.5 0 0 1 14 18H6a1.5 1.5 0 0 1-1.5-1.5v-13ZM10.5 3.6V7h3.4l-3.4-3.4Z" clip-rule="evenodd"/></svg>
+          Export PDF
+        </a>
+      </div>
+    </div>
+  </div>
+
+  @include("partials.stats")
+
+  <div class="card mb-5">
+    <form method="get" action="/admin/audit" class="card-body space-y-4">
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div>
+          <label for="user" class="field-label">User</label>
+          <select id="user" name="user" class="field-input">
+            <option value="">All Users</option>
+            @foreach(users as u)
+              <option value="{{ u.id }}" @if(u.selected) selected @endif>{{ u.name }}</option>
+            @endforeach
+          </select>
+        </div>
+        <div>
+          <label for="event" class="field-label">Event</label>
+          <select id="event" name="event" class="field-input">
+            <option value="">All Events</option>
+            @foreach(events as e)
+              <option value="{{ e.name }}" @if(e.selected) selected @endif>{{ e.name }}</option>
+            @endforeach
+          </select>
+        </div>
+        <div>
+          <label for="model" class="field-label">Model</label>
+          <select id="model" name="model" class="field-input">
+            <option value="">All</option>
+            @foreach(models as m)
+              <option value="{{ m.name }}" @if(m.selected) selected @endif>{{ m.name }}</option>
+            @endforeach
+          </select>
+        </div>
+        <div>
+          <label for="from" class="field-label">Date From</label>
+          <input id="from" name="from" type="date" value="{{ f_from }}" class="field-input">
+        </div>
+        <div>
+          <label for="to" class="field-label">Date To</label>
+          <input id="to" name="to" type="date" value="{{ f_to }}" class="field-input">
+        </div>
+        <div>
+          <label for="ip" class="field-label">IP Address</label>
+          <input id="ip" name="ip" type="text" value="{{ f_ip }}" placeholder="192.168.1.1"
+                 spellcheck="false" autocomplete="off" class="field-input font-mono">
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <label for="q" class="sr-only">Search logs, events or descriptions</label>
+        <input id="q" name="q" type="search" value="{{ f_search }}"
+               placeholder="Search in logs, events, or descriptions..." class="field-input min-w-0 flex-1">
+        <button type="submit" class="btn-primary shrink-0">
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 3.383 9.836l3.14 3.141a.75.75 0 1 0 1.061-1.06l-3.14-3.141A5.5 5.5 0 0 0 9 3.5ZM5 9a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z" clip-rule="evenodd"/></svg>
+          Filter
+        </button>
+        @if(has_filters)
+          <a href="/admin/audit" class="btn-ghost btn-sm shrink-0">Clear</a>
+        @endif
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Date/Time</th>
+            <th>User</th>
+            <th>Event</th>
+            <th>Description</th>
+            <th>IP Address</th>
+            <th class="text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach(logs as log)
+            <tr>
+              <td class="whitespace-nowrap">
+                <p class="font-mono text-xs text-ink-900 dark:text-ink-100">{{ log.created_at }}</p>
+                <p class="text-xs text-ink-500 dark:text-ink-400">{{ log.ago }}</p>
+              </td>
+              <td class="whitespace-nowrap">
+                <span class="flex items-center gap-2">
+                  <span class="avatar-sm">{{ log.initial }}</span>
+                  <span class="text-sm">{{ log.user_name }}</span>
+                </span>
+              </td>
+              <td class="whitespace-nowrap"><span class="{{ log.event_tint }}">{{ log.event }}</span></td>
+              <td>
+                <p class="text-sm">{{ log.description }}</p>
+                @if(log.subject)<p class="text-xs text-brand-600 dark:text-brand-400">{{ log.subject }}</p>@endif
+              </td>
+              <td class="whitespace-nowrap"><code class="text-xs">{{ log.ip_address }}</code></td>
+              <td>
+                <div class="flex items-center justify-end">
+                  <a href="/admin/audit/{{ log.id }}" class="icon-action icon-action-neutral"
+                     title="Open entry {{ log.id }}" aria-label="Open entry {{ log.id }}">
+                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 4C5.5 4 2 10 2 10s3.5 6 8 6 8-6 8-6-3.5-6-8-6Zm0 10a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/></svg>
+                  </a>
+                </div>
+              </td>
+            </tr>
+          @endforeach
+        </tbody>
+      </table>
+    </div>
+
+    @if(empty)
+      <p class="px-4 py-10 text-center text-sm text-ink-500 dark:text-ink-400">
+        Nothing matches those filters.
+      </p>
+    @endif
+
+    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-ink-200 px-4 py-3 dark:border-ink-800">
+      <p class="text-sm text-ink-500 dark:text-ink-400">
+        Showing {{ first }} to {{ last_row }} of {{ total }} results
+      </p>
+      <div class="flex items-center gap-1">
+        @if(has_previous)
+          <a href="/admin/audit?page={{ previous }}{{ query }}" class="page-link" aria-label="Previous page">‹</a>
+        @endif
+        @foreach(pages as p)
+          @if(p.current)
+            <span class="page-link page-link-current" aria-current="page">{{ p.number }}</span>
+          @else
+            <a href="/admin/audit?page={{ p.number }}{{ query }}" class="page-link">{{ p.number }}</a>
+          @endif
+        @endforeach
+        @if(has_next)
+          <a href="/admin/audit?page={{ next }}{{ query }}" class="page-link" aria-label="Next page">›</a>
+        @endif
+      </div>
+    </div>
+  </div>
+@endsection

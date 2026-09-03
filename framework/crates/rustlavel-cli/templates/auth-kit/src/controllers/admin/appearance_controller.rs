@@ -60,12 +60,23 @@ const SIDEBAR_KEYS: &[&str] = &[
 
 const LOGO_KEYS: &[&str] = &["theme.logo.light", "theme.logo.dark"];
 
+/// The one colour that is not about a single surface.
+const BRAND_KEYS: &[&str] = &["theme.brand"];
+
 impl AppearanceController {
     // There is no handler here for drawing the tab. `AdminSettingsController`
     // already answers `GET /admin/settings/{tab}` and hands the template every
     // `theme.*` setting under `s`, so `settings/tabs/appearance.rl.html` reads
     // from there and this file is only ever the writing half. Adding a `GET`
     // of its own would shadow that route, not extend it.
+
+    /// `POST /admin/settings/appearance/brand`
+    ///
+    /// Its own button because it is its own decision: somebody adjusting the
+    /// sidebar has not asked to repaint every button in the application.
+    pub async fn save_brand(req: Request) -> Result<Response> {
+        Self::save_colours(req, BRAND_KEYS, "The brand colour has been saved. Every page uses it.").await
+    }
 
     /// `POST /admin/settings/appearance/login`
     pub async fn save_login(req: Request) -> Result<Response> {
@@ -106,6 +117,13 @@ impl AppearanceController {
                 ),
             );
         } else {
+            if let Some(audit) = crate::support::audit::of(&req, "settings.updated") {
+                audit
+                    .describe(format!("Updated the appearance: {}", done.to_lowercase()))
+                    .with("keys", Json::from(keys.join(", ")))
+                    .record()
+                    .await;
+            }
             page::flash(&req, "success", done);
         }
         Ok(Response::see_other("/admin/settings/appearance"))
@@ -132,6 +150,9 @@ impl AppearanceController {
         }
 
         store.put_all(&values).await?;
+        if let Some(audit) = crate::support::audit::of(&req, "logo.updated") {
+            audit.describe("Updated the application logos").record().await;
+        }
         page::flash(&req, "success", "The logos have been saved.");
         Ok(Response::see_other("/admin/settings/appearance"))
     }

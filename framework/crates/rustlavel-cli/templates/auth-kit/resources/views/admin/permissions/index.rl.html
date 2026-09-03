@@ -2,13 +2,25 @@
 @section("title", "Permissions")
 
 @section("content")
-  <div class="mb-5 flex items-center justify-between gap-3">
-    <p class="text-sm text-ink-500 dark:text-ink-400">
-      The individual things that can be allowed. Name them <code>area.action</code>;
-      a role holding <code>users.*</code> covers every one of them in that area.
-    </p>
-    @if(can_create)<a href="/admin/permissions/create" class="btn-primary">New permission</a>@endif
+  <div class="card mb-5">
+    <div class="card-body flex flex-wrap items-center justify-between gap-4">
+      <div class="max-w-2xl">
+        <h2 class="text-2xl font-semibold tracking-tight">Permissions</h2>
+        <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">
+          The individual things that can be allowed. Name them <code>area.action</code>;
+          a role holding <code>users.*</code> covers every one of them in that area.
+        </p>
+      </div>
+      @if(can_create)
+        <a href="/admin/permissions/create" class="btn-primary">
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3a.75.75 0 0 1 .75.75v5.5h5.5a.75.75 0 0 1 0 1.5h-5.5v5.5a.75.75 0 0 1-1.5 0v-5.5h-5.5a.75.75 0 0 1 0-1.5h5.5v-5.5A.75.75 0 0 1 10 3Z"/></svg>
+          New Permission
+        </a>
+      @endif
+    </div>
   </div>
+
+  @include("partials.stats")
 
   <div class="card">
     <div class="table-wrap">
@@ -30,13 +42,19 @@
                 </span>
               </td>
               <td>
-                <div class="flex items-center justify-end gap-1">
-                  @if(can_update)<a href="/admin/permissions/{{ permission.id }}/edit" class="btn-ghost btn-sm">Edit</a>@endif
+                <div class="flex items-center justify-end gap-1.5">
+                  @if(can_update)
+                    <a href="/admin/permissions/{{ permission.id }}/edit" class="icon-action icon-action-brand" title="Edit {{ permission.name }}" aria-label="Edit {{ permission.name }}">
+                      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M13.586 3.586a2 2 0 1 1 2.828 2.828l-.793.793-2.828-2.828.793-.793ZM11.379 5.793 3 14.172V17h2.828l8.379-8.379-2.828-2.828Z"/></svg>
+                    </a>
+                  @endif
                   @if(can_delete)
                     <form method="post" action="/admin/permissions/{{ permission.id }}/delete"
                           data-confirm="Delete {{ permission.name }}? It is removed from every role that has it.">
                       {!! csrf_field !!}
-                      <button type="submit" class="btn-ghost btn-sm text-red-600 dark:text-red-400">Delete</button>
+                      <button type="submit" class="icon-action icon-action-danger" title="Delete {{ permission.name }}" aria-label="Delete {{ permission.name }}">
+                        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M8.5 2a1 1 0 0 0-1 1v.5h-3a.75.75 0 0 0 0 1.5h11a.75.75 0 0 0 0-1.5h-3V3a1 1 0 0 0-1-1h-3Zm-3 4.5h9l-.7 9.1A1.5 1.5 0 0 1 12.3 17H7.7a1.5 1.5 0 0 1-1.5-1.4L5.5 6.5Z"/></svg>
+                      </button>
                     </form>
                   @endif
                 </div>

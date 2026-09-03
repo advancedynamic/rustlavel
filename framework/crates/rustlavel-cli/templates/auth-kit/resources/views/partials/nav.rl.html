@@ -45,6 +45,20 @@
       </a>
     @endif
 
+    @if(can_view_menus)
+      <a href="/admin/menus" class="nav-link @if(nav == "menus") nav-link-active @endif">
+        <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M3 5.25A.75.75 0 0 1 3.75 4.5h12.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 5.25Zm0 4.75a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 10Zm0 4.75a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H3.75a.75.75 0 0 1-.75-.75Z"/></svg>
+        Menus
+      </a>
+    @endif
+
+    @if(can_view_audit)
+      <a href="/admin/audit" class="nav-link @if(nav == "audit") nav-link-active @endif">
+        <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4.5 3.5A1.5 1.5 0 0 1 6 2h4.6L15.5 6.9V16.5A1.5 1.5 0 0 1 14 18H6a1.5 1.5 0 0 1-1.5-1.5v-13Zm2.75 6a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5h-5.5Zm0 3a.75.75 0 0 0 0 1.5h3.5a.75.75 0 0 0 0-1.5h-3.5Z" clip-rule="evenodd"/></svg>
+        Audit Logs
+      </a>
+    @endif
+
     <p class="mt-5 px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Account</p>
     <a href="/profile" class="nav-link @if(nav == "profile") nav-link-active @endif">
       <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 1 1 14 0H3Z"/></svg>

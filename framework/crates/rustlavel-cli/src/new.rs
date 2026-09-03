@@ -16,6 +16,7 @@ const PACKAGES: &[(&str, &[&str])] = &[
     // Not a crate of its own: `auth-kit` writes a working sign-in, roles and
     // an administration area into the project, and turns on the packages that
     // code needs.
+    ("audit", &["database/migrations"]),
     ("auth", &["storage/sessions"]),
     ("auth-kit", &["storage/sessions", "resources/views", "public/css", "public/js"]),
     ("cache", &["storage/cache"]),
@@ -83,7 +84,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
     // from the list passed to Cargo.
     let auth_kit = packages.iter().any(|p| p == "auth-kit");
     if auth_kit {
-        for required in ["auth", "db", "view", "validation", "rbac", "webauthn", "cache", "mail"] {
+        for required in
+            ["audit", "auth", "db", "view", "validation", "rbac", "webauthn", "cache", "mail"]
+        {
             packages.push(required.to_string());
         }
         packages.retain(|p| p != "auth-kit");

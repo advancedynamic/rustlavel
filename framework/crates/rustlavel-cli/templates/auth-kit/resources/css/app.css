@@ -250,7 +250,7 @@
 
 /* The tinted square behind a statistic's icon. */
 @utility stat-tint {
-  @apply flex h-10 w-10 items-center justify-center rounded-lg;
+  @apply flex h-9 w-9 items-center justify-center rounded-lg;
 }
 
 @utility nav-link {
@@ -262,4 +262,66 @@
 
 @utility nav-link-active {
   @apply bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-400;
+}
+
+/* A person's initial in a small circle, for a table that lists who did what. */
+@utility avatar-sm {
+  @apply inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full
+         bg-brand-600 text-[10px] font-semibold text-white;
+}
+
+/* One number in a pager. */
+@utility page-link {
+  @apply inline-flex h-8 min-w-8 items-center justify-center rounded-lg px-2 text-sm
+         font-medium text-ink-600 transition
+         hover:bg-ink-100 hover:text-ink-900
+         dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100;
+}
+
+@utility page-link-current {
+  @apply bg-brand-600 text-white hover:bg-brand-600 hover:text-white
+         dark:bg-brand-600 dark:text-white dark:hover:bg-brand-600;
+}
+
+/* The destructive twin of `btn-primary`, for Export PDF and the like. */
+@utility btn-danger {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2
+         text-sm font-medium text-white shadow-xs transition
+         hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2
+         disabled:cursor-not-allowed disabled:opacity-60
+         dark:focus:ring-offset-ink-900;
+}
+
+/* A menu location, as a pill in the filter row. */
+@utility tab-pill {
+  @apply inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-medium
+         text-ink-600 transition hover:bg-ink-100 hover:text-ink-900
+         dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100;
+}
+
+@utility tab-pill-current {
+  @apply bg-brand-600 text-white hover:bg-brand-600 hover:text-white
+         dark:bg-brand-600 dark:text-white dark:hover:bg-brand-600;
+}
+
+/* The grip a menu row is dragged by. A handle rather than the whole row: the
+ * row holds links and buttons, and making all of it draggable takes the text
+ * selection and the click targets with it. */
+@utility menu-handle {
+  @apply inline-flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded-md
+         text-ink-400 transition hover:bg-ink-100 hover:text-ink-600
+         focus:outline-none focus:ring-2 focus:ring-brand-500
+         dark:hover:bg-ink-800 dark:hover:text-ink-300;
+}
+
+/* One icon in the picker. The radio inside is visually hidden, so the label
+ * carries the selected state through `:has`. */
+@utility icon-choice {
+  @apply inline-flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg
+         border border-ink-200 py-2.5 text-ink-500 transition
+         hover:border-ink-300 hover:text-ink-700
+         has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50 has-[:checked]:text-brand-600
+         has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-500
+         dark:border-ink-800 dark:text-ink-400 dark:hover:border-ink-700
+         dark:has-[:checked]:bg-brand-500/10 dark:has-[:checked]:text-brand-400;
 }

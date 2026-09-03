@@ -4,6 +4,7 @@ use rustlavel::prelude::*;
 use rustlavel::rbac::Permissions;
 
 use crate::models::user::User;
+use crate::support::stats;
 use crate::support::{page, tokens};
 
 const PER_PAGE: i64 = 20;
@@ -161,12 +162,12 @@ impl UsersController {
         }
 
         Ok(vec![
-            stat("Total Users", total, "bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400", ICON_USERS),
-            stat("Verified Users", verified, "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400", ICON_CHECK),
-            stat("Active Today", active_today, "bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400", ICON_BOLT),
-            stat("Users with Roles", with_roles, "bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400", ICON_GROUP),
-            stat("Direct Permissions", with_direct, "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400", ICON_KEY),
-            stat("Recent Users (7 days)", recent, "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400", ICON_CLOCK),
+            stats::card("Total Users", total, stats::BRAND, stats::ICON_USERS),
+            stats::card("Verified Users", verified, stats::GOOD, stats::ICON_CHECK),
+            stats::card("Active Today", active_today, stats::BUSY, stats::ICON_BOLT),
+            stats::card("Users with Roles", with_roles, stats::PEOPLE, stats::ICON_GROUP),
+            stats::card("Direct Perms", with_direct, stats::KEYED, stats::ICON_KEY),
+            stats::card("New This Week", recent, stats::TIMED, stats::ICON_CLOCK),
         ])
     }
 
@@ -221,6 +222,13 @@ impl UsersController {
         )
         .await?;
 
+        if let Some(audit) = crate::support::audit::of(&req, "users.created") {
+            audit
+                .on("User", user.id)
+                .describe(format!("Invited {} ({})", user.name, user.email))
+                .record()
+                .await;
+        }
         page::flash(&req, "success", format!("{} has been invited.", user.name));
         Ok(Response::see_other("/admin/users"))
     }
@@ -285,6 +293,13 @@ impl UsersController {
             }
         }
 
+        if let Some(audit) = crate::support::audit::of(&req, "users.updated") {
+            audit
+                .on("User", user.id)
+                .describe(format!("Updated the account {}", user.name))
+                .record()
+                .await;
+        }
         page::flash(&req, "success", format!("{} has been updated.", user.name));
         Ok(Response::see_other("/admin/users"))
     }
@@ -307,6 +322,17 @@ impl UsersController {
         store.purge_user(user.id).await?;
         user.delete(&db).await?;
 
+        // The email is kept on the entry. It is the only thing left that
+        // identifies which account this was once the row is gone, and "who
+        // deleted that account" is the question an audit trail exists for.
+        if let Some(audit) = crate::support::audit::of(&req, "users.deleted") {
+            audit
+                .on("User", user.id)
+                .describe(format!("Deleted the account {}", user.name))
+                .with("email", Json::from(user.email.as_str()))
+                .record()
+                .await;
+        }
         page::flash(&req, "warning", format!("{} has been deleted.", user.name));
         Ok(Response::see_other("/admin/users"))
     }
@@ -397,21 +423,6 @@ impl UsersController {
     }
 }
 
-fn stat(label: &str, value: i64, tint: &str, icon: &str) -> Json {
-    Json::object([
-        ("label", Json::from(label)),
-        ("value", Json::from(value)),
-        ("tint", Json::from(tint)),
-        ("icon", Json::from(icon)),
-    ])
-}
-
-const ICON_USERS: &str = r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M7 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm6 1a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM1.6 15.5A5.6 5.6 0 0 1 7 10.5a5.6 5.6 0 0 1 5.4 5H1.6Zm12.05 0a6.9 6.9 0 0 0-1.6-3.86A4.2 4.2 0 0 1 18.4 15.5h-4.75Z"/></svg>"#;
-const ICON_CHECK: &str = r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.86-9.72a.75.75 0 0 0-1.22-.86l-3.24 4.53-1.62-1.62a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.1l3.75-5.25Z" clip-rule="evenodd"/></svg>"#;
-const ICON_BOLT: &str = r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M11.3 1.05a.75.75 0 0 1 .7.98L10.4 7.5h3.85a.75.75 0 0 1 .58 1.22l-6.5 8a.75.75 0 0 1-1.32-.68L8.6 11.5H4.75a.75.75 0 0 1-.58-1.22l6.5-8a.75.75 0 0 1 .63-.23Z"/></svg>"#;
-const ICON_GROUP: &str = r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-6.5 9.5a6.5 6.5 0 0 1 13 0H3.5Z"/></svg>"#;
-const ICON_KEY: &str = r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M13 2a5 5 0 0 0-4.9 6L2 14.1V18h3.9l1.3-1.3v-1.6h1.6l1.3-1.3v-1.6h1.6l.4-.4A5 5 0 1 0 13 2Zm1.5 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"/></svg>"#;
-const ICON_CLOCK: &str = r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-11.5a.75.75 0 0 0-1.5 0v4c0 .28.16.54.41.67l2.5 1.25a.75.75 0 1 0 .68-1.34l-2.09-1.04V6.5Z" clip-rule="evenodd"/></svg>"#;
 
 /// The RBAC store, or a clear failure. Never a silent `false`.
 ///

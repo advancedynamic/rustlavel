@@ -17,6 +17,92 @@
 @section("tab")
 <div class="space-y-6">
 
+  {{-- ---- Brand colour ------------------------------------------------ --}}
+  {{-- One field, and it is the one that matters. Everything else on this tab
+       dresses a single surface; this repaints the application. The eleven
+       shades the pages are actually drawn from are derived from it — see
+       `support::palette` for why the lightness ladder is not up for grabs. --}}
+  <div class="card" data-colour-group data-keys="theme.brand">
+    <div class="card-header">
+      <h3 class="font-semibold">Brand Color</h3>
+      <p class="mt-0.5 text-sm text-ink-500 dark:text-ink-400">
+        The accent used across every page: buttons, links, focus rings, the active item in the sidebar.
+      </p>
+    </div>
+
+    <form method="post" action="/admin/settings/appearance/brand" class="card-body space-y-6">
+      {!! csrf_field !!}
+
+      <div class="grid gap-6 sm:grid-cols-2">
+        <div>
+          <label for="theme_brand" class="field-label">Brand Color</label>
+          <div class="flex items-center gap-2" data-colour-field="theme.brand">
+            <input type="color" value="{{ s.theme_brand.value }}" data-colour-picker
+                   aria-label="Brand color picker"
+                   class="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-ink-300 bg-white p-1 dark:border-ink-700 dark:bg-ink-800">
+            <input id="theme_brand" name="theme.brand" type="text"
+                   value="{{ s.theme_brand.value }}" data-colour-text
+                   spellcheck="false" autocomplete="off" maxlength="7" pattern="#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}"
+                   class="field-input font-mono">
+          </div>
+          <p class="field-hint">
+            Pick the darker, saturated shade you would put white text on. The lighter tints and the
+            hover states are worked out from it.
+          </p>
+        </div>
+
+        <div>
+          <p class="field-label">Preview</p>
+          <div class="flex flex-wrap items-center gap-2 rounded-lg border border-ink-200 p-3 dark:border-ink-800"
+               data-brand-preview="theme.brand">
+            <span class="inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-medium text-white" data-brand-fill>Button</span>
+            <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium" data-brand-tint>Badge</span>
+            <span class="text-sm font-medium" data-brand-text>A link</span>
+          </div>
+          <p class="field-hint">Saving reloads the page, and the whole application is drawn in it.</p>
+        </div>
+      </div>
+
+      <div>
+        <p class="field-label">Quick Presets</p>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#2563eb">
+            <span data-swatch="#2563eb" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Blue (Default)
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#6d28d9">
+            <span data-swatch="#6d28d9" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Violet
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#047857">
+            <span data-swatch="#047857" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Emerald
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#b45309">
+            <span data-swatch="#b45309" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Amber
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#be123c">
+            <span data-swatch="#be123c" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Rose
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#0f766e">
+            <span data-swatch="#0f766e" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Teal
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#334155">
+            <span data-swatch="#334155" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Slate
+          </button>
+        </div>
+      </div>
+
+      <div class="flex justify-end border-t border-ink-200 pt-4 dark:border-ink-800">
+        <button type="submit" class="btn-primary">Save Brand Color</button>
+      </div>
+    </form>
+  </div>
+
   {{-- ---- Login panel ------------------------------------------------- --}}
   <div class="card" data-colour-group
        data-keys="theme.login.light.from,theme.login.light.to,theme.login.dark.from,theme.login.dark.to">

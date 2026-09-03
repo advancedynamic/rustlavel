@@ -1,9 +1,13 @@
+pub mod audit;
 pub mod backup;
 pub mod idle;
 pub mod lockout;
 pub mod mail;
 pub mod page;
+pub mod palette;
 pub mod passkeys;
 pub mod passwords;
+pub mod pdf;
 pub mod settings;
+pub mod stats;
 pub mod tokens;

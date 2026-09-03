@@ -21,12 +21,19 @@ impl ThemeController {
     /// `GET /css/theme.css`
     pub async fn stylesheet(req: Request) -> Result<Response> {
         let Some(settings) = req.state::<Settings>() else {
-            return Ok(Response::ok().with_header("content-type", "text/css").with_text(""));
+            return Ok(css_response(String::new()));
         };
 
         let mut css = String::from(
             "/* Generated from Settings → Appearance. Edit it there, not here. */\n:root {\n",
         );
+
+        // The brand ramp first, because it is the part that reaches every page
+        // rather than one surface. Tailwind emits its utilities as
+        // `var(--color-brand-600)`, so redefining the variables here is enough
+        // to repaint every button, link, ring and badge in the application —
+        // no rebuild, and nothing in the markup has to know.
+        css.push_str(&crate::support::palette::brand_ramp(&settings.get("theme.brand").await));
 
         for (variable, key) in [
             ("--login-from", "theme.login.light.from"),
@@ -64,13 +71,25 @@ impl ThemeController {
              :root.dark {{\n{dark}}}\n"
         ));
 
-        Ok(Response::ok()
-            .with_header("content-type", "text/css; charset=utf-8")
-            // Short, because it changes when somebody clicks Save and they will
-            // reload immediately to look at it.
-            .with_header("cache-control", "public, max-age=60")
-            .with_text(css))
+        Ok(css_response(css))
     }
+}
+
+/// A stylesheet response, with a content type a browser will honour.
+///
+/// **The order matters and it is not obvious.** `Response::with_text` sets
+/// `content-type: text/plain` itself, so putting it after `.with_header(...)`
+/// silently replaces the type — and a browser in standards mode refuses to
+/// apply a stylesheet served as plain text, with no error anywhere except a
+/// console warning nobody was looking at. That is how every colour on the
+/// Appearance tab came to do nothing at all.
+fn css_response(css: String) -> Response {
+    Response::ok()
+        .with_body(css.into_bytes())
+        .with_header("content-type", "text/css; charset=utf-8")
+        // Short, because it changes when somebody clicks Save and they will
+        // reload immediately to look at it.
+        .with_header("cache-control", "public, max-age=60")
 }
 
 /// A stored colour, or a safe one.
@@ -92,6 +111,19 @@ pub fn colour(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// A browser refuses a stylesheet served as `text/plain` and says so only
+    /// in a console warning. Nothing else in this application notices, which
+    /// is why the type is asserted rather than assumed.
+    #[test]
+    fn the_stylesheet_is_served_as_css_not_as_plain_text() {
+        let response = css_response("body{}".to_string());
+
+        assert_eq!(response.headers.get("content-type"), Some("text/css; charset=utf-8"));
+        assert_eq!(response.body_string(), "body{}");
+    }
+
     use super::colour;
 
     #[test]

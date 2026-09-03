@@ -1,0 +1,65 @@
+@extends("layouts.app")
+@section("title", "Audit entry")
+
+@section("content")
+  <div class="card mb-5">
+    <div class="card-body flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-semibold tracking-tight">Entry #{{ id }}</h2>
+        <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">{{ description }}</p>
+      </div>
+      <a href="/admin/audit" class="btn-ghost">Back to the trail</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <dl class="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        <div>
+          <dt class="field-label">When</dt>
+          <dd class="font-mono text-sm">{{ created_at }} <span class="text-ink-500">({{ ago }})</span></dd>
+        </div>
+        <div>
+          <dt class="field-label">Who</dt>
+          <dd class="text-sm">{{ user_name }}</dd>
+        </div>
+        <div>
+          <dt class="field-label">Event</dt>
+          <dd><span class="{{ event_tint }}">{{ event }}</span></dd>
+        </div>
+        <div>
+          <dt class="field-label">Subject</dt>
+          <dd class="text-sm">@if(subject){{ subject }}@else—@endif</dd>
+        </div>
+        <div>
+          <dt class="field-label">IP address</dt>
+          <dd><code class="text-sm">{{ ip_address }}</code></dd>
+        </div>
+        <div class="sm:col-span-2">
+          <dt class="field-label">User agent</dt>
+          <dd class="break-all text-xs text-ink-500 dark:text-ink-400">{{ user_agent }}</dd>
+        </div>
+      </dl>
+
+      @if(properties_empty)
+        <p class="mt-6 text-sm text-ink-500 dark:text-ink-400">No extra properties were recorded.</p>
+      @else
+        <div class="mt-6">
+          <p class="field-label">Properties</p>
+          <div class="table-wrap mt-1 rounded-lg border border-ink-200 dark:border-ink-800">
+            <table class="table">
+              <tbody>
+                @foreach(properties as property)
+                  <tr>
+                    <td class="w-48 font-mono text-xs">{{ property.key }}</td>
+                    <td class="text-sm">{{ property.value }}</td>
+                  </tr>
+                @endforeach
+              </tbody>
+            </table>
+          </div>
+        </div>
+      @endif
+    </div>
+  </div>
+@endsection

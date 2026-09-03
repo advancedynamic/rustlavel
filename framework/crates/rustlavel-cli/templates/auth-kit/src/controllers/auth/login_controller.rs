@@ -151,10 +151,38 @@ impl LoginController {
         Guard::new(req.session().clone()).login(user);
         lockout::record_success(db, user, req, now).await?;
         LoginAttempt::record(db, &user.email.clone(), Some(user.id), true, None, req).await?;
+
+        // Every way in lands here — the password form, an activation link, a
+        // reset, a magic link — so this is the one place a sign-in has to be
+        // recorded. `record` rather than `save`: losing an entry is bad,
+        // refusing to sign somebody in because the trail is unavailable is
+        // worse.
+        // The name goes into the session here, which is the one moment it is
+        // already loaded — every later entry reads it back for free.
+        crate::support::audit::remember(req, &user.name);
+
+        if let Some(audit) = crate::support::audit::of(req, "logged_in") {
+            let address = req.ip().unwrap_or_else(|| "an unknown address".into());
+            audit
+                .by(user.id, user.name.clone())
+                .on("User", user.id)
+                .describe(format!("{} logged in from {address}", user.name))
+                .record()
+                .await;
+        }
         Ok(())
     }
 
     pub async fn destroy(req: Request) -> Result<Response> {
+        // Recorded before the session is emptied: afterwards there is no
+        // identity left on the request to say who left.
+        if let Some(audit) = crate::support::audit::of(&req, "logged_out") {
+            let name = req
+                .try_session()
+                .and_then(|session| session.get_string(crate::support::audit::NAME_KEY))
+                .unwrap_or_else(|| "Somebody".into());
+            audit.describe(format!("{name} logged out")).record().await;
+        }
         Guard::new(req.session().clone()).logout();
         Ok(Response::see_other("/login"))
     }

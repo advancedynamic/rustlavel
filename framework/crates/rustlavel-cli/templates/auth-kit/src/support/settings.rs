@@ -156,6 +156,11 @@ pub const CATALOGUE: &[Setting] = &[
     s("app.locale.fallback", Kind::Text, "en"),
 
     // --- Appearance ----------------------------------------------------
+    // The one colour that reaches the whole application. Everything else on
+    // this tab dresses a single surface; this one is the brand, and
+    // `theme_controller` turns it into the eleven shades the pages are drawn
+    // from — see `support::palette`.
+    s("theme.brand", Kind::Colour, "#2563eb"),
     s("theme.login.light.from", Kind::Colour, "#3b82f6"),
     s("theme.login.light.to", Kind::Colour, "#2563eb"),
     s("theme.login.dark.from", Kind::Colour, "#1e3a5f"),

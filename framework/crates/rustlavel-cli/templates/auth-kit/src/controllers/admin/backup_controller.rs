@@ -140,6 +140,10 @@ impl BackupController {
             )
             .await?;
 
+        if let Some(audit) = crate::support::audit::of(&req, "backups.created") {
+            audit.on("Backup", id).describe(format!("Took the backup {name}")).record().await;
+        }
+
         let header = backup::Header {
             format: backup::FORMAT,
             schema,
@@ -286,6 +290,18 @@ impl BackupController {
         match backup::restore(&db, &names, &dump).await {
             Ok(done) => {
                 warn!("the database was restored from the backup {name} by user {:?}", req.identity().and_then(|id| id.id_as::<i64>()));
+                // The single most consequential thing anybody can do from this
+                // application: it replaces every account in it. If one entry
+                // in the trail matters, it is this one.
+                if let Some(audit) = crate::support::audit::of(&req, "backups.restored") {
+                    audit
+                        .on("Backup", name.as_str())
+                        .describe(format!("Restored the database from {name}"))
+                        .with("rows", Json::from(done.rows as i64))
+                        .with("tables", Json::from(done.tables as i64))
+                        .record()
+                        .await;
+                }
                 page::flash(
                     &req,
                     "success",
@@ -335,6 +351,9 @@ impl BackupController {
         // there forever.
         db.table("backups").filter("id", id).delete(&db).await?;
 
+        if let Some(audit) = crate::support::audit::of(&req, "backups.deleted") {
+            audit.on("Backup", name.as_str()).describe(format!("Deleted the backup {name}")).record().await;
+        }
         page::flash(&req, "warning", format!("Backup {name} has been deleted."));
         Ok(Response::see_other(BACK))
     }

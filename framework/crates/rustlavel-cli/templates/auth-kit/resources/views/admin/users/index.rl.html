@@ -48,19 +48,7 @@
        are there, how many have confirmed their address, who has been here
        today, how many hold a role at all, how many carry an exception, and how
        many arrived this week. --}}
-  <div class="mb-5 grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-    @foreach(stats as stat)
-      <div class="card">
-        <div class="card-body">
-          <span class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg {{ stat.tint }}">
-            {!! stat.icon !!}
-          </span>
-          <p class="text-3xl font-semibold tracking-tight tabular-nums">{{ stat.value }}</p>
-          <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">{{ stat.label }}</p>
-        </div>
-      </div>
-    @endforeach
-  </div>
+  @include("partials.stats")
 
   <div class="card">
     <div class="table-wrap">

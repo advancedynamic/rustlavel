@@ -1,0 +1,19 @@
+{{-- A row of counts, shared by every administration index.
+
+     One line per card — icon, number, label — rather than the stacked block
+     this started as. Six stacked cards took more vertical space than the table
+     they were describing, which is the wrong way round: these are a glance,
+     not the content. --}}
+<div class="mb-5 grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+  @foreach(stats as stat)
+    <div class="card">
+      <div class="flex items-center gap-3 px-3.5 py-3">
+        <span class="stat-tint shrink-0 {{ stat.tint }}">{!! stat.icon !!}</span>
+        <div class="min-w-0">
+          <p class="text-xl font-semibold leading-none tracking-tight tabular-nums">{{ stat.value }}</p>
+          <p class="mt-1 truncate text-xs text-ink-500 dark:text-ink-400" title="{{ stat.label }}">{{ stat.label }}</p>
+        </div>
+      </div>
+    </div>
+  @endforeach
+</div>

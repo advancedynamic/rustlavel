@@ -7,7 +7,9 @@
 use rustlavel::prelude::*;
 
 use crate::controllers::admin::appearance_controller::AppearanceController;
+use crate::controllers::admin::audit_controller::AuditController;
 use crate::controllers::admin::backup_controller::BackupController;
+use crate::controllers::admin::menu_controller::MenuController;
 use crate::controllers::admin::permissions_controller::PermissionsController;
 use crate::controllers::admin::settings_controller::AdminSettingsController;
 use crate::controllers::admin::roles_controller::RolesController;
@@ -132,6 +134,7 @@ pub fn routes(r: &mut Router) {
         // Appearance saves in three pieces because the page has three Save
         // buttons, and a person who changed only the sidebar should not have
         // their logo settings rewritten by the same click.
+        admin.post("/settings/appearance/brand", AppearanceController::save_brand).middleware(guard("settings.manage"));
         admin.post("/settings/appearance/login", AppearanceController::save_login).middleware(guard("settings.manage"));
         admin.post("/settings/appearance/sidebar", AppearanceController::save_sidebar).middleware(guard("settings.manage"));
         admin.post("/settings/appearance/logos", AppearanceController::save_logos).middleware(guard("settings.manage"));
@@ -147,6 +150,28 @@ pub fn routes(r: &mut Router) {
 
         // Registered last, so the specific paths above win over `{tab}`.
         admin.post("/settings/{tab}", AdminSettingsController::save).middleware(guard("settings.manage"));
+
+        // Menus. The order matters: `/menus/item/...` is registered before
+        // `/menus/{location}`, or the literal `item` would be read as a
+        // location and every edit link would 404.
+        admin.get("/menus", MenuController::index).name("admin.menus").middleware(guard("menus.view"));
+        admin.get("/menus/item/{id}/edit", MenuController::edit).middleware(guard("menus.manage"));
+        admin.post("/menus/item/{id}", MenuController::update).middleware(guard("menus.manage"));
+        admin.post("/menus/item/{id}/toggle", MenuController::toggle).middleware(guard("menus.manage"));
+        admin.post("/menus/item/{id}/delete", MenuController::destroy).middleware(guard("menus.manage"));
+        admin.get("/menus/{location}", MenuController::index).middleware(guard("menus.view"));
+        admin.get("/menus/{location}/create", MenuController::create).middleware(guard("menus.manage"));
+        admin.post("/menus/{location}", MenuController::store).middleware(guard("menus.manage"));
+        admin.post("/menus/{location}/reorder", MenuController::reorder).middleware(guard("menus.manage"));
+        admin.post("/menus/{location}/clear-cache", MenuController::clear_cache).middleware(guard("menus.manage"));
+
+        // The audit trail. Read-only on purpose: an audit log with a delete
+        // button is an audit log anybody who matters can edit. Pruning it is a
+        // scheduled job's decision, not a screen's.
+        admin.get("/audit", AuditController::index).name("admin.audit").middleware(guard("audit.view"));
+        admin.get("/audit/export.csv", AuditController::export_csv).middleware(guard("audit.view"));
+        admin.get("/audit/export.pdf", AuditController::export_pdf).middleware(guard("audit.view"));
+        admin.get("/audit/{id}", AuditController::show).middleware(guard("audit.view"));
 
         admin
             .get("/permissions", PermissionsController::index)

@@ -3,7 +3,7 @@
 use rustlavel::prelude::*;
 use rustlavel::validation::Errors;
 
-use crate::support::page;
+use crate::support::{page, stats};
 
 use super::users_controller::{rbac, with_current_user};
 
@@ -16,6 +16,9 @@ impl RolesController {
         let supers = store.super_role_names();
 
         let mut rows = Vec::new();
+        let mut held = 0i64;
+        let mut unused = 0i64;
+        let mut widest = 0i64;
         for role in store.roles().await? {
             let permissions = store.role_permissions(&role.name).await?;
             let is_super = supers.iter().any(|s| *s == role.name);
@@ -35,12 +38,34 @@ impl RolesController {
                 // reach, is a way to lock an application's owner out of it.
                 ("deletable", Json::from(!is_super)),
             ]));
+
+            let users = store.users_in_role(&role.name).await?;
+            held += users;
+            if users == 0 {
+                unused += 1;
+            }
+            widest = widest.max(permissions.len() as i64);
         }
+
+        // Counts an administrator of roles actually asks for. "Unused" is the
+        // one worth having: a role nobody holds is either a mistake or
+        // something that was meant to be cleaned up, and neither is visible
+        // from the table alone.
+        let total = rows.len() as i64;
+        let cards = Json::Array(vec![
+            stats::card("Total Roles", total, stats::BRAND, stats::ICON_SHIELD),
+            stats::card("Super Roles", supers.len() as i64, stats::TIMED, stats::ICON_KEY),
+            stats::card("Unused Roles", unused, stats::QUIET, stats::ICON_FOLDER),
+            stats::card("Assignments", held, stats::PEOPLE, stats::ICON_GROUP),
+            stats::card("Largest Role", widest, stats::KEYED, stats::ICON_LAYERS),
+            stats::card("Permissions", store.permissions().await?.len() as i64, stats::GOOD, stats::ICON_LOCK),
+        ]);
 
         let mut context = page::shell(&req, "roles").await;
         context = with_current_user(context, &req, &db).await?;
         context = context
             .with("roles", Json::Array(rows))
+            .with("stats", cards)
             .with("can_create", Json::from(req.can("roles.create").await?))
             .with("can_update", Json::from(req.can("roles.update").await?))
             .with("can_delete", Json::from(req.can("roles.delete").await?));
@@ -80,6 +105,9 @@ impl RolesController {
         let refs: Vec<&str> = permissions.iter().map(String::as_str).collect();
         store.set_role_permissions(&name, &refs).await?;
 
+        if let Some(audit) = crate::support::audit::of(&req, "roles.created") {
+            audit.on("Role", name.as_str()).describe(format!("Created the {name} role")).record().await;
+        }
         page::flash(&req, "success", format!("The {name} role has been created."));
         Ok(Response::see_other("/admin/roles"))
     }
@@ -123,6 +151,9 @@ impl RolesController {
         let refs: Vec<&str> = permissions.iter().map(String::as_str).collect();
         store.set_role_permissions(&name, &refs).await?;
 
+        if let Some(audit) = crate::support::audit::of(&req, "roles.updated") {
+            audit.on("Role", name.as_str()).describe(format!("Changed what the {name} role grants")).record().await;
+        }
         page::flash(&req, "success", format!("The {name} role has been updated."));
         Ok(Response::see_other("/admin/roles"))
     }
@@ -140,6 +171,13 @@ impl RolesController {
         }
 
         store.delete_role(&role.name).await?;
+        if let Some(audit) = crate::support::audit::of(&req, "roles.deleted") {
+            audit
+                .on("Role", role.name.as_str())
+                .describe(format!("Deleted the {} role", role.name))
+                .record()
+                .await;
+        }
         page::flash(&req, "warning", format!("The {} role has been deleted.", role.name));
         Ok(Response::see_other("/admin/roles"))
     }

@@ -23,10 +23,15 @@ pub const FILES: &[(&str, &str)] = &[
     ("database/migrations/2026_09_02_000400_create_user_mfa_tables.rs", include_str!("../templates/auth-kit/database/migrations/2026_09_02_000400_create_user_mfa_tables.rs")),
     ("database/migrations/2026_09_03_000100_create_settings_table.rs", include_str!("../templates/auth-kit/database/migrations/2026_09_03_000100_create_settings_table.rs")),
     ("database/migrations/2026_09_03_000200_create_password_history_table.rs", include_str!("../templates/auth-kit/database/migrations/2026_09_03_000200_create_password_history_table.rs")),
+    ("database/migrations/2026_09_03_000300_create_menu_items_table.rs", include_str!("../templates/auth-kit/database/migrations/2026_09_03_000300_create_menu_items_table.rs")),
     ("public/css/app.css", include_str!("../templates/auth-kit/public/css/app.css")),
     ("public/js/app.js", include_str!("../templates/auth-kit/public/js/app.js")),
     ("public/js/appearance.js", include_str!("../templates/auth-kit/public/js/appearance.js")),
     ("resources/css/app.css", include_str!("../templates/auth-kit/resources/css/app.css")),
+    ("resources/views/admin/audit/index.rl.html", include_str!("../templates/auth-kit/resources/views/admin/audit/index.rl.html")),
+    ("resources/views/admin/audit/show.rl.html", include_str!("../templates/auth-kit/resources/views/admin/audit/show.rl.html")),
+    ("resources/views/admin/menus/form.rl.html", include_str!("../templates/auth-kit/resources/views/admin/menus/form.rl.html")),
+    ("resources/views/admin/menus/index.rl.html", include_str!("../templates/auth-kit/resources/views/admin/menus/index.rl.html")),
     ("resources/views/admin/permissions/form.rl.html", include_str!("../templates/auth-kit/resources/views/admin/permissions/form.rl.html")),
     ("resources/views/admin/permissions/index.rl.html", include_str!("../templates/auth-kit/resources/views/admin/permissions/index.rl.html")),
     ("resources/views/admin/roles/form.rl.html", include_str!("../templates/auth-kit/resources/views/admin/roles/form.rl.html")),
@@ -50,6 +55,7 @@ pub const FILES: &[(&str, &str)] = &[
     ("resources/views/partials/impersonation.rl.html", include_str!("../templates/auth-kit/resources/views/partials/impersonation.rl.html")),
     ("resources/views/partials/nav.rl.html", include_str!("../templates/auth-kit/resources/views/partials/nav.rl.html")),
     ("resources/views/partials/pagination.rl.html", include_str!("../templates/auth-kit/resources/views/partials/pagination.rl.html")),
+    ("resources/views/partials/stats.rl.html", include_str!("../templates/auth-kit/resources/views/partials/stats.rl.html")),
     ("resources/views/profile.rl.html", include_str!("../templates/auth-kit/resources/views/profile.rl.html")),
     ("resources/views/settings/index.rl.html", include_str!("../templates/auth-kit/resources/views/settings/index.rl.html")),
     ("resources/views/settings/security.rl.html", include_str!("../templates/auth-kit/resources/views/settings/security.rl.html")),
@@ -60,7 +66,9 @@ pub const FILES: &[(&str, &str)] = &[
     ("resources/views/settings/tabs/language.rl.html", include_str!("../templates/auth-kit/resources/views/settings/tabs/language.rl.html")),
     ("resources/views/settings/tabs/security.rl.html", include_str!("../templates/auth-kit/resources/views/settings/tabs/security.rl.html")),
     ("src/controllers/admin/appearance_controller.rs", include_str!("../templates/auth-kit/src/controllers/admin/appearance_controller.rs")),
+    ("src/controllers/admin/audit_controller.rs", include_str!("../templates/auth-kit/src/controllers/admin/audit_controller.rs")),
     ("src/controllers/admin/backup_controller.rs", include_str!("../templates/auth-kit/src/controllers/admin/backup_controller.rs")),
+    ("src/controllers/admin/menu_controller.rs", include_str!("../templates/auth-kit/src/controllers/admin/menu_controller.rs")),
     ("src/controllers/admin/mod.rs", include_str!("../templates/auth-kit/src/controllers/admin/mod.rs")),
     ("src/controllers/admin/permissions_controller.rs", include_str!("../templates/auth-kit/src/controllers/admin/permissions_controller.rs")),
     ("src/controllers/admin/roles_controller.rs", include_str!("../templates/auth-kit/src/controllers/admin/roles_controller.rs")),
@@ -78,6 +86,7 @@ pub const FILES: &[(&str, &str)] = &[
     ("src/controllers/settings_controller.rs", include_str!("../templates/auth-kit/src/controllers/settings_controller.rs")),
     ("src/controllers/theme_controller.rs", include_str!("../templates/auth-kit/src/controllers/theme_controller.rs")),
     ("src/models/login_attempt.rs", include_str!("../templates/auth-kit/src/models/login_attempt.rs")),
+    ("src/models/menu_item.rs", include_str!("../templates/auth-kit/src/models/menu_item.rs")),
     ("src/models/mod.rs", include_str!("../templates/auth-kit/src/models/mod.rs")),
     ("src/models/password_history.rs", include_str!("../templates/auth-kit/src/models/password_history.rs")),
     ("src/models/user.rs", include_str!("../templates/auth-kit/src/models/user.rs")),
@@ -85,14 +94,19 @@ pub const FILES: &[(&str, &str)] = &[
     ("src/routes/auth.rs", include_str!("../templates/auth-kit/src/routes/auth.rs")),
     ("src/routes/mod.rs", include_str!("../templates/auth-kit/src/routes/mod.rs")),
     ("src/routes/web.rs", include_str!("../templates/auth-kit/src/routes/web.rs")),
+    ("src/support/audit.rs", include_str!("../templates/auth-kit/src/support/audit.rs")),
     ("src/support/backup.rs", include_str!("../templates/auth-kit/src/support/backup.rs")),
     ("src/support/idle.rs", include_str!("../templates/auth-kit/src/support/idle.rs")),
     ("src/support/lockout.rs", include_str!("../templates/auth-kit/src/support/lockout.rs")),
+    ("src/support/mail.rs", include_str!("../templates/auth-kit/src/support/mail.rs")),
     ("src/support/mod.rs", include_str!("../templates/auth-kit/src/support/mod.rs")),
     ("src/support/page.rs", include_str!("../templates/auth-kit/src/support/page.rs")),
+    ("src/support/palette.rs", include_str!("../templates/auth-kit/src/support/palette.rs")),
     ("src/support/passkeys.rs", include_str!("../templates/auth-kit/src/support/passkeys.rs")),
     ("src/support/passwords.rs", include_str!("../templates/auth-kit/src/support/passwords.rs")),
+    ("src/support/pdf.rs", include_str!("../templates/auth-kit/src/support/pdf.rs")),
     ("src/support/settings.rs", include_str!("../templates/auth-kit/src/support/settings.rs")),
+    ("src/support/stats.rs", include_str!("../templates/auth-kit/src/support/stats.rs")),
     ("src/support/tokens.rs", include_str!("../templates/auth-kit/src/support/tokens.rs")),
     ("tests/web.rs", include_str!("../templates/auth-kit/tests/web.rs")),
 ];
@@ -168,6 +182,9 @@ async fn main() -> Result<()> {
     let cache = CacheStore::from_config(app.config())?;
     let mailer = rustlavel::mail::Mail::from_config(app.config())?;
     let rbac = Rbac::from_config(db.clone(), app.config())?;
+    // The audit trail: who did what, to which record, from where. Registered
+    // as a plugin so `req.audit(...)` can find it from any handler.
+    let audit = rustlavel::audit::Audit::new(db.clone());
     // What the Settings page writes and everything else reads. Shares one cache
     // across the process, invalidated whenever a setting is saved.
     let settings = Settings::from_config(db.clone(), app.config())?;
@@ -188,6 +205,7 @@ async fn main() -> Result<()> {
         // Roles and permissions. `req.can(...)` and the `Can` guard both
         // resolve the store from here, and fail closed if it is missing.
         .plugin(rbac)
+        .plugin(audit)
         // Order matters: the session has to exist before anything reads a
         // login out of it, and the CSRF check reads the session.
         .middleware(sessions)
@@ -220,6 +238,8 @@ mod create_user_mfa_tables;
 mod create_settings_table;
 #[path = "2026_09_03_000200_create_password_history_table.rs"]
 mod create_password_history_table;
+#[path = "2026_09_03_000300_create_menu_items_table.rs"]
+mod create_menu_items_table;
 
 use rustlavel::db::Migration;
 
@@ -236,8 +256,10 @@ pub fn all() -> Vec<&'static dyn Migration> {
         &create_user_mfa_tables::CreateUserMfaTables,
         &create_settings_table::CreateSettingsTable,
         &create_password_history_table::CreatePasswordHistoryTable,
+        &create_menu_items_table::CreateMenuItemsTable,
     ];
     migrations.extend(rustlavel::rbac::migrations());
+    migrations.extend(rustlavel::audit::migrations());
     migrations
 }
 "#;
@@ -277,6 +299,12 @@ const PERMISSIONS: &[(&str, &str)] = &[
     ("backups.create", "Take a backup"),
     ("backups.restore", "Restore the database from a backup"),
     ("backups.delete", "Delete a backup"),
+    ("menus.view", "See the navigation menus"),
+    ("menus.manage", "Add, edit and reorder navigation items"),
+    // No `audit.delete`. An audit log with a delete button is an audit log
+    // that whoever matters can edit, which is not an audit log. Pruning it is
+    // a scheduled job's decision, not a screen's.
+    ("audit.view", "Read the audit trail"),
 ];
 
 impl Seeder for AuthKitSeeder {

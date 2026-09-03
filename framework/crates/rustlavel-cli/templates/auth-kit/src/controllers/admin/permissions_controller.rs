@@ -2,7 +2,7 @@
 
 use rustlavel::prelude::*;
 
-use crate::support::page;
+use crate::support::{page, stats};
 
 use super::roles_controller::name_errors;
 use super::users_controller::{rbac, with_current_user};
@@ -40,10 +40,39 @@ impl PermissionsController {
             })
             .collect();
 
+        // Counts that answer what a permissions list is usually opened for.
+        // "Orphaned" is the one that earns its place: a permission no role
+        // holds does nothing, and there is no way to see that from a table
+        // sorted by name.
+        let total = rows.len() as i64;
+        let orphaned = rows
+            .iter()
+            .filter(|row| row.get("roles_empty").and_then(Json::as_bool).unwrap_or(false))
+            .count() as i64;
+        let areas: std::collections::BTreeSet<String> = store
+            .permissions()
+            .await?
+            .iter()
+            .map(|p| p.name.split('.').next().unwrap_or_default().to_string())
+            .collect();
+        let described = rows
+            .iter()
+            .filter(|row| !row.get("description").is_none_or(Json::is_null))
+            .count() as i64;
+        let cards = Json::Array(vec![
+            stats::card("Permissions", total, stats::BRAND, stats::ICON_LOCK),
+            stats::card("In Use", total - orphaned, stats::GOOD, stats::ICON_CHECK),
+            stats::card("Orphaned", orphaned, stats::QUIET, stats::ICON_FOLDER),
+            stats::card("Areas", areas.len() as i64, stats::PEOPLE, stats::ICON_LAYERS),
+            stats::card("Roles", roles.len() as i64, stats::KEYED, stats::ICON_SHIELD),
+            stats::card("Described", described, stats::TIMED, stats::ICON_DOCUMENT),
+        ]);
+
         let mut context = page::shell(&req, "permissions").await;
         context = with_current_user(context, &req, &db).await?;
         context = context
             .with("permissions", Json::Array(rows))
+            .with("stats", cards)
             .with("can_create", Json::from(req.can("permissions.create").await?))
             .with("can_update", Json::from(req.can("permissions.update").await?))
             .with("can_delete", Json::from(req.can("permissions.delete").await?));
@@ -83,6 +112,9 @@ impl PermissionsController {
             );
         }
 
+        if let Some(audit) = crate::support::audit::of(&req, "permissions.created") {
+            audit.on("Permission", name.as_str()).describe(format!("Created the permission {name}")).record().await;
+        }
         page::flash(&req, "success", format!("{name} has been created."));
         Ok(Response::see_other("/admin/permissions"))
     }

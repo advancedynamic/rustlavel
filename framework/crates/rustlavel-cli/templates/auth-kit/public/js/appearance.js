@@ -83,6 +83,37 @@
         row.style.setProperty("color", valueOf(activeText));
       });
     });
+
+    /* The brand swatch. The server derives eleven shades from this colour and
+     * the preview shows three of them, so mixing towards white here is a
+     * stand-in rather than the real ramp — close enough to answer "is that the
+     * blue I meant", which is the only question a preview is for. */
+    document.querySelectorAll("[data-brand-preview]").forEach((preview) => {
+      const brand = valueOf(preview.dataset.brandPreview);
+
+      preview.querySelectorAll("[data-brand-fill]").forEach((el) => {
+        el.style.setProperty("background-color", brand);
+      });
+      preview.querySelectorAll("[data-brand-tint]").forEach((el) => {
+        el.style.setProperty("background-color", mix(brand, "#ffffff", 0.88));
+        el.style.setProperty("color", brand);
+      });
+      preview.querySelectorAll("[data-brand-text]").forEach((el) => {
+        el.style.setProperty("color", brand);
+      });
+    });
+  };
+
+  /* `amount` of white, the rest of `colour`. Enough for a tint swatch. */
+  const mix = (colour, towards, amount) => {
+    const channels = (value) => {
+      const full = expand(value);
+      return [1, 3, 5].map((i) => parseInt(full.slice(i, i + 2), 16));
+    };
+    const a = channels(colour);
+    const b = channels(towards);
+    const out = a.map((v, i) => Math.round(v + (b[i] - v) * amount));
+    return "#" + out.map((v) => v.toString(16).padStart(2, "0")).join("");
   };
 
   fields.forEach(({ text, picker }, key) => {
