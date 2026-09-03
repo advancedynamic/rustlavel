@@ -5,17 +5,18 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.5.1"
 edition = "2024"
-# The floor edition 2024 imposes: it stabilised in Rust 1.85.
+# Measured, not assumed. Edition 2024 puts the floor at 1.85, but the code uses
+# let-chains (`&& let`) in twenty-one places, and those stabilised in 1.88.
 #
-# Declared so cargo knows it rather than discovering it. A toolchain that is
-# too old already fails — `feature `edition2024` is required`, three "Caused
-# by" levels down — but that is a parse error at the end of a resolve; with
-# this, a consumer's cargo can say the crate needs 1.85 while it is still
-# choosing versions, and can pick an older compatible release instead.
+# The first version of this line said 1.85 — reasoned from the edition and from
+# a grep that looked for nested `if let` rather than for `&& let`, so it missed
+# every one of them. Installing the toolchain and building is what found it:
+# 1.87 refuses with ``let` expressions in this position are unstable`, 1.88
+# builds the whole workspace with every feature and every test target.
 #
-# Verified here: 1.75 is refused, 1.95 builds. 1.85 is the edition's own floor
-# rather than something measured — the toolchains between are not installed.
-rust-version = "1.85"
+# A declared floor that is too low is worse than none: cargo tells a consumer
+# on 1.86 that the crate is compatible, and rustc then refuses it.
+rust-version = "1.88"
 license = "MIT"
 authors = ["Advance Dynamic Software"]
 repository = "https://github.com/advancedynamic/rustlavel"
