@@ -40,7 +40,10 @@ pub use cors::Cors;
 pub use etag::ETag;
 pub use files::Files;
 pub use flash::Flash;
-pub use handler::Handler;
+// `BoxFuture` is the return type of `Middleware::handle`, so it has to be
+// nameable outside this crate — a middleware written in an application cannot
+// spell its own signature otherwise.
+pub use handler::{BoxFuture, Handler};
 pub use health::Health;
 pub use headers::Headers;
 pub use json_resource::{Attributes, JsonResource, ResourceResponse, attributes};

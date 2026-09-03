@@ -100,9 +100,9 @@ pub use rustlavel_macros::{main, test};
 
 pub use rustlavel_core::{Config, Context, Error, Event, Json, Result, config, env, events, json, log};
 pub use rustlavel_http::{
-    Cookie, Files, Handler, Headers, Method, Middleware, Next, Plugin, Request, Resource, Response,
-    Router, SameSite, Setup, Status, TestClient, TestResponse, cookie, error_page, middleware,
-    request, response, router, server, status, testing, url,
+    BoxFuture, Cookie, Files, Handler, Headers, Method, Middleware, Next, Plugin, Request, Resource,
+    Response, Router, SameSite, Setup, Status, TestClient, TestResponse, cookie, error_page,
+    middleware, request, response, router, server, status, testing, url,
 };
 
 /// Everything an application file usually needs.
@@ -110,9 +110,9 @@ pub mod prelude {
     pub use crate::App;
     pub use rustlavel_core::{Config, Context, Error, Json, Result};
     pub use rustlavel_http::{
-        BodyLimit, Compress, Cookie, Cors, ETag, Health, IntoResponse, JsonResource, Method,
-        Middleware, Next, Request, RequestId, ResourceResponse, Response, Router, Status, Timeout,
-        TrustProxies, VersionHeader, attributes,
+        BodyLimit, BoxFuture, Compress, Cookie, Cors, ETag, Health, IntoResponse, JsonResource,
+        Method, Middleware, Next, Request, RequestId, ResourceResponse, Response, Router, Status,
+        Timeout, TrustProxies, VersionHeader, attributes,
     };
     pub use rustlavel_core::{debug, error, info, warn};
 

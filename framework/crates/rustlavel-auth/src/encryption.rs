@@ -66,9 +66,14 @@ impl Encrypter {
     /// from the message, a counter, or the clock.
     pub fn encrypt_bytes(&self, plaintext: &[u8]) -> Result<String> {
         let nonce_bytes = random::bytes(NONCE_LENGTH);
+        let nonce: [u8; NONCE_LENGTH] =
+            nonce_bytes.as_slice().try_into().expect("random::bytes returned the length asked for");
         let cipher = self.cipher();
+        // `Nonce::from` on a fixed-size array rather than `from_slice`: the
+        // latter is deprecated in newer generic-array releases, and a caller
+        // who runs `cargo update` should not inherit a warning from here.
         let ciphertext = cipher
-            .encrypt(Nonce::from_slice(&nonce_bytes), plaintext)
+            .encrypt(&Nonce::from(nonce), plaintext)
             .map_err(|_| Error::msg("could not encrypt the payload"))?;
 
         let mut payload = Vec::with_capacity(1 + NONCE_LENGTH + ciphertext.len());
@@ -101,14 +106,15 @@ impl Encrypter {
         }
 
         let (nonce, ciphertext) = raw[1..].split_at(NONCE_LENGTH);
+        let nonce: [u8; NONCE_LENGTH] = nonce.try_into().map_err(|_| failed())?;
         self.cipher()
-            .decrypt(Nonce::from_slice(nonce), ciphertext)
+            .decrypt(&Nonce::from(nonce), ciphertext)
             .map_err(|_| failed())
     }
 
     fn cipher(&self) -> Aes256Gcm {
         let derived = self.key.derive("encryption");
-        Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&derived))
+        Aes256Gcm::new(&Key::<Aes256Gcm>::from(derived))
     }
 }
 

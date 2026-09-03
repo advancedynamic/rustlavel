@@ -12,11 +12,39 @@ pub struct Files {
     root: PathBuf,
     /// Served when the request maps to a directory.
     index: Option<String>,
+    /// What to send as `cache-control`.
+    cache_control: String,
 }
 
 impl Files {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Files { root: root.into(), index: Some("index.html".to_string()) }
+        Files {
+            root: root.into(),
+            index: Some("index.html".to_string()),
+            // `no-cache` does not mean "do not cache"; it means "cache, but ask
+            // before reusing". The browser still keeps the file and still gets
+            // a 304 from the `last-modified` below, so the saving is nearly all
+            // of it — and a rebuilt stylesheet is visible on the next reload
+            // rather than an hour later. Nothing here is fingerprinted, so a
+            // long `max-age` would be a promise the filename cannot keep; an
+            // application that does fingerprint its assets says so with
+            // [`Files::cache_control`].
+            cache_control: "no-cache".to_string(),
+        }
+    }
+
+    /// Sets the `cache-control` header sent with every file.
+    ///
+    /// Use it when the URLs carry a content hash, and the file at a given URL
+    /// therefore can never change:
+    ///
+    /// ```no_run
+    /// # use rustlavel_http::files::Files;
+    /// Files::new("public").cache_control("public, max-age=31536000, immutable");
+    /// ```
+    pub fn cache_control(mut self, value: impl Into<String>) -> Self {
+        self.cache_control = value.into();
+        self
     }
 
     pub fn without_index(mut self) -> Self {
@@ -43,6 +71,7 @@ impl Files {
 impl Handler for Files {
     fn call(&self, request: Request) -> BoxFuture<Response> {
         let resolved = self.resolve(request.path());
+        let cache_control = self.cache_control.clone();
         Box::pin(async move {
             let Some(path) = resolved else {
                 return Response::not_found();
@@ -51,7 +80,7 @@ impl Handler for Files {
                 Ok(bytes) => {
                     let mut response = Response::ok()
                         .with_header("content-type", content_type(&path))
-                        .with_header("cache-control", "public, max-age=3600");
+                        .with_header("cache-control", cache_control);
                     // The modification time is what lets a browser's
                     // `If-Modified-Since` be answered with a 304 by the ETag
                     // middleware, instead of the file being sent again.
@@ -129,6 +158,21 @@ mod tests {
         let response = files.call(Request::new(Method::Get, "/")).await;
 
         assert_eq!(response.body_string(), "<h1>home</h1>");
+    }
+
+    /// A stylesheet rebuilt by Tailwind keeps its name, so a long `max-age`
+    /// leaves the old one on screen until it expires. The default asks first.
+    #[tokio::test]
+    async fn revalidates_by_default_and_takes_an_override() {
+        let dir = fixture_dir("cache-control");
+
+        let response = Files::new(dir.clone()).call(Request::new(Method::Get, "/css/app.css")).await;
+        assert_eq!(response.headers.get("cache-control"), Some("no-cache"));
+        assert!(response.headers.get("last-modified").is_some(), "304s need a validator");
+
+        let hashed = Files::new(dir).cache_control("public, max-age=31536000, immutable");
+        let response = hashed.call(Request::new(Method::Get, "/css/app.css")).await;
+        assert_eq!(response.headers.get("cache-control"), Some("public, max-age=31536000, immutable"));
     }
 
     #[tokio::test]
