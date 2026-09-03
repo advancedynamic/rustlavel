@@ -7,6 +7,10 @@
 <meta name="color-scheme" content="light dark">
 <title>@yield("title", "Dashboard") &middot; {{ app_name }}</title>
 <link rel="stylesheet" href="/css/app.css">
+{{-- The colours chosen in Settings → Appearance, served as a stylesheet rather
+     than written into a <style> block, which this application's
+     Content-Security-Policy would refuse. --}}
+<link rel="stylesheet" href="/css/theme.css">
 </head>
 <body class="h-full bg-ink-50 font-sans text-ink-900 antialiased dark:bg-ink-950 dark:text-ink-100">
   @include("partials.impersonation")

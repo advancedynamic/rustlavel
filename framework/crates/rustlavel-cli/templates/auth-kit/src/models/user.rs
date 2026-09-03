@@ -20,6 +20,9 @@ pub struct User {
     pub last_login_ip: Option<String>,
     pub session_epoch: Option<String>,
     pub is_active: bool,
+    /// Filled by the database default, read for the "joined at" column. Kept
+    /// nullable so a row written before this column existed still hydrates.
+    pub created_at: Option<String>,
 }
 
 impl User {

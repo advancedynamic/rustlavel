@@ -21,6 +21,7 @@ pub struct UserToken {
 pub const ACTIVATION: &str = "activation";
 pub const PASSWORD_RESET: &str = "password_reset";
 pub const EMAIL_CHANGE: &str = "email_change";
+pub const MAGIC_LINK: &str = "magic_link";
 
 impl UserToken {
     /// An unused, unexpired token of this purpose.

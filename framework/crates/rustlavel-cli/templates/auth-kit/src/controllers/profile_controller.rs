@@ -81,13 +81,15 @@ impl ProfileController {
                     "{}/profile/email/{token}",
                     req.config().string("app.url", "http://localhost:8000")
                 );
-                if let Some(mailer) = req.state::<rustlavel::mail::Mailer>() {
-                    mailer
-                        .send(rustlavel::mail::Message::new().to(email.as_str()).subject("Confirm your new email address").text(format!(
+                if req.state::<rustlavel::mail::Mailer>().is_some() {
+                    crate::support::mail::send(
+                        &req,
+                        rustlavel::mail::Message::new().to(email.as_str()).subject("Confirm your new email address").text(format!(
                             "Use this link to confirm this address on your account:\n\n{url}\n\n\
                              Until you do, the old address keeps working. The link expires in an hour.\n"
-                        )))
-                        .await?;
+                        )),
+                    )
+                    .await?;
                 } else {
                     warn!("no mailer is configured; the email-change link is {url}");
                 }
@@ -141,10 +143,11 @@ impl ProfileController {
         let current = req.input("current_password").unwrap_or_default();
         let password = req.input("password").unwrap_or_default();
         let confirmation = req.input("password_confirmation").unwrap_or_default();
-        let minimum = crate::controllers::auth::register_controller::min_length(&req);
-
-        let mut errors =
-            crate::controllers::auth::register_controller::password_errors(&password, &confirmation, minimum);
+        // The same policy the activation form uses. Enforcing complexity when
+        // a password is first chosen and not when it is changed would let
+        // anybody opt out of it by changing their password once.
+        let policy = crate::controllers::auth::register_controller::Policy::current(&req).await;
+        let mut errors = policy.errors(&password, &confirmation);
 
         // The current password, every time. Without it a borrowed unlocked
         // laptop is a permanent account takeover, which is the whole reason
@@ -157,12 +160,23 @@ impl ProfileController {
             errors.add("current_password", "That is not your current password.");
         }
 
+        // Reuse is checked last, after the cheap rules have had their say: it
+        // costs one argon2 verification per remembered password.
+        let keep = crate::support::passwords::keep(&req).await;
+        if errors.is_empty()
+            && crate::support::passwords::was_used_before(&db, user.id, &password, keep).await?
+        {
+            errors.add("password", crate::support::passwords::reuse_message(keep));
+        }
+
         if !errors.is_empty() {
             let context = page::errors(Self::context(&req, &db, &user).await?, &errors);
             return req.view("profile", &context);
         }
 
-        user.password_hash = Some(rustlavel::auth::hash_password(&password)?);
+        let hash = rustlavel::auth::hash_password(&password)?;
+        crate::support::passwords::remember_previous(&db, user.id, user.password_hash.as_deref(), keep).await?;
+        user.password_hash = Some(hash);
         user.session_epoch = Some(rustlavel::auth::random::hex(16));
         user.update(&db).await?;
 

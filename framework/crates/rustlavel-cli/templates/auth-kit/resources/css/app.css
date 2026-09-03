@@ -23,6 +23,11 @@
 /* The password meter picks its colour and width classes at runtime, so they
  * appear only here and would otherwise be swept out as unused. */
 @source "../../public/js/app.js";
+/* And the controllers. A statistic's tint and an icon button's colour are
+ * chosen in Rust, because the choice belongs with the number it describes —
+ * which means those class names appear nowhere in a template and would
+ * otherwise be swept out as unused. */
+@source "../../src/**/*.rs";
 
 /* Dark mode is a class on <html>, not a media query, because the preference is
  * a cookie the server reads: it renders `class="dark"` on the first response.
@@ -118,6 +123,10 @@
          dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800;
 }
 
+@utility btn-success {
+  @apply btn bg-emerald-600 text-white shadow-xs hover:bg-emerald-700 focus:ring-emerald-500;
+}
+
 @utility btn-danger {
   @apply btn bg-red-600 text-white shadow-xs hover:bg-red-700 focus:ring-red-500;
 }
@@ -188,6 +197,60 @@
   & tbody tr:hover {
     @apply bg-ink-50 dark:bg-ink-800/50;
   }
+}
+
+/* A role chip. Brand-tinted rather than grey, because on the users table the
+ * roles are the column people scan for and grey makes them recede. */
+@utility badge-brand {
+  @apply badge bg-brand-50 text-brand-700 ring-brand-600/20
+         dark:bg-brand-500/10 dark:text-brand-400 dark:ring-brand-500/30;
+}
+
+/* One of the small round action buttons at the end of a table row.
+ *
+ * Icons rather than words because five spelled-out actions push the table wider
+ * than the screen. Each still carries a `title` and an `aria-label`, so the
+ * meaning is available to a hovering mouse and to a screen reader — an icon
+ * with neither is a puzzle, not a control. */
+@utility icon-action {
+  @apply inline-flex h-8 w-8 items-center justify-center rounded-full transition
+         focus:outline-none focus:ring-2 focus:ring-offset-1
+         focus:ring-offset-white dark:focus:ring-offset-ink-900;
+}
+
+@utility icon-action-neutral {
+  @apply icon-action bg-ink-100 text-ink-600 hover:bg-ink-200 focus:ring-ink-400
+         dark:bg-ink-800 dark:text-ink-300 dark:hover:bg-ink-700;
+}
+
+@utility icon-action-brand {
+  @apply icon-action bg-brand-50 text-brand-600 hover:bg-brand-100 focus:ring-brand-500
+         dark:bg-brand-500/10 dark:text-brand-400 dark:hover:bg-brand-500/20;
+}
+
+@utility icon-action-violet {
+  @apply icon-action bg-violet-50 text-violet-600 hover:bg-violet-100 focus:ring-violet-500
+         dark:bg-violet-500/10 dark:text-violet-400 dark:hover:bg-violet-500/20;
+}
+
+@utility icon-action-emerald {
+  @apply icon-action bg-emerald-50 text-emerald-600 hover:bg-emerald-100 focus:ring-emerald-500
+         dark:bg-emerald-500/10 dark:text-emerald-400 dark:hover:bg-emerald-500/20;
+}
+
+@utility icon-action-amber {
+  @apply icon-action bg-amber-50 text-amber-600 hover:bg-amber-100 focus:ring-amber-500
+         dark:bg-amber-500/10 dark:text-amber-400 dark:hover:bg-amber-500/20;
+}
+
+@utility icon-action-danger {
+  @apply icon-action bg-red-50 text-red-600 hover:bg-red-100 focus:ring-red-500
+         dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20;
+}
+
+/* The tinted square behind a statistic's icon. */
+@utility stat-tint {
+  @apply flex h-10 w-10 items-center justify-center rounded-lg;
 }
 
 @utility nav-link {

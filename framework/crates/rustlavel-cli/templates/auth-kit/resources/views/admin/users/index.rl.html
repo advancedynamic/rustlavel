@@ -2,23 +2,64 @@
 @section("title", "Users")
 
 @section("content")
-  <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-    <form method="get" action="/admin/users" class="flex flex-wrap items-center gap-2">
-      <label for="q" class="sr-only">Search users</label>
-      <input id="q" name="q" type="search" value="{{ q }}" placeholder="Search name or email"
-             class="field-input w-64">
-      <label for="role" class="sr-only">Filter by role</label>
-      <select id="role" name="role" class="field-input w-40">
-        <option value="">All roles</option>
-        @foreach(all_roles as role)
-          <option value="{{ role.name }}" @if(role.selected) selected @endif>{{ role.name }}</option>
-        @endforeach
-      </select>
-      <button type="submit" class="btn-secondary">Filter</button>
-    </form>
-    @if(can_create)
-      <a href="/admin/users/create" class="btn-primary">New user</a>
-    @endif
+  {{-- The page's own header, rather than relying on the one in the bar: this
+       page has a subtitle and a primary action, and both belong beside the
+       title they describe. --}}
+  <div class="card mb-5">
+    <div class="card-body flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-semibold tracking-tight">Users</h2>
+        <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">Manage user roles and permissions</p>
+      </div>
+      @if(can_create)
+        <a href="/admin/users/create" class="btn-primary">
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3a.75.75 0 0 1 .75.75v5.5h5.5a.75.75 0 0 1 0 1.5h-5.5v5.5a.75.75 0 0 1-1.5 0v-5.5h-5.5a.75.75 0 0 1 0-1.5h5.5v-5.5A.75.75 0 0 1 10 3Z"/></svg>
+          Create User
+        </a>
+      @endif
+    </div>
+  </div>
+
+  <div class="card mb-5">
+    <div class="card-body">
+      <form method="get" action="/admin/users" class="flex items-center gap-3">
+        <label for="q" class="sr-only">Search users by name, email or role</label>
+        <input id="q" name="q" type="search" value="{{ q }}"
+               placeholder="Search users by name, email or role..." class="field-input min-w-0 flex-1">
+        {{-- The role filter stays, but folded away: it was the only thing on
+             this row before and it crowded a search box that people reach for
+             first. --}}
+        <label for="role" class="sr-only">Filter by role</label>
+        <select id="role" name="role" class="field-input w-44 shrink-0">
+          <option value="">All roles</option>
+          @foreach(all_roles as role)
+            <option value="{{ role.name }}" @if(role.selected) selected @endif>{{ role.name }}</option>
+          @endforeach
+        </select>
+        <button type="submit" class="btn-primary shrink-0" aria-label="Search">
+          <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 3.383 9.836l3.14 3.141a.75.75 0 1 0 1.061-1.06l-3.14-3.141A5.5 5.5 0 0 0 9 3.5ZM5 9a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z" clip-rule="evenodd"/></svg>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  {{-- Six counts. Each is a real query rather than a placeholder, and each says
+       something a person administering this actually asks: how many accounts
+       are there, how many have confirmed their address, who has been here
+       today, how many hold a role at all, how many carry an exception, and how
+       many arrived this week. --}}
+  <div class="mb-5 grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+    @foreach(stats as stat)
+      <div class="card">
+        <div class="card-body">
+          <span class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg {{ stat.tint }}">
+            {!! stat.icon !!}
+          </span>
+          <p class="text-3xl font-semibold tracking-tight tabular-nums">{{ stat.value }}</p>
+          <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">{{ stat.label }}</p>
+        </div>
+      </div>
+    @endforeach
   </div>
 
   <div class="card">
@@ -26,11 +67,11 @@
       <table class="table">
         <thead>
           <tr>
-            <th>Name</th>
+            <th>User</th>
             <th class="hidden sm:table-cell">Roles</th>
-            <th>Status</th>
-            <th class="hidden lg:table-cell">Last sign-in</th>
-            <th><span class="sr-only">Actions</span></th>
+            <th class="hidden md:table-cell">Direct permissions</th>
+            <th class="hidden lg:table-cell">Joined at</th>
+            <th class="text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -38,7 +79,7 @@
             <tr>
               <td>
                 <div class="flex items-center gap-3">
-                  <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink-200 text-xs font-semibold text-ink-700 dark:bg-ink-700 dark:text-ink-200">{{ user.initials }}</span>
+                  <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-semibold text-white">{{ user.initials }}</span>
                   <div class="min-w-0">
                     <p class="truncate font-medium text-ink-900 dark:text-ink-100">{{ user.name }}</p>
                     <p class="truncate text-xs text-ink-500 dark:text-ink-400">{{ user.email }}</p>
@@ -47,36 +88,47 @@
               </td>
               <td class="hidden sm:table-cell">
                 <span class="flex flex-wrap gap-1">
-                  @foreach(user.roles as role)<span class="badge-neutral">{{ role }}</span>@endforeach
+                  @foreach(user.roles as role)<span class="badge-brand">{{ role }}</span>@endforeach
+                  @if(user.roles_empty)<span class="text-xs text-ink-400">&mdash;</span>@endif
                 </span>
               </td>
+              <td class="hidden md:table-cell tabular-nums">{{ user.direct_permissions }}</td>
+              <td class="hidden whitespace-nowrap lg:table-cell">{{ user.joined_at }}</td>
               <td>
-                @if(user.locked)
-                  <span class="badge-danger">Locked</span>
-                @elseif(user.activated == false)
-                  <span class="badge-warning">Invited</span>
-                @else
-                  <span class="badge-success">Active</span>
-                @endif
-              </td>
-              <td class="hidden whitespace-nowrap text-xs lg:table-cell">{{ user.last_login_at }}</td>
-              <td>
-                <div class="flex items-center justify-end gap-1">
+                {{-- Icons rather than words: five actions spelled out push the
+                     table wider than the screen. Each carries its own label for
+                     a screen reader and a title for a hovering mouse. --}}
+                <div class="flex items-center justify-end gap-1.5">
+                  @if(can_update)
+                    <a href="/admin/users/{{ user.id }}/edit" class="icon-action icon-action-neutral" title="View {{ user.name }}" aria-label="View {{ user.name }}">
+                      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 4C5.5 4 2 10 2 10s3.5 6 8 6 8-6 8-6-3.5-6-8-6Zm0 10a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/></svg>
+                    </a>
+                    <a href="/admin/users/{{ user.id }}/edit" class="icon-action icon-action-brand" title="Edit {{ user.name }}" aria-label="Edit {{ user.name }}">
+                      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M13.586 3.586a2 2 0 1 1 2.828 2.828l-.793.793-2.828-2.828.793-.793ZM11.379 5.793 3 14.172V17h2.828l8.379-8.379-2.828-2.828Z"/></svg>
+                    </a>
+                    <a href="/admin/users/{{ user.id }}/edit#roles" class="icon-action icon-action-violet" title="Roles for {{ user.name }}" aria-label="Roles for {{ user.name }}">
+                      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M7 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm6 1a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM1.6 15.5A5.6 5.6 0 0 1 7 10.5a5.6 5.6 0 0 1 5.4 5H1.6Zm12.05 0a6.9 6.9 0 0 0-1.6-3.86A4.2 4.2 0 0 1 18.4 15.5h-4.75Z"/></svg>
+                    </a>
+                    <a href="/admin/users/{{ user.id }}/edit#permissions" class="icon-action icon-action-emerald" title="Permissions for {{ user.name }}" aria-label="Permissions for {{ user.name }}">
+                      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M13 2a5 5 0 0 0-4.9 6L2 14.1V18h3.9l1.3-1.3v-1.6h1.6l1.3-1.3v-1.6h1.6l.4-.4A5 5 0 1 0 13 2Zm1.5 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"/></svg>
+                    </a>
+                  @endif
                   @if(can_impersonate && user.impersonatable)
                     <form method="post" action="/impersonate/{{ user.id }}"
                           data-confirm="View the site as {{ user.name }}? Everything you do will be recorded against your own account.">
                       {!! csrf_field !!}
-                      <button type="submit" class="btn-ghost btn-sm" title="View as this user">View as</button>
+                      <button type="submit" class="icon-action icon-action-amber" title="View the site as {{ user.name }}" aria-label="View the site as {{ user.name }}">
+                        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3.5a6.5 6.5 0 0 1 6.32 5H18a.75.75 0 0 1 0 1.5h-1.68A6.5 6.5 0 1 1 10 3.5Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm0 2a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"/></svg>
+                      </button>
                     </form>
-                  @endif
-                  @if(can_update)
-                    <a href="/admin/users/{{ user.id }}/edit" class="btn-ghost btn-sm">Edit</a>
                   @endif
                   @if(can_delete && user.deletable)
                     <form method="post" action="/admin/users/{{ user.id }}/delete"
                           data-confirm="Delete {{ user.name }}? This cannot be undone.">
                       {!! csrf_field !!}
-                      <button type="submit" class="btn-ghost btn-sm text-red-600 dark:text-red-400">Delete</button>
+                      <button type="submit" class="icon-action icon-action-danger" title="Delete {{ user.name }}" aria-label="Delete {{ user.name }}">
+                        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M8.5 2a1 1 0 0 0-1 1v.5h-3a.75.75 0 0 0 0 1.5h11a.75.75 0 0 0 0-1.5h-3V3a1 1 0 0 0-1-1h-3Zm-3 4.5h9l-.7 9.1A1.5 1.5 0 0 1 12.3 17H7.7a1.5 1.5 0 0 1-1.5-1.4L5.5 6.5Z"/></svg>
+                      </button>
                     </form>
                   @endif
                 </div>
@@ -84,7 +136,7 @@
             </tr>
           @endforeach
           @if(users_empty)
-            <tr><td colspan="5" class="py-12 text-center text-ink-500 dark:text-ink-400">No users match that.</td></tr>
+            <tr><td colspan="5" class="py-16 text-center text-ink-500 dark:text-ink-400">No users match that.</td></tr>
           @endif
         </tbody>
       </table>

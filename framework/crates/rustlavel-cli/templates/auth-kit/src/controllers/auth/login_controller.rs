@@ -20,7 +20,11 @@ impl LoginController {
         }
         let context = page::shell(&req, "").await.with(
             "registration_open",
-            Json::from(req.config().bool("auth.registration.open", true)),
+            Json::from(crate::controllers::auth::register_controller::registration_open(&req).await),
+        )
+        .with(
+            "magic_link",
+            Json::from(crate::controllers::auth::magic_link_controller::enabled(&req).await),
         );
         req.view("auth/login", &page::old(context, &[("email", None)]))
     }
@@ -83,7 +87,7 @@ impl LoginController {
             LoginAttempt::record(&db, &email, Some(user.id), false, Some("bad_password"), &req).await?;
             lockout::record_address_failure(&req).await;
 
-            if lockout::record_failure(&db, &mut user, &now).await? {
+            if lockout::record_failure(&db, &mut user, &req, &now).await? {
                 let until = user.locked_until.clone().unwrap_or_default();
                 let context = page::shell(&req, "").await
                     .with("locked", Json::from(true))
@@ -103,7 +107,43 @@ impl LoginController {
         }
 
         Self::complete(&req, &db, &mut user, &now).await?;
+
+        if let Some(enrol) = Self::enrolment_owed(&req, &db, user.id).await? {
+            return Ok(Response::see_other(enrol));
+        }
+
         Ok(Response::see_other(intended(&req)))
+    }
+
+    /// Where a newly signed-in person has to go before anywhere else, if
+    /// anywhere.
+    ///
+    /// Settings → Security can require a second factor of everybody. Somebody
+    /// with nothing enrolled is sent to enrol rather than to the dashboard —
+    /// and signed in first, deliberately: the enrolment page is behind the
+    /// auth middleware, so refusing the session would send them to a page they
+    /// cannot open. This is a nudge with a flash message rather than a wall;
+    /// making it a wall means middleware on every other route, which belongs in
+    /// `src/routes/` rather than here.
+    ///
+    /// Every path that signs somebody in calls this — the login form, an
+    /// activation link, a password reset, a magic link — because a requirement
+    /// that only the login form enforces is a requirement with four ways
+    /// around it.
+    pub async fn enrolment_owed(req: &Request, db: &Database, user_id: i64) -> Result<Option<String>> {
+        if !mfa_required(req).await {
+            return Ok(None);
+        }
+        if crate::controllers::auth::mfa_controller::has_factor(db, user_id).await? {
+            return Ok(None);
+        }
+        page::flash(
+            req,
+            "warning",
+            "This site requires two-factor authentication. Set up an authenticator app \
+             or a passkey to finish securing your account.",
+        );
+        Ok(Some("/settings/security".to_string()))
     }
 
     /// Finish a login that has cleared every check.
@@ -124,7 +164,14 @@ impl LoginController {
     async fn refuse(req: Request, email: &str, message: &str) -> Result<Response> {
         let context = page::shell(&req, "").await
             .with("error_summary", Json::from(message))
-            .with("registration_open", Json::from(req.config().bool("auth.registration.open", true)));
+            .with(
+                "registration_open",
+                Json::from(crate::controllers::auth::register_controller::registration_open(&req).await),
+            )
+            .with(
+                "magic_link",
+                Json::from(crate::controllers::auth::magic_link_controller::enabled(&req).await),
+            );
         req.view("auth/login", &page::old(context, &[("email", Some(email.to_string()))]))
     }
 }
@@ -139,6 +186,17 @@ const WRONG: &str = "Those details do not match an account.";
 /// A real argon2 hash of a value nobody knows, so the no-account path costs
 /// the same as the wrong-password path.
 const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHR2YWx1ZQ$Zm9yIHRpbWluZyBvbmx5IG5ldmVyIG1hdGNoZXM";
+
+/// Whether every account on this site owes a second factor.
+///
+/// False when no settings store is registered, because a site that has never
+/// been able to turn this on has not turned it on.
+async fn mfa_required(req: &Request) -> bool {
+    match req.state::<crate::support::settings::Settings>() {
+        Some(settings) => settings.bool("auth.require_mfa").await,
+        None => false,
+    }
+}
 
 /// Where to go after signing in: back where they were headed, if anywhere.
 fn intended(req: &Request) -> String {

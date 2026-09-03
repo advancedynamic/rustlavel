@@ -1,0 +1,147 @@
+{{-- The Backup tab. Rendered inside the Settings shell like every other tab,
+     so the tab strip and the page header come from `settings/index.rl.html`
+     and this file is only the panel. --}}
+@extends("settings.index")
+@section("tab")
+  <div class="mb-5 flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h3 class="text-lg font-semibold">Database Backup</h3>
+      <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">Manage and download your database backups</p>
+    </div>
+    {{-- Above the table only when there is a table. With none, the empty state
+         below carries the button, so the panel has one call to action rather
+         than two saying the same thing. --}}
+    @if(can_create_backup && !backups_empty)
+      <form method="post" action="/admin/settings/backup/create">
+        {!! csrf_field !!}
+        <button type="submit" class="btn bg-emerald-600 text-white shadow-xs hover:bg-emerald-700 focus:ring-emerald-500">
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3a.75.75 0 0 1 .75.75v5.5h5.5a.75.75 0 0 1 0 1.5h-5.5v5.5a.75.75 0 0 1-1.5 0v-5.5h-5.5a.75.75 0 0 1 0-1.5h5.5v-5.5A.75.75 0 0 1 10 3Z"/></svg>
+          Create Backup
+        </button>
+      </form>
+    @endif
+  </div>
+
+  @if(!can_view_backups)
+    <p class="py-16 text-center text-sm text-ink-500 dark:text-ink-400">
+      You do not have permission to view backups.
+    </p>
+  @else
+    {{-- A GET form, so a filtered list is a URL somebody can bookmark or send
+         to the person asking which backup they meant. --}}
+    <form method="get" action="/admin/settings/backup" class="mb-5 flex items-center gap-3">
+      <label for="q" class="sr-only">Search backups by name</label>
+      <input id="q" name="q" type="search" value="{{ q }}"
+             placeholder="Search backups by name..." class="field-input flex-1">
+      <button type="submit" class="btn-primary shrink-0" aria-label="Search">
+        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 3.383 9.836l3.14 3.141a.75.75 0 1 0 1.061-1.06l-3.14-3.141A5.5 5.5 0 0 0 9 3.5ZM5 9a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z" clip-rule="evenodd"/></svg>
+      </button>
+    </form>
+
+    <div class="rounded-lg border border-ink-200 dark:border-ink-800">
+      @if(backups_empty)
+        @if(q)
+          {{-- A search that matched nothing is not the same as having no
+               backups, and offering "create your first" to somebody who has
+               forty is how a page loses trust. --}}
+          <div class="px-5 py-16 text-center">
+            <p class="text-sm text-ink-500 dark:text-ink-400">No backups match &ldquo;{{ q }}&rdquo;.</p>
+            <a href="/admin/settings/backup" class="btn-secondary mt-4">Clear the search</a>
+          </div>
+        @else
+          <div class="px-5 py-16 text-center">
+            <span class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-ink-100 text-ink-400 dark:bg-ink-800 dark:text-ink-500">
+              <svg class="h-7 w-7" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 2c-3.87 0-7 1.12-7 2.5v11C3 16.88 6.13 18 10 18s7-1.12 7-2.5v-11C17 3.12 13.87 2 10 2Zm0 1.5c3.3 0 5.5.9 5.5 1s-2.2 1-5.5 1-5.5-.9-5.5-1 2.2-1 5.5-1Zm5.5 12c0 .1-2.2 1-5.5 1s-5.5-.9-5.5-1v-2.2c1.3.66 3.3 1.02 5.5 1.02s4.2-.36 5.5-1.02v2.2Zm0-4c0 .1-2.2 1-5.5 1s-5.5-.9-5.5-1V9.3c1.3.66 3.3 1.02 5.5 1.02s4.2-.36 5.5-1.02v2.2Zm0-4c0 .1-2.2 1-5.5 1s-5.5-.9-5.5-1V5.3c1.3.66 3.3 1.02 5.5 1.02s4.2-.36 5.5-1.02v2.2Z"/></svg>
+            </span>
+            <h4 class="text-base font-semibold text-ink-900 dark:text-ink-100">No backups found</h4>
+            <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">Create your first backup to get started</p>
+            @if(can_create_backup)
+              <form method="post" action="/admin/settings/backup/create" class="mt-5">
+                {!! csrf_field !!}
+                <button type="submit" class="btn bg-emerald-600 text-white shadow-xs hover:bg-emerald-700 focus:ring-emerald-500">
+                  <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3a.75.75 0 0 1 .75.75v5.5h5.5a.75.75 0 0 1 0 1.5h-5.5v5.5a.75.75 0 0 1-1.5 0v-5.5h-5.5a.75.75 0 0 1 0-1.5h5.5v-5.5A.75.75 0 0 1 10 3Z"/></svg>
+                  Create First Backup
+                </button>
+              </form>
+            @endif
+          </div>
+        @endif
+      @else
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th class="hidden sm:table-cell">Size</th>
+                <th class="hidden md:table-cell">When</th>
+                <th>Status</th>
+                <th class="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @foreach(backups as backup)
+                <tr>
+                  <td>
+                    <p class="font-mono text-sm font-medium text-ink-900 dark:text-ink-100">{{ backup.name }}</p>
+                    {{-- Why a backup failed, said on the row rather than in a
+                         log nobody reading this page can see. --}}
+                    @if(backup.note)<p class="mt-0.5 max-w-md truncate text-xs text-red-600 dark:text-red-400" title="{{ backup.note }}">{{ backup.note }}</p>@endif
+                  </td>
+                  <td class="hidden whitespace-nowrap tabular-nums sm:table-cell">{{ backup.size }}</td>
+                  <td class="hidden whitespace-nowrap md:table-cell">{{ backup.when }}</td>
+                  <td><span class="{{ backup.status_class }}">{{ backup.status_label }}</span></td>
+                  <td>
+                    <div class="flex items-center justify-end gap-1.5">
+                      @if(backup.ready)
+                        <a href="/admin/settings/backup/{{ backup.id }}/download" class="icon-action icon-action-brand"
+                           title="Download {{ backup.name }}" aria-label="Download {{ backup.name }}">
+                          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 2.5a.75.75 0 0 1 .75.75v7.19l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V3.25A.75.75 0 0 1 10 2.5ZM3.5 13.5a.75.75 0 0 1 .75.75v1.25h11.5V14.25a.75.75 0 0 1 1.5 0v1.5A1.25 1.25 0 0 1 16 17H4a1.25 1.25 0 0 1-1.25-1.25v-1.5a.75.75 0 0 1 .75-.75Z"/></svg>
+                        </a>
+                      @endif
+                      @if(can_restore_backup && backup.ready)
+                        {{-- The confirmation names what is about to be
+                             destroyed rather than asking "are you sure?".
+                             Somebody clicking this is one keystroke from
+                             replacing every account in the application, and
+                             the dialog is the last place that can be said. --}}
+                        <form method="post" action="/admin/settings/backup/{{ backup.id }}/restore"
+                              data-confirm="Restore from {{ backup.name }}? Every user, role, permission, sign-in record, second factor and setting currently in this database will be deleted and replaced with what is in that file. Anything created since it was taken is lost. This cannot be undone.">
+                          {!! csrf_field !!}
+                          <button type="submit" class="icon-action icon-action-amber"
+                                  title="Restore from {{ backup.name }}" aria-label="Restore from {{ backup.name }}">
+                            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3.5a6.5 6.5 0 1 0 6.24 8.35.75.75 0 1 1 1.44.42A8 8 0 1 1 10 2c2.2 0 4.19.89 5.63 2.33V3.25a.75.75 0 0 1 1.5 0v3a.75.75 0 0 1-.75.75h-3a.75.75 0 0 1 0-1.5h1.32A6.48 6.48 0 0 0 10 3.5Z"/></svg>
+                          </button>
+                        </form>
+                      @endif
+                      @if(can_delete_backup)
+                        <form method="post" action="/admin/settings/backup/{{ backup.id }}/delete"
+                              data-confirm="Delete the backup {{ backup.name }}? The file is removed from the server and cannot be recovered.">
+                          {!! csrf_field !!}
+                          <button type="submit" class="icon-action icon-action-danger"
+                                  title="Delete {{ backup.name }}" aria-label="Delete {{ backup.name }}">
+                            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M8.5 2a1 1 0 0 0-1 1v.5h-3a.75.75 0 0 0 0 1.5h11a.75.75 0 0 0 0-1.5h-3V3a1 1 0 0 0-1-1h-3Zm-3 4.5h9l-.7 9.1A1.5 1.5 0 0 1 12.3 17H7.7a1.5 1.5 0 0 1-1.5-1.4L5.5 6.5Z"/></svg>
+                          </button>
+                        </form>
+                      @endif
+                    </div>
+                  </td>
+                </tr>
+              @endforeach
+            </tbody>
+          </table>
+        </div>
+      @endif
+    </div>
+  @endif
+
+  {{-- Said on the page, not only in a doc comment. Somebody deciding whether
+       this is their disaster plan needs to know what it is before they need
+       it, and the page is where they will look. --}}
+  <p class="mt-4 text-xs text-ink-500 dark:text-ink-400">
+    A backup is a logical dump of this application&rsquo;s tables &mdash; accounts, roles,
+    permissions, settings and sign-in history &mdash; written as newline-delimited JSON to
+    <code class="font-mono">storage/backups</code>. It does not include the schema, uploaded
+    files, or anything another application keeps in this database, and a restore is refused
+    unless the file was taken from the schema this database is on now.
+  </p>
+@endsection

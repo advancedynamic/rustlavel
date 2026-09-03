@@ -94,6 +94,7 @@ pub async fn with_user(mut context: ViewContext, req: &Request, user: &User) -> 
         ("can_view_users", "users.view"),
         ("can_view_roles", "roles.view"),
         ("can_view_permissions", "permissions.view"),
+        ("can_manage_settings", "settings.manage"),
     ] {
         context = context.with(flag, Json::from(req.can(permission).await?));
     }

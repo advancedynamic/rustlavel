@@ -34,12 +34,14 @@
       @if(error_email)<p id="email-error" class="field-error">{{ error_email }}</p>@endif
     </div>
 
-    <div>
-      <div class="mb-1.5 flex items-baseline justify-between">
-        <label for="password" class="field-label mb-0">Password</label>
-        <a href="/forgot-password" class="text-sm font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400">Forgot?</a>
-      </div>
-      <div class="relative">
+    {{-- A grid rather than a header row, so "Forgot?" can sit beside the label
+         on screen while coming after the password box in the document. Reading
+         order is the tab order, and a link between the two fields means every
+         person tabbing from their address lands on it instead of on the box
+         they were reaching for. --}}
+    <div class="grid grid-cols-[1fr_auto] items-baseline gap-x-3">
+      <label for="password" class="field-label order-1 mb-1.5">Password</label>
+      <div class="relative order-3 col-span-2">
         <input id="password" name="password" type="password" required autocomplete="current-password"
                class="field-input pr-11 @if(error_password) field-input-invalid @endif"
                @if(error_password) aria-invalid="true" aria-describedby="password-error" @endif>
@@ -49,15 +51,25 @@
           <svg class="h-5 w-5" data-eye viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 4C5.5 4 2 10 2 10s3.5 6 8 6 8-6 8-6-3.5-6-8-6Zm0 10a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-2a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/></svg>
         </button>
       </div>
-      @if(error_password)<p id="password-error" class="field-error">{{ error_password }}</p>@endif
+      <a href="/forgot-password" class="order-2 justify-self-end text-sm font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400">Forgot?</a>
+      @if(error_password)<p id="password-error" class="field-error order-4 col-span-2">{{ error_password }}</p>@endif
     </div>
 
-    <label class="flex items-center gap-2.5 text-sm text-ink-700 dark:text-ink-300">
-      <input type="checkbox" name="remember" value="1"
+    {{-- The checkbox carries an id and the label points at it. Wrapping alone
+         reads correctly in a browser, but an audit tool that goes by `value`
+         announces this control as "1". --}}
+    <div class="flex items-center gap-2.5">
+      <input id="remember" type="checkbox" name="remember" value="1"
              class="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800">
-      Keep me signed in
-    </label>
+      <label for="remember" class="text-sm text-ink-700 dark:text-ink-300">Keep me signed in</label>
+    </div>
 
     <button type="submit" class="btn-primary w-full">Sign in</button>
   </form>
+
+  @if(magic_link)
+    <div class="mt-6 border-t border-ink-200 pt-5 text-center dark:border-ink-800">
+      <a href="/magic-link" class="text-sm font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400">Email me a sign-in link instead</a>
+    </div>
+  @endif
 @endsection

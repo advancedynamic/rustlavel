@@ -1,4 +1,9 @@
+pub mod backup;
+pub mod idle;
 pub mod lockout;
+pub mod mail;
 pub mod page;
 pub mod passkeys;
+pub mod passwords;
+pub mod settings;
 pub mod tokens;

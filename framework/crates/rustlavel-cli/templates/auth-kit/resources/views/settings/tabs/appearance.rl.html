@@ -1,0 +1,445 @@
+{{-- Settings → Appearance.
+
+     There is not one `style=` attribute anywhere below, and there is no
+     `<style>` block, because this page is served under a Content-Security-Policy
+     with no `unsafe-inline`: a browser would drop both without saying so. Every
+     preview and every swatch therefore gets its colours from `appearance.js`
+     through `element.style.setProperty(...)`, which is CSSOM called from a
+     script the policy already trusts and is allowed.
+
+     What the markup does instead is *name* things. A group says which setting
+     keys it holds, in order, with `data-keys`; a preset gives values positional
+     against that list; a preview says which keys it reads. The script knows
+     none of the keys, so a key changes in one place. --}}
+
+@extends("settings.index")
+
+@section("tab")
+<div class="space-y-6">
+
+  {{-- ---- Login panel ------------------------------------------------- --}}
+  <div class="card" data-colour-group
+       data-keys="theme.login.light.from,theme.login.light.to,theme.login.dark.from,theme.login.dark.to">
+    <div class="card-header">
+      <h3 class="font-semibold">Login Panel Colors</h3>
+      <p class="mt-0.5 text-sm text-ink-500 dark:text-ink-400">
+        Customize the gradient colors of the decorative left panel on the login page.
+      </p>
+    </div>
+
+    <form method="post" action="/admin/settings/appearance/login" class="card-body space-y-6">
+      {!! csrf_field !!}
+
+      <div class="grid gap-6 sm:grid-cols-2">
+        {{-- Light --}}
+        <div class="space-y-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Light Mode</p>
+
+          <div>
+            <label for="login_light_from" class="field-label">Gradient From</label>
+            <div class="flex items-center gap-2" data-colour-field="theme.login.light.from">
+              <input type="color" value="{{ s.theme_login_light_from.value }}" data-colour-picker
+                     aria-label="Gradient from, light mode, color picker"
+                     class="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-ink-300 bg-white p-1 dark:border-ink-700 dark:bg-ink-800">
+              <input id="login_light_from" name="theme.login.light.from" type="text"
+                     value="{{ s.theme_login_light_from.value }}" data-colour-text
+                     spellcheck="false" autocomplete="off" maxlength="7" pattern="#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}"
+                     class="field-input font-mono">
+            </div>
+          </div>
+
+          <div>
+            <label for="login_light_to" class="field-label">Gradient To</label>
+            <div class="flex items-center gap-2" data-colour-field="theme.login.light.to">
+              <input type="color" value="{{ s.theme_login_light_to.value }}" data-colour-picker
+                     aria-label="Gradient to, light mode, color picker"
+                     class="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-ink-300 bg-white p-1 dark:border-ink-700 dark:bg-ink-800">
+              <input id="login_light_to" name="theme.login.light.to" type="text"
+                     value="{{ s.theme_login_light_to.value }}" data-colour-text
+                     spellcheck="false" autocomplete="off" maxlength="7" pattern="#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}"
+                     class="field-input font-mono">
+            </div>
+          </div>
+
+          <div>
+            <p class="field-label">Preview</p>
+            <div data-preview-login="theme.login.light.from,theme.login.light.to"
+                 class="flex h-28 items-center justify-center rounded-lg border border-ink-200 dark:border-ink-700">
+              <span class="text-sm font-semibold text-white drop-shadow">Login Panel</span>
+            </div>
+          </div>
+        </div>
+
+        {{-- Dark --}}
+        <div class="space-y-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Dark Mode</p>
+
+          <div>
+            <label for="login_dark_from" class="field-label">Gradient From</label>
+            <div class="flex items-center gap-2" data-colour-field="theme.login.dark.from">
+              <input type="color" value="{{ s.theme_login_dark_from.value }}" data-colour-picker
+                     aria-label="Gradient from, dark mode, color picker"
+                     class="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-ink-300 bg-white p-1 dark:border-ink-700 dark:bg-ink-800">
+              <input id="login_dark_from" name="theme.login.dark.from" type="text"
+                     value="{{ s.theme_login_dark_from.value }}" data-colour-text
+                     spellcheck="false" autocomplete="off" maxlength="7" pattern="#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}"
+                     class="field-input font-mono">
+            </div>
+          </div>
+
+          <div>
+            <label for="login_dark_to" class="field-label">Gradient To</label>
+            <div class="flex items-center gap-2" data-colour-field="theme.login.dark.to">
+              <input type="color" value="{{ s.theme_login_dark_to.value }}" data-colour-picker
+                     aria-label="Gradient to, dark mode, color picker"
+                     class="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-ink-300 bg-white p-1 dark:border-ink-700 dark:bg-ink-800">
+              <input id="login_dark_to" name="theme.login.dark.to" type="text"
+                     value="{{ s.theme_login_dark_to.value }}" data-colour-text
+                     spellcheck="false" autocomplete="off" maxlength="7" pattern="#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}"
+                     class="field-input font-mono">
+            </div>
+          </div>
+
+          <div>
+            <p class="field-label">Preview</p>
+            <div data-preview-login="theme.login.dark.from,theme.login.dark.to"
+                 class="flex h-28 items-center justify-center rounded-lg border border-ink-200 dark:border-ink-700">
+              <span class="text-sm font-semibold text-white drop-shadow">Login Panel</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {{-- Presets. The four values are light-from, light-to, dark-from,
+           dark-to, in the order `data-keys` names them on the card. --}}
+      <div>
+        <p class="field-label">Quick Presets</p>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#3b82f6,#2563eb,#1e3a5f,#111827">
+            <span data-swatch="#3b82f6" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Blue (Default)
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#8b5cf6,#6d28d9,#2e1065,#111827">
+            <span data-swatch="#8b5cf6" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Violet
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#10b981,#047857,#064e3b,#111827">
+            <span data-swatch="#10b981" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Emerald
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#f59e0b,#b45309,#451a03,#111827">
+            <span data-swatch="#f59e0b" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Amber
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#ef4444,#b91c1c,#450a0a,#111827">
+            <span data-swatch="#ef4444" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Red
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#ec4899,#be185d,#500724,#111827">
+            <span data-swatch="#ec4899" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Pink
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#6366f1,#4338ca,#1e1b4b,#111827">
+            <span data-swatch="#6366f1" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Indigo
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800" data-preset="#14b8a6,#0f766e,#042f2e,#111827">
+            <span data-swatch="#14b8a6" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Teal
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <button type="submit" class="btn-primary">Save Colors</button>
+      </div>
+    </form>
+  </div>
+
+  {{-- ---- Sidebar ----------------------------------------------------- --}}
+  <div class="card" data-colour-group
+       data-keys="theme.sidebar.light.bg,theme.sidebar.light.text,theme.sidebar.light.active_bg,theme.sidebar.light.active_text,theme.sidebar.dark.bg,theme.sidebar.dark.text,theme.sidebar.dark.active_bg,theme.sidebar.dark.active_text">
+    <div class="card-header">
+      <h3 class="font-semibold">Sidebar Colors</h3>
+      <p class="mt-0.5 text-sm text-ink-500 dark:text-ink-400">Customize the colors of the navigation sidebar.</p>
+    </div>
+
+    <form method="post" action="/admin/settings/appearance/sidebar" class="card-body space-y-6">
+      {!! csrf_field !!}
+
+      <div class="grid gap-6 sm:grid-cols-2">
+        {{-- Light --}}
+        <div class="space-y-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Light Mode</p>
+
+          <div>
+            <label for="sidebar_light_bg" class="field-label">Background Color</label>
+            <div class="flex items-center gap-2" data-colour-field="theme.sidebar.light.bg">
+              <input type="color" value="{{ s.theme_sidebar_light_bg.value }}" data-colour-picker
+                     aria-label="Sidebar background, light mode, color picker"
+                     class="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-ink-300 bg-white p-1 dark:border-ink-700 dark:bg-ink-800">
+              <input id="sidebar_light_bg" name="theme.sidebar.light.bg" type="text"
+                     value="{{ s.theme_sidebar_light_bg.value }}" data-colour-text
+                     spellcheck="false" autocomplete="off" maxlength="7" pattern="#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}"
+                     class="field-input font-mono">
+            </div>
+          </div>
+
+          <div>
+            <label for="sidebar_light_text" class="field-label">Text Color</label>
+            <div class="flex items-center gap-2" data-colour-field="theme.sidebar.light.text">
+              <input type="color" value="{{ s.theme_sidebar_light_text.value }}" data-colour-picker
+                     aria-label="Sidebar text, light mode, color picker"
+                     class="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-ink-300 bg-white p-1 dark:border-ink-700 dark:bg-ink-800">
+              <input id="sidebar_light_text" name="theme.sidebar.light.text" type="text"
+                     value="{{ s.theme_sidebar_light_text.value }}" data-colour-text
+                     spellcheck="false" autocomplete="off" maxlength="7" pattern="#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}"
+                     class="field-input font-mono">
+            </div>
+          </div>
+
+          <div>
+            <label for="sidebar_light_active_bg" class="field-label">Active Item Background</label>
+            <div class="flex items-center gap-2" data-colour-field="theme.sidebar.light.active_bg">
+              <input type="color" value="{{ s.theme_sidebar_light_active_bg.value }}" data-colour-picker
+                     aria-label="Active item background, light mode, color picker"
+                     class="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-ink-300 bg-white p-1 dark:border-ink-700 dark:bg-ink-800">
+              <input id="sidebar_light_active_bg" name="theme.sidebar.light.active_bg" type="text"
+                     value="{{ s.theme_sidebar_light_active_bg.value }}" data-colour-text
+                     spellcheck="false" autocomplete="off" maxlength="7" pattern="#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}"
+                     class="field-input font-mono">
+            </div>
+          </div>
+
+          <div>
+            <label for="sidebar_light_active_text" class="field-label">Active Item Text</label>
+            <div class="flex items-center gap-2" data-colour-field="theme.sidebar.light.active_text">
+              <input type="color" value="{{ s.theme_sidebar_light_active_text.value }}" data-colour-picker
+                     aria-label="Active item text, light mode, color picker"
+                     class="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-ink-300 bg-white p-1 dark:border-ink-700 dark:bg-ink-800">
+              <input id="sidebar_light_active_text" name="theme.sidebar.light.active_text" type="text"
+                     value="{{ s.theme_sidebar_light_active_text.value }}" data-colour-text
+                     spellcheck="false" autocomplete="off" maxlength="7" pattern="#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}"
+                     class="field-input font-mono">
+            </div>
+          </div>
+
+          <div>
+            <p class="field-label">Preview</p>
+            <div data-preview-sidebar="theme.sidebar.light.bg,theme.sidebar.light.text,theme.sidebar.light.active_bg,theme.sidebar.light.active_text"
+                 class="space-y-1 rounded-lg border border-ink-200 p-2 dark:border-ink-700">
+              <p data-preview-row-active class="rounded-md px-3 py-2 text-sm font-medium">Dashboard</p>
+              <p data-preview-row class="rounded-md px-3 py-2 text-sm">Settings</p>
+              <p data-preview-row class="rounded-md px-3 py-2 text-sm">Users</p>
+            </div>
+          </div>
+        </div>
+
+        {{-- Dark --}}
+        <div class="space-y-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Dark Mode</p>
+
+          <div>
+            <label for="sidebar_dark_bg" class="field-label">Background Color</label>
+            <div class="flex items-center gap-2" data-colour-field="theme.sidebar.dark.bg">
+              <input type="color" value="{{ s.theme_sidebar_dark_bg.value }}" data-colour-picker
+                     aria-label="Sidebar background, dark mode, color picker"
+                     class="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-ink-300 bg-white p-1 dark:border-ink-700 dark:bg-ink-800">
+              <input id="sidebar_dark_bg" name="theme.sidebar.dark.bg" type="text"
+                     value="{{ s.theme_sidebar_dark_bg.value }}" data-colour-text
+                     spellcheck="false" autocomplete="off" maxlength="7" pattern="#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}"
+                     class="field-input font-mono">
+            </div>
+          </div>
+
+          <div>
+            <label for="sidebar_dark_text" class="field-label">Text Color</label>
+            <div class="flex items-center gap-2" data-colour-field="theme.sidebar.dark.text">
+              <input type="color" value="{{ s.theme_sidebar_dark_text.value }}" data-colour-picker
+                     aria-label="Sidebar text, dark mode, color picker"
+                     class="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-ink-300 bg-white p-1 dark:border-ink-700 dark:bg-ink-800">
+              <input id="sidebar_dark_text" name="theme.sidebar.dark.text" type="text"
+                     value="{{ s.theme_sidebar_dark_text.value }}" data-colour-text
+                     spellcheck="false" autocomplete="off" maxlength="7" pattern="#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}"
+                     class="field-input font-mono">
+            </div>
+          </div>
+
+          <div>
+            <label for="sidebar_dark_active_bg" class="field-label">Active Item Background</label>
+            <div class="flex items-center gap-2" data-colour-field="theme.sidebar.dark.active_bg">
+              <input type="color" value="{{ s.theme_sidebar_dark_active_bg.value }}" data-colour-picker
+                     aria-label="Active item background, dark mode, color picker"
+                     class="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-ink-300 bg-white p-1 dark:border-ink-700 dark:bg-ink-800">
+              <input id="sidebar_dark_active_bg" name="theme.sidebar.dark.active_bg" type="text"
+                     value="{{ s.theme_sidebar_dark_active_bg.value }}" data-colour-text
+                     spellcheck="false" autocomplete="off" maxlength="7" pattern="#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}"
+                     class="field-input font-mono">
+            </div>
+          </div>
+
+          <div>
+            <label for="sidebar_dark_active_text" class="field-label">Active Item Text</label>
+            <div class="flex items-center gap-2" data-colour-field="theme.sidebar.dark.active_text">
+              <input type="color" value="{{ s.theme_sidebar_dark_active_text.value }}" data-colour-picker
+                     aria-label="Active item text, dark mode, color picker"
+                     class="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-ink-300 bg-white p-1 dark:border-ink-700 dark:bg-ink-800">
+              <input id="sidebar_dark_active_text" name="theme.sidebar.dark.active_text" type="text"
+                     value="{{ s.theme_sidebar_dark_active_text.value }}" data-colour-text
+                     spellcheck="false" autocomplete="off" maxlength="7" pattern="#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}"
+                     class="field-input font-mono">
+            </div>
+          </div>
+
+          <div>
+            <p class="field-label">Preview</p>
+            <div data-preview-sidebar="theme.sidebar.dark.bg,theme.sidebar.dark.text,theme.sidebar.dark.active_bg,theme.sidebar.dark.active_text"
+                 class="space-y-1 rounded-lg border border-ink-200 p-2 dark:border-ink-700">
+              <p data-preview-row-active class="rounded-md px-3 py-2 text-sm font-medium">Dashboard</p>
+              <p data-preview-row class="rounded-md px-3 py-2 text-sm">Settings</p>
+              <p data-preview-row class="rounded-md px-3 py-2 text-sm">Users</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {{-- Eight values each, in the order `data-keys` names them: light
+           background, text, active background, active text, then the same four
+           for dark. --}}
+      <div>
+        <p class="field-label">Quick Presets</p>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800"
+                  data-preset="#ffffff,#374151,#eff6ff,#2563eb,#1f2937,#9ca3af,#374151,#60a5fa">
+            <span data-swatch="#3b82f6" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Blue (Default)
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800"
+                  data-preset="#ffffff,#374151,#f5f3ff,#7c3aed,#1f2937,#9ca3af,#2e1065,#a78bfa">
+            <span data-swatch="#8b5cf6" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Violet
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800"
+                  data-preset="#ffffff,#374151,#ecfdf5,#047857,#1f2937,#9ca3af,#064e3b,#34d399">
+            <span data-swatch="#10b981" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Emerald
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800"
+                  data-preset="#ffffff,#374151,#fff7ed,#c2410c,#1f2937,#9ca3af,#431407,#fb923c">
+            <span data-swatch="#f97316" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Orange
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800"
+                  data-preset="#ffffff,#374151,#fef2f2,#b91c1c,#1f2937,#9ca3af,#450a0a,#f87171">
+            <span data-swatch="#ef4444" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Red
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800"
+                  data-preset="#ffffff,#374151,#eef2ff,#4338ca,#1f2937,#9ca3af,#1e1b4b,#818cf8">
+            <span data-swatch="#6366f1" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Indigo
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800"
+                  data-preset="#ffffff,#374151,#f0fdfa,#0f766e,#1f2937,#9ca3af,#042f2e,#2dd4bf">
+            <span data-swatch="#14b8a6" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Teal
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800"
+                  data-preset="#f8fafc,#334155,#e2e8f0,#0f172a,#1e293b,#94a3b8,#334155,#e2e8f0">
+            <span data-swatch="#64748b" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Slate
+          </button>
+          <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800"
+                  data-preset="#111827,#9ca3af,#1f2937,#ffffff,#030712,#9ca3af,#1f2937,#ffffff">
+            <span data-swatch="#111827" class="inline-block h-3 w-3 shrink-0 rounded-full border border-ink-300 dark:border-ink-700"></span>
+            Dark Sidebar
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <button type="submit" class="btn-primary">Save Sidebar Colors</button>
+      </div>
+    </form>
+  </div>
+
+  {{-- ---- Logos ------------------------------------------------------- --}}
+  <div class="card">
+    <div class="card-header">
+      <h3 class="font-semibold">Logo Settings</h3>
+      <p class="mt-0.5 text-sm text-ink-500 dark:text-ink-400">
+        Upload custom logos for light and dark mode. These will be displayed on the login page and sidebar.
+      </p>
+    </div>
+
+    <form method="post" action="/admin/settings/appearance/logos" class="card-body space-y-6">
+      {!! csrf_field !!}
+
+      <div class="grid gap-6 sm:grid-cols-2">
+        {{-- Light --}}
+        <div data-logo-box data-upload-url="/admin/settings/appearance/logo">
+          <p class="field-label">Light Mode Logo</p>
+          <div class="rounded-lg border border-dashed border-ink-300 bg-ink-50 p-4 text-center dark:border-ink-700 dark:bg-ink-900">
+            <div data-logo-current @if(!s.theme_logo_light.value) hidden @endif>
+              <img data-logo-image @if(s.theme_logo_light.value) src="{{ s.theme_logo_light.value }}" @endif alt="The current light-mode logo"
+                   class="mx-auto max-h-16 w-auto">
+              <button type="button" data-logo-remove class="mt-2 text-sm text-red-600 hover:underline dark:text-red-400">Remove</button>
+            </div>
+            <div class="mt-3">
+              {{-- The real control is the file input; the button is what people
+                   click, because a bare file input cannot be styled and reads
+                   differently in every browser. --}}
+              <input type="file" data-logo-input hidden accept="image/png,image/jpeg,image/svg+xml">
+              <button type="button" class="btn-secondary btn-sm" data-logo-choose>Choose File</button>
+              <p class="field-hint mt-2">PNG, JPG, or SVG (max 2MB)</p>
+              <p data-logo-status class="field-hint mt-1" hidden></p>
+              <p data-logo-error class="field-error mt-1" hidden></p>
+            </div>
+          </div>
+          {{-- The path is what actually gets saved, and it is a plain field on
+               purpose: `rustlavel-http` has no multipart parser, so the upload
+               above happens over a separate request and writes its result here.
+               With JavaScript off the box does nothing and this field is still
+               the way to point at a logo. --}}
+          <label for="logo_light_path" class="field-hint mt-2 block">Path on this site</label>
+          <input id="logo_light_path" name="theme.logo.light" type="text" value="{{ s.theme_logo_light.value }}"
+                 data-logo-path spellcheck="false" autocomplete="off" placeholder="/storage/logos/…"
+                 class="field-input mt-1 font-mono text-xs">
+        </div>
+
+        {{-- Dark. The box itself is dark so a white logo is not an invisible
+             logo. --}}
+        <div data-logo-box data-upload-url="/admin/settings/appearance/logo">
+          <p class="field-label">Dark Mode Logo</p>
+          <div class="rounded-lg border border-dashed border-ink-600 bg-ink-900 p-4 text-center">
+            <div data-logo-current @if(!s.theme_logo_dark.value) hidden @endif>
+              <img data-logo-image @if(s.theme_logo_dark.value) src="{{ s.theme_logo_dark.value }}" @endif alt="The current dark-mode logo"
+                   class="mx-auto max-h-16 w-auto">
+              <button type="button" data-logo-remove class="mt-2 text-sm text-red-400 hover:underline">Remove</button>
+            </div>
+            <div class="mt-3">
+              <input type="file" data-logo-input hidden accept="image/png,image/jpeg,image/svg+xml">
+              <button type="button" class="btn-secondary btn-sm" data-logo-choose>Choose File</button>
+              <p class="mt-2 text-xs text-ink-400">PNG, JPG, or SVG (max 2MB)</p>
+              <p data-logo-status class="mt-1 text-xs text-ink-400" hidden></p>
+              <p data-logo-error class="field-error mt-1" hidden></p>
+            </div>
+          </div>
+          <label for="logo_dark_path" class="field-hint mt-2 block">Path on this site</label>
+          <input id="logo_dark_path" name="theme.logo.dark" type="text" value="{{ s.theme_logo_dark.value }}"
+                 data-logo-path spellcheck="false" autocomplete="off" placeholder="/storage/logos/…"
+                 class="field-input mt-1 font-mono text-xs">
+        </div>
+      </div>
+
+      <div>
+        <button type="submit" class="btn-primary">Save Logos</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{{-- Loaded here rather than from the layout, so it is fetched on this page and
+     nowhere else. `defer` because the elements it binds to are above it. --}}
+<script src="/js/appearance.js" defer></script>
+@endsection

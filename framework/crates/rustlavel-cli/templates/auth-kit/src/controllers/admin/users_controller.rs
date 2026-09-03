@@ -63,9 +63,26 @@ impl UsersController {
                         user.last_login_at.as_deref().map(tokens::humanise).unwrap_or_else(|| "Never".into()),
                     ),
                 );
+                fields.insert("roles_empty".into(), Json::from(roles.is_empty()));
                 fields.insert(
                     "roles".into(),
                     Json::Array(roles.iter().map(|r| Json::from(r.as_str())).collect()),
+                );
+                // The exceptions, counted. A user with none is the normal case;
+                // a user with several is the one somebody will come looking for
+                // when they cannot work out why a permission is not applying.
+                fields.insert(
+                    "direct_permissions".into(),
+                    Json::from(store.direct_permissions(user.id).await.unwrap_or_default().len() as i64),
+                );
+                fields.insert(
+                    "joined_at".into(),
+                    Json::from(
+                        user.created_at
+                            .as_deref()
+                            .map(tokens::humanise_date)
+                            .unwrap_or_else(|| "—".into()),
+                    ),
                 );
                 // Nobody deletes or impersonates themselves. The first is a way
                 // to lock yourself out of your own application; the second does
@@ -76,11 +93,13 @@ impl UsersController {
             rows.push(json);
         }
 
+        let stats = Self::statistics(&db, &store, &now).await?;
         let all_roles = store.roles().await.unwrap_or_default();
         let mut context = page::shell(&req, "users").await;
         context = with_current_user(context, &req, &db).await?;
 
         context = context
+            .with("stats", Json::Array(stats))
             .with("q", Json::from(search.as_str()))
             .with("users_empty", Json::from(rows.is_empty()))
             .with("users", Json::Array(rows))
@@ -105,6 +124,50 @@ impl UsersController {
 
         context = pagination(context, &req, page_number, listed.total);
         req.view("admin/users/index", &context)
+    }
+
+    /// The six counts above the table.
+    ///
+    /// Each is a query rather than a placeholder, and each answers something a
+    /// person administering this actually asks. "Active today" is deliberately
+    /// a count of *people* rather than of sign-ins: three visits from one
+    /// person is one person.
+    async fn statistics(db: &Database, store: &Permissions, now: &str) -> Result<Vec<Json>> {
+        let midnight = format!("{} 00:00:00", &now[..10.min(now.len())]);
+        let week_ago = tokens::format_utc(tokens::unix_now() - 7 * 24 * 60 * 60);
+
+        let total = db.table("users").count(db).await?;
+        let verified = db.table("users").filter_not_null("email_verified_at").count(db).await?;
+        let active_today = db
+            .table("users")
+            .filter_op("last_login_at", ">=", midnight)
+            .count(db)
+            .await
+            .unwrap_or(0);
+        let recent = db.table("users").filter_op("created_at", ">=", week_ago).count(db).await?;
+
+        // These two come from the RBAC store, whose tables this application does
+        // not own and must not join against.
+        let mut with_roles = 0;
+        let mut with_direct = 0;
+        for row in db.table("users").select(&["id"]).get(db).await? {
+            let Ok(id) = row.get::<i64>("id") else { continue };
+            if !store.roles_for(id).await.unwrap_or_default().is_empty() {
+                with_roles += 1;
+            }
+            if !store.direct_permissions(id).await.unwrap_or_default().is_empty() {
+                with_direct += 1;
+            }
+        }
+
+        Ok(vec![
+            stat("Total Users", total, "bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400", ICON_USERS),
+            stat("Verified Users", verified, "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400", ICON_CHECK),
+            stat("Active Today", active_today, "bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400", ICON_BOLT),
+            stat("Users with Roles", with_roles, "bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400", ICON_GROUP),
+            stat("Direct Permissions", with_direct, "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400", ICON_KEY),
+            stat("Recent Users (7 days)", recent, "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400", ICON_CLOCK),
+        ])
     }
 
     pub async fn create(req: Request) -> Result<Response> {
@@ -333,6 +396,22 @@ impl UsersController {
             .with("permissions", Json::Array(permissions)))
     }
 }
+
+fn stat(label: &str, value: i64, tint: &str, icon: &str) -> Json {
+    Json::object([
+        ("label", Json::from(label)),
+        ("value", Json::from(value)),
+        ("tint", Json::from(tint)),
+        ("icon", Json::from(icon)),
+    ])
+}
+
+const ICON_USERS: &str = r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M7 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm6 1a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM1.6 15.5A5.6 5.6 0 0 1 7 10.5a5.6 5.6 0 0 1 5.4 5H1.6Zm12.05 0a6.9 6.9 0 0 0-1.6-3.86A4.2 4.2 0 0 1 18.4 15.5h-4.75Z"/></svg>"#;
+const ICON_CHECK: &str = r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.86-9.72a.75.75 0 0 0-1.22-.86l-3.24 4.53-1.62-1.62a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.1l3.75-5.25Z" clip-rule="evenodd"/></svg>"#;
+const ICON_BOLT: &str = r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M11.3 1.05a.75.75 0 0 1 .7.98L10.4 7.5h3.85a.75.75 0 0 1 .58 1.22l-6.5 8a.75.75 0 0 1-1.32-.68L8.6 11.5H4.75a.75.75 0 0 1-.58-1.22l6.5-8a.75.75 0 0 1 .63-.23Z"/></svg>"#;
+const ICON_GROUP: &str = r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-6.5 9.5a6.5 6.5 0 0 1 13 0H3.5Z"/></svg>"#;
+const ICON_KEY: &str = r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M13 2a5 5 0 0 0-4.9 6L2 14.1V18h3.9l1.3-1.3v-1.6h1.6l1.3-1.3v-1.6h1.6l.4-.4A5 5 0 1 0 13 2Zm1.5 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"/></svg>"#;
+const ICON_CLOCK: &str = r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-11.5a.75.75 0 0 0-1.5 0v4c0 .28.16.54.41.67l2.5 1.25a.75.75 0 1 0 .68-1.34l-2.09-1.04V6.5Z" clip-rule="evenodd"/></svg>"#;
 
 /// The RBAC store, or a clear failure. Never a silent `false`.
 ///

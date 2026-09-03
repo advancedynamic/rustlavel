@@ -1,0 +1,29 @@
+@extends("layouts.guest")
+@section("title", "Sign in with a link")
+@section("heading", "Sign in with a link")
+
+@section("subheading")
+  <p class="mt-2 text-center text-sm text-ink-500 dark:text-ink-400">
+    Give us the address on the account and we will email you a link that signs you in.
+  </p>
+@endsection
+
+@section("content")
+  @include("partials.errors")
+
+  <form method="post" action="/magic-link" class="space-y-5" novalidate>
+    {!! csrf_field !!}
+    <div>
+      <label for="email" class="field-label">Email</label>
+      <input id="email" name="email" type="email" value="{{ old_email }}" required autofocus
+             autocomplete="email" inputmode="email"
+             class="field-input @if(error_email) field-input-invalid @endif">
+      @if(error_email)<p class="field-error">{{ error_email }}</p>@endif
+    </div>
+    <button type="submit" class="btn-primary w-full">Email me a link</button>
+  </form>
+
+  <div class="mt-6 border-t border-ink-200 pt-5 text-center dark:border-ink-800">
+    <a href="/login" class="text-sm font-medium text-ink-500 hover:text-ink-700 dark:text-ink-400">Sign in with a password instead</a>
+  </div>
+@endsection

@@ -1,0 +1,63 @@
+@extends("settings.index")
+@section("tab")
+  <h3 class="mb-1 text-lg font-semibold">Language</h3>
+  <p class="mb-5 text-sm text-ink-500 dark:text-ink-400">
+    The language the interface is drawn in, and what to fall back to when a
+    translation is missing.
+  </p>
+
+  <form method="post" action="/admin/settings/language" class="space-y-5">
+    {!! csrf_field !!}
+
+    <div class="grid gap-5 lg:grid-cols-2">
+      <div>
+        <label for="app_locale" class="field-label">Default Language</label>
+        <select id="app_locale" name="app.locale" class="field-input">
+          @foreach(s.app_locale.choices as choice)
+            <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+          @endforeach
+        </select>
+        <p class="field-hint">Used for anybody who has not chosen one of their own.</p>
+      </div>
+
+      <div>
+        <label for="app_locale_fallback" class="field-label">Fallback Language</label>
+        <input id="app_locale_fallback" name="app.locale.fallback" type="text"
+               value="{{ s.app_locale_fallback.value }}" class="field-input" maxlength="8">
+        <p class="field-hint">
+          Used when a phrase has no translation in the chosen language. A missing
+          phrase falls back rather than rendering its key, which is what a person
+          would otherwise see on the page.
+        </p>
+      </div>
+    </div>
+
+    <div class="card border-ink-200 bg-ink-50 dark:bg-ink-800/40">
+      <div class="card-body">
+        <p class="text-sm font-medium">Translation files</p>
+        <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">
+          One JSON file per language under <code>lang/</code>, named by its code
+          &mdash; <code>lang/id.json</code> for Bahasa Indonesia. A language with
+          no file falls back, so adding one is the whole of adding a language.
+        </p>
+        <ul class="mt-3 space-y-1 text-sm">
+          @foreach(languages as language)
+            <li class="flex items-center gap-2">
+              @if(language.present)
+                <span class="badge-success">{{ language.code }}</span>
+                <span class="text-ink-500 dark:text-ink-400">{{ language.label }} &middot; {{ language.phrases }} phrases</span>
+              @else
+                <span class="badge-neutral">{{ language.code }}</span>
+                <span class="text-ink-500 dark:text-ink-400">{{ language.label }} &middot; no <code>lang/{{ language.code }}.json</code> yet</span>
+              @endif
+            </li>
+          @endforeach
+        </ul>
+      </div>
+    </div>
+
+    <div class="border-t border-ink-200 pt-5 dark:border-ink-800">
+      <button type="submit" class="btn-primary">Save Settings</button>
+    </div>
+  </form>
+@endsection

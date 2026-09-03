@@ -1,0 +1,264 @@
+@extends("settings.index")
+@section("tab")
+  <h3 class="mb-1 text-lg font-semibold">Security</h3>
+  <p class="mb-5 text-sm text-ink-500 dark:text-ink-400">
+    Who may get an account, what they have to prove, and how hard it is to guess
+    a password. Everything here is read on the sign-in and password paths, so a
+    change takes effect on the next attempt.
+  </p>
+
+  <form method="post" action="/admin/settings/security" class="space-y-8">
+    {!! csrf_field !!}
+
+    {{-- Authentication ------------------------------------------------------
+         Each switch is a real checkbox with `sr-only` on it: the visible track
+         and knob are the sibling label, drawn from the checkbox's own state
+         with `peer-checked:`. No JavaScript holds the state, so it survives a
+         failed save, works under a policy with no `unsafe-inline`, and is
+         announced as a switch rather than as a decorated <div>. --}}
+    <section>
+      <h4 class="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+        Authentication Settings
+      </h4>
+      <div class="mt-3 divide-y divide-ink-200 rounded-lg border border-ink-200 dark:divide-ink-800 dark:border-ink-800">
+
+        <div class="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
+          <div class="min-w-0">
+            <label for="auth_registration_open" class="block text-sm font-medium">Enable Registration</label>
+            <p class="mt-0.5 text-sm text-ink-500 dark:text-ink-400">Allow new users to register accounts</p>
+            @if(s.auth_registration_open.locked)
+              <p class="field-hint">Set by {{ s.auth_registration_open.env }} in the environment, so this switch is not yours to move.</p>
+            @endif
+          </div>
+          <span class="relative inline-flex shrink-0">
+            <input id="auth_registration_open" name="auth.registration.open" type="checkbox" value="true"
+                   role="switch" class="peer sr-only"
+                   @if(s.auth_registration_open.on) checked @endif
+                   @if(s.auth_registration_open.locked) disabled @endif>
+            <label for="auth_registration_open" class="relative block h-6 w-11 cursor-pointer rounded-full bg-ink-300 transition-colors after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform after:content-[''] peer-checked:bg-brand-600 peer-checked:after:translate-x-5 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-500 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 dark:bg-ink-600"></label>
+          </span>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
+          <div class="min-w-0">
+            <label for="auth_magic_link" class="block text-sm font-medium">Enable Magic Link Login</label>
+            <p class="mt-0.5 text-sm text-ink-500 dark:text-ink-400">Allow users to login via email magic links</p>
+            @if(s.auth_magic_link.locked)
+              <p class="field-hint">Set by {{ s.auth_magic_link.env }} in the environment, so this switch is not yours to move.</p>
+            @endif
+          </div>
+          <span class="relative inline-flex shrink-0">
+            <input id="auth_magic_link" name="auth.magic_link" type="checkbox" value="true"
+                   role="switch" class="peer sr-only"
+                   @if(s.auth_magic_link.on) checked @endif
+                   @if(s.auth_magic_link.locked) disabled @endif>
+            <label for="auth_magic_link" class="relative block h-6 w-11 cursor-pointer rounded-full bg-ink-300 transition-colors after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform after:content-[''] peer-checked:bg-brand-600 peer-checked:after:translate-x-5 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-500 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 dark:bg-ink-600"></label>
+          </span>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
+          <div class="min-w-0">
+            <label for="auth_verify_email" class="block text-sm font-medium">Require Email Verification</label>
+            <p class="mt-0.5 text-sm text-ink-500 dark:text-ink-400">New users must verify email before access</p>
+            @if(s.auth_verify_email.locked)
+              <p class="field-hint">Set by {{ s.auth_verify_email.env }} in the environment, so this switch is not yours to move.</p>
+            @endif
+          </div>
+          <span class="relative inline-flex shrink-0">
+            <input id="auth_verify_email" name="auth.verify_email" type="checkbox" value="true"
+                   role="switch" class="peer sr-only"
+                   @if(s.auth_verify_email.on) checked @endif
+                   @if(s.auth_verify_email.locked) disabled @endif>
+            <label for="auth_verify_email" class="relative block h-6 w-11 cursor-pointer rounded-full bg-ink-300 transition-colors after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform after:content-[''] peer-checked:bg-brand-600 peer-checked:after:translate-x-5 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-500 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 dark:bg-ink-600"></label>
+          </span>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
+          <div class="min-w-0">
+            <label for="auth_require_mfa" class="block text-sm font-medium">Two-Factor Authentication</label>
+            <p class="mt-0.5 text-sm text-ink-500 dark:text-ink-400">Require two-factor authentication for all users</p>
+            <p class="field-hint">
+              Somebody signing in with nothing enrolled is sent to their own
+              security page to set one up, rather than to the dashboard.
+            </p>
+            @if(s.auth_require_mfa.locked)
+              <p class="field-hint">Set by {{ s.auth_require_mfa.env }} in the environment, so this switch is not yours to move.</p>
+            @endif
+          </div>
+          <span class="relative inline-flex shrink-0">
+            <input id="auth_require_mfa" name="auth.require_mfa" type="checkbox" value="true"
+                   role="switch" class="peer sr-only"
+                   @if(s.auth_require_mfa.on) checked @endif
+                   @if(s.auth_require_mfa.locked) disabled @endif>
+            <label for="auth_require_mfa" class="relative block h-6 w-11 cursor-pointer rounded-full bg-ink-300 transition-colors after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform after:content-[''] peer-checked:bg-brand-600 peer-checked:after:translate-x-5 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-500 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 dark:bg-ink-600"></label>
+          </span>
+        </div>
+
+      </div>
+    </section>
+
+    {{-- Security policies ---------------------------------------------------
+         The choices come from CATALOGUE rather than from a list written here,
+         so adding a fifteen-minute session timeout is one line in
+         `src/support/settings.rs` and nothing in this file. --}}
+    <section>
+      <h4 class="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-ink-400">
+        Security Policies
+      </h4>
+
+      <div class="mt-3 grid gap-5 lg:grid-cols-2">
+        <div>
+          <label for="auth_password_min_length" class="field-label">Minimum Password Length</label>
+          <select id="auth_password_min_length" name="auth.password.min_length" class="field-input"
+                  @if(s.auth_password_min_length.locked) disabled @endif>
+            @foreach(s.auth_password_min_length.choices as choice)
+              <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+            @endforeach
+          </select>
+          <p class="field-hint">
+            @if(s.auth_password_min_length.locked)
+              Set by {{ s.auth_password_min_length.env }} in the environment.
+            @else
+              Length is the rule that actually helps. Longer beats complicated.
+            @endif
+          </p>
+        </div>
+
+        <div>
+          <label for="auth_password_reuse" class="field-label">Prevent Password Reuse</label>
+          <select id="auth_password_reuse" name="auth.password.reuse" class="field-input"
+                  @if(s.auth_password_reuse.locked) disabled @endif>
+            @foreach(s.auth_password_reuse.choices as choice)
+              <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+            @endforeach
+          </select>
+          <p class="field-hint">
+            @if(s.auth_password_reuse.locked)
+              Set by {{ s.auth_password_reuse.env }} in the environment.
+            @else
+              How many old passwords are remembered and refused.
+            @endif
+          </p>
+        </div>
+
+        <div>
+          <label for="auth_session_timeout" class="field-label">Session Timeout</label>
+          <select id="auth_session_timeout" name="auth.session.timeout" class="field-input"
+                  @if(s.auth_session_timeout.locked) disabled @endif>
+            @foreach(s.auth_session_timeout.choices as choice)
+              <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+            @endforeach
+          </select>
+          <p class="field-hint">
+            @if(s.auth_session_timeout.locked)
+              Set by {{ s.auth_session_timeout.env }} in the environment.
+            @else
+              How long an idle session stays signed in.
+            @endif
+          </p>
+        </div>
+
+        <div>
+          <label for="auth_lockout_attempts" class="field-label">Max Login Attempts</label>
+          <select id="auth_lockout_attempts" name="auth.lockout.attempts" class="field-input"
+                  @if(s.auth_lockout_attempts.locked) disabled @endif>
+            @foreach(s.auth_lockout_attempts.choices as choice)
+              <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+            @endforeach
+          </select>
+          <p class="field-hint">
+            @if(s.auth_lockout_attempts.locked)
+              Set by {{ s.auth_lockout_attempts.env }} in the environment.
+            @else
+              Wrong passwords before the account locks. &ldquo;No limit&rdquo; leaves
+              guessing unbounded, and only the per-address limit standing.
+            @endif
+          </p>
+        </div>
+
+        <div>
+          <label for="auth_lockout_minutes" class="field-label">Account Lockout Duration</label>
+          <select id="auth_lockout_minutes" name="auth.lockout.minutes" class="field-input"
+                  @if(s.auth_lockout_minutes.locked) disabled @endif>
+            @foreach(s.auth_lockout_minutes.choices as choice)
+              <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+            @endforeach
+          </select>
+          <p class="field-hint">
+            @if(s.auth_lockout_minutes.locked)
+              Set by {{ s.auth_lockout_minutes.env }} in the environment.
+            @else
+              How long a locked account stays locked. The sign-in page tells the
+              person how much of it is left.
+            @endif
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-5">
+        <p class="field-label">Password Complexity</p>
+        <p class="mb-2 text-sm text-ink-500 dark:text-ink-400">
+          All off by default, and that is deliberate. Composition rules push
+          people towards <code>Password1!</code> and away from the long
+          passphrase that is actually harder to guess, which is why NIST dropped
+          them in SP 800-63B. They are here because organisations are required
+          to have them, not because they help.
+        </p>
+
+        <div class="grid gap-2 sm:grid-cols-2">
+          <label class="flex items-start gap-3 rounded-lg border border-ink-200 p-3 transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800/50">
+            <input type="checkbox" name="auth.password.uppercase" value="true"
+                   @if(s.auth_password_uppercase.on) checked @endif
+                   @if(s.auth_password_uppercase.locked) disabled @endif
+                   class="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800">
+            <span class="text-sm">Require an uppercase letter</span>
+          </label>
+
+          <label class="flex items-start gap-3 rounded-lg border border-ink-200 p-3 transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800/50">
+            <input type="checkbox" name="auth.password.lowercase" value="true"
+                   @if(s.auth_password_lowercase.on) checked @endif
+                   @if(s.auth_password_lowercase.locked) disabled @endif
+                   class="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800">
+            <span class="text-sm">Require a lowercase letter</span>
+          </label>
+
+          <label class="flex items-start gap-3 rounded-lg border border-ink-200 p-3 transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800/50">
+            <input type="checkbox" name="auth.password.number" value="true"
+                   @if(s.auth_password_number.on) checked @endif
+                   @if(s.auth_password_number.locked) disabled @endif
+                   class="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800">
+            <span class="text-sm">Require a number</span>
+          </label>
+
+          <label class="flex items-start gap-3 rounded-lg border border-ink-200 p-3 transition hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800/50">
+            <input type="checkbox" name="auth.password.symbol" value="true"
+                   @if(s.auth_password_symbol.on) checked @endif
+                   @if(s.auth_password_symbol.locked) disabled @endif
+                   class="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800">
+            <span class="text-sm">Require a special character</span>
+          </label>
+
+          <label class="flex items-start gap-3 rounded-lg border border-ink-200 p-3 transition hover:bg-ink-50 sm:col-span-2 dark:border-ink-800 dark:hover:bg-ink-800/50">
+            <input type="checkbox" name="auth.password.breached" value="true"
+                   @if(s.auth_password_breached.on) checked @endif
+                   @if(s.auth_password_breached.locked) disabled @endif
+                   class="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800">
+            <span class="min-w-0">
+              <span class="block text-sm">Check against breached passwords (Have I Been Pwned)</span>
+              <span class="block text-xs text-amber-700 dark:text-amber-400">
+                Not implemented in this starter kit. The lookup needs an outbound
+                HTTPS call, and a breach check that quietly fails open is worse
+                than none &mdash; so while this is on, every new password is
+                refused rather than waved through unchecked.
+              </span>
+            </span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <div class="border-t border-ink-200 pt-5 dark:border-ink-800">
+      <button type="submit" class="btn-primary">Save Settings</button>
+    </div>
+  </form>
+@endsection

@@ -58,3 +58,22 @@ async fn the_sign_in_form_carries_a_token_to_send_back() {
     let body = app().test_client().get("/login").await.body();
     assert!(body.contains(r#"name="_token""#), "the form has no CSRF field");
 }
+
+/// Magic-link sign-in is off until Settings → Security switches it on, and
+/// while it is off the routes are not there at all. A 404 rather than a 403:
+/// the absence of a page nobody enabled is not worth explaining to a stranger.
+#[rustlavel::test]
+async fn magic_link_routes_are_absent_until_the_setting_is_on() {
+    let client = app().test_client();
+
+    for path in ["/magic-link", "/magic/0123456789abcdef"] {
+        let response = client.get(path).await;
+        assert_eq!(response.status(), 404, "{path} answered while the setting is off");
+    }
+}
+
+/// And the sign-in page does not offer what the routes will not serve.
+#[rustlavel::test]
+async fn the_sign_in_page_does_not_offer_a_magic_link_while_it_is_off() {
+    app().test_client().get("/login").await.assert_dont_see("/magic-link");
+}

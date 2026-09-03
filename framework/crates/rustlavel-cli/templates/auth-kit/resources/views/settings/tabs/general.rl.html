@@ -1,0 +1,69 @@
+@extends("settings.index")
+@section("tab")
+  <h3 class="mb-5 text-lg font-semibold">General Settings</h3>
+
+  <form method="post" action="/admin/settings/general" class="space-y-5">
+    {!! csrf_field !!}
+
+    <div class="grid gap-5 lg:grid-cols-2">
+      <div>
+        <label for="app_name" class="field-label">Application Name</label>
+        <input id="app_name" name="app.name" type="text" value="{{ s.app_name.value }}"
+               class="field-input" @if(s.app_name.locked) disabled @endif>
+        @if(s.app_name.locked)<p class="field-hint">Set by {{ s.app_name.env }} in the environment.</p>@endif
+      </div>
+
+      <div>
+        <label for="app_description" class="field-label">Application Description</label>
+        <input id="app_description" name="app.description" type="text"
+               value="{{ s.app_description.value }}" class="field-input"
+               placeholder="Shown in the browser tab and in emails">
+      </div>
+
+      <div>
+        <label for="app_url" class="field-label">Application URL</label>
+        <input id="app_url" name="app.url" type="url" value="{{ s.app_url.value }}"
+               class="field-input" @if(s.app_url.locked) disabled @endif>
+        <p class="field-hint">
+          @if(s.app_url.locked)
+            Set by {{ s.app_url.env }} in the environment.
+          @else
+            Every emailed link is built from this, so a wrong value sends people nowhere.
+          @endif
+        </p>
+      </div>
+
+      <div>
+        <label for="app_date_format" class="field-label">Date Format</label>
+        <select id="app_date_format" name="app.date_format" class="field-input">
+          @foreach(s.app_date_format.choices as choice)
+            <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+          @endforeach
+        </select>
+      </div>
+
+      <div>
+        <label for="app_time_format" class="field-label">Time Format</label>
+        <select id="app_time_format" name="app.time_format" class="field-input">
+          @foreach(s.app_time_format.choices as choice)
+            <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+          @endforeach
+        </select>
+      </div>
+
+      <div>
+        <label for="app_timezone" class="field-label">Timezone</label>
+        <select id="app_timezone" name="app.timezone" class="field-input">
+          @foreach(s.app_timezone.choices as choice)
+            <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+          @endforeach
+        </select>
+        <p class="field-hint">Times are stored in UTC and shown in this zone.</p>
+      </div>
+    </div>
+
+    <div class="border-t border-ink-200 pt-5 dark:border-ink-800">
+      <button type="submit" class="btn-primary">Save Settings</button>
+    </div>
+  </form>
+@endsection

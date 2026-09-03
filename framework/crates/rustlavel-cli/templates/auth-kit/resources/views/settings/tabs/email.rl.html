@@ -1,0 +1,96 @@
+@extends("settings.index")
+@section("tab")
+  <h3 class="mb-5 text-lg font-semibold">Email Configuration</h3>
+
+  <form method="post" action="/admin/settings/email" class="space-y-5">
+    {!! csrf_field !!}
+
+    <div class="grid gap-5 lg:grid-cols-2">
+      <div>
+        <label for="mail_driver" class="field-label">Mail Driver</label>
+        <select id="mail_driver" name="mail.driver" class="field-input" @if(s.mail_driver.locked) disabled @endif>
+          @foreach(s.mail_driver.choices as choice)
+            <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+          @endforeach
+        </select>
+        @if(s.mail_driver.locked)<p class="field-hint">Set by {{ s.mail_driver.env }} in the environment.</p>@endif
+      </div>
+
+      <div>
+        <label for="mail_host" class="field-label">Mail Host</label>
+        <input id="mail_host" name="mail.host" type="text" value="{{ s.mail_host.value }}"
+               class="field-input" @if(s.mail_host.locked) disabled @endif>
+      </div>
+
+      <div>
+        <label for="mail_port" class="field-label">Mail Port</label>
+        <input id="mail_port" name="mail.port" type="number" min="1" max="65535"
+               value="{{ s.mail_port.value }}" class="field-input" @if(s.mail_port.locked) disabled @endif>
+      </div>
+
+      <div>
+        <label for="mail_encryption" class="field-label">Mail Encryption</label>
+        <select id="mail_encryption" name="mail.encryption" class="field-input" @if(s.mail_encryption.locked) disabled @endif>
+          @foreach(s.mail_encryption.choices as choice)
+            <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
+          @endforeach
+        </select>
+        <p class="field-hint">
+          STARTTLS upgrades a plain connection; TLS is encrypted from the first byte.
+          Neither means the password crosses the network in the clear.
+        </p>
+      </div>
+
+      <div>
+        <label for="mail_username" class="field-label">Mail Username</label>
+        <input id="mail_username" name="mail.username" type="text" value="{{ s.mail_username.value }}"
+               class="field-input" autocomplete="off" @if(s.mail_username.locked) disabled @endif>
+      </div>
+
+      <div>
+        <label for="mail_password" class="field-label">Mail Password</label>
+        <input id="mail_password" name="mail.password" type="password" placeholder="••••••••"
+               class="field-input" autocomplete="new-password" @if(s.mail_password.locked) disabled @endif>
+        <p class="field-hint">
+          {{-- The stored value is never sent back to the browser, so the box is
+               always empty and an empty box means "leave it alone". --}}
+          Encrypted at rest. Leave it blank to keep the password you already have.
+        </p>
+      </div>
+
+      <div>
+        <label for="mail_from_address" class="field-label">From Address</label>
+        <input id="mail_from_address" name="mail.from.address" type="email"
+               value="{{ s.mail_from_address.value }}" class="field-input"
+               @if(s.mail_from_address.locked) disabled @endif>
+      </div>
+
+      <div>
+        <label for="mail_from_name" class="field-label">From Name</label>
+        <input id="mail_from_name" name="mail.from.name" type="text"
+               value="{{ s.mail_from_name.value }}" class="field-input"
+               @if(s.mail_from_name.locked) disabled @endif>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-between gap-4 border-t border-ink-200 pt-5 dark:border-ink-800">
+      <button type="submit" class="btn-primary">Save Settings</button>
+    </div>
+  </form>
+
+  {{-- A separate form, because sending a test is not saving: submitting it must
+       not rewrite eight settings, and saving must not send anybody an email. --}}
+  <form method="post" action="/admin/settings/email/test"
+        class="mt-4 flex flex-wrap items-center justify-end gap-3">
+    {!! csrf_field !!}
+    <label for="test_to" class="sr-only">Test email address</label>
+    <input id="test_to" name="to" type="email" required placeholder="Test email address"
+           value="{{ test_to }}" class="field-input w-64">
+    <button type="submit" class="btn-success">Send Test Email</button>
+  </form>
+
+  <p class="mt-3 text-right text-sm text-ink-500 dark:text-ink-400">
+    The test uses the settings as they are <em>saved</em>, not as they are typed above.
+    Save first, then send.
+  </p>
+@endsection

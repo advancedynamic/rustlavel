@@ -40,19 +40,21 @@ impl PasswordController {
                 req.config().string("app.url", "http://localhost:8000")
             );
 
-            match req.state::<rustlavel::mail::Mailer>() {
-                Some(mailer) => {
-                    mailer
-                        .send(rustlavel::mail::Message::new().to(user.email.as_str()).subject("Reset your password").text(format!(
+            match req.state::<rustlavel::mail::Mailer>().is_some() {
+                true => {
+                    crate::support::mail::send(
+                        &req,
+                        rustlavel::mail::Message::new().to(user.email.as_str()).subject("Reset your password").text(format!(
                             "Hello {},\n\nSomebody asked to reset the password on your \
                              account. Use this link:\n\n{url}\n\nIt works once and expires in an \
                              hour. If it was not you, nothing has changed and you can ignore \
                              this.\n",
                             user.first_name()
-                        )))
-                        .await?;
+                        )),
+                    )
+                    .await?;
                 }
-                None => warn!("no mailer is configured; the reset link for {email} is {url}"),
+                false => warn!("no mailer is configured; the reset link for {email} is {url}"),
             }
         }
 
@@ -91,7 +93,10 @@ impl PasswordController {
             .with("token", Json::from(token))
             .with("action", Json::from("/reset-password"))
             .with("submit_label", Json::from("Set the new password"))
-            .with("min_length", Json::from(crate::controllers::auth::register_controller::min_length(&req)));
+            .with(
+                "min_length",
+                Json::from(crate::controllers::auth::register_controller::Policy::current(&req).await.minimum),
+            );
         req.view("auth/activate", &context)
     }
 
@@ -100,10 +105,27 @@ impl PasswordController {
         let token = req.input("token").unwrap_or_default();
         let password = req.input("password").unwrap_or_default();
         let confirmation = req.input("password_confirmation").unwrap_or_default();
-        let minimum = crate::controllers::auth::register_controller::min_length(&req);
+        let policy = crate::controllers::auth::register_controller::Policy::current(&req).await;
+        let minimum = policy.minimum;
+        let mut errors = policy.errors(&password, &confirmation);
 
-        let errors =
-            crate::controllers::auth::register_controller::password_errors(&password, &confirmation, minimum);
+        // Reuse is checked against the token's owner *before* the token is
+        // spent, so a refusal leaves the person their link instead of sending
+        // them back to ask for another one.
+        let keep = crate::support::passwords::keep(&req).await;
+        if errors.is_empty() && keep > 0 {
+            if let Some(record) = crate::models::user_token::UserToken::first(
+                &db,
+                crate::models::user_token::UserToken::usable(PASSWORD_RESET, &token, &tokens::now()),
+            )
+            .await?
+            {
+                if crate::support::passwords::was_used_before(&db, record.user_id, &password, keep).await? {
+                    errors.add("password", crate::support::passwords::reuse_message(keep));
+                }
+            }
+        }
+
         if !errors.is_empty() {
             let context = page::errors(page::shell(&req, "").await, &errors)
                 .with("token", Json::from(token))
@@ -132,7 +154,9 @@ impl PasswordController {
         };
 
         let now = tokens::now();
-        user.password_hash = Some(rustlavel::auth::hash_password(&password)?);
+        let hash = rustlavel::auth::hash_password(&password)?;
+        crate::support::passwords::remember_previous(&db, user.id, user.password_hash.as_deref(), keep).await?;
+        user.password_hash = Some(hash);
         // A reset is what somebody does when they think their account has been
         // taken, so every other session goes with it. The epoch is checked by
         // the session guard on each request.
@@ -145,7 +169,11 @@ impl PasswordController {
         user.locked_until = None;
         user.update(&db).await?;
 
-        crate::controllers::auth::login_controller::LoginController::complete(&req, &db, &mut user, &now).await?;
+        use crate::controllers::auth::login_controller::LoginController;
+        LoginController::complete(&req, &db, &mut user, &now).await?;
+        if let Some(enrol) = LoginController::enrolment_owed(&req, &db, user.id).await? {
+            return Ok(Response::see_other(enrol));
+        }
         page::flash(&req, "success", "Your password has been changed. Other devices have been signed out.");
         Ok(Response::see_other("/dashboard"))
     }

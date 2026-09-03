@@ -78,6 +78,22 @@ pub fn humanise(text: &str) -> String {
     )
 }
 
+/// A date on its own: `2 Sep 2026`.
+///
+/// For a column where the time adds nothing — when somebody joined is a day,
+/// not a moment, and the extra five characters cost a column its width.
+pub fn humanise_date(text: &str) -> String {
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    let unix = parse_utc(text);
+    if unix == 0 {
+        return "—".to_string();
+    }
+    let (year, month, day) = civil_from_days(unix.div_euclid(86_400));
+    format!("{} {day}, {year}", MONTHS[(month - 1) as usize])
+}
+
 /// Issue a link. Returns the plaintext token, which exists only in the email.
 ///
 /// Any earlier token for the same purpose is spent first: a person who clicks

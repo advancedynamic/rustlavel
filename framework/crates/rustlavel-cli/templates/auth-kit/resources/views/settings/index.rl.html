@@ -1,0 +1,40 @@
+@extends("layouts.app")
+@section("title", "Settings")
+
+@section("content")
+  <div class="card mb-5">
+    <div class="card-body flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-semibold tracking-tight">Settings</h2>
+        <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">Manage your application settings</p>
+      </div>
+      <a href="/admin/settings/export" class="btn-secondary" download>
+        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 2.75a.75.75 0 0 1 .75.75v7.19l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V3.5a.75.75 0 0 1 .75-.75ZM3.5 14.5a.75.75 0 0 1 .75.75v.5c0 .14.11.25.25.25h11a.25.25 0 0 0 .25-.25v-.5a.75.75 0 0 1 1.5 0v.5A1.75 1.75 0 0 1 15.5 17.5h-11A1.75 1.75 0 0 1 2.75 15.75v-.5a.75.75 0 0 1 .75-.75Z"/></svg>
+        Export Settings
+      </a>
+    </div>
+  </div>
+
+  <div class="card">
+    {{-- Tabs are links, not JavaScript. Each is a real URL, so a person can
+         bookmark the Email settings, open them in a new window, and land back
+         on them after saving — none of which a client-side tab strip gives
+         you, and all of which somebody administering an application expects. --}}
+    <nav class="table-wrap border-b border-ink-200 px-2 dark:border-ink-800" aria-label="Settings sections">
+      <div class="flex gap-1">
+        @foreach(tabs as item)
+          <a href="/admin/settings/{{ item.slug }}"
+             class="whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition
+                    @if(item.current) border-brand-600 text-brand-600 dark:border-brand-400 dark:text-brand-400
+                    @else border-transparent text-ink-500 hover:border-ink-300 hover:text-ink-800 dark:text-ink-400 dark:hover:text-ink-200 @endif"
+             @if(item.current) aria-current="page" @endif>{{ item.label }}</a>
+        @endforeach
+      </div>
+    </nav>
+
+    <div class="card-body">
+      @include("partials.errors")
+      @yield("tab")
+    </div>
+  </div>
+@endsection

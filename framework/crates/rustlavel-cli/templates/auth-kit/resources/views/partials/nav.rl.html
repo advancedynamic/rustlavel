@@ -31,6 +31,13 @@
       </a>
     @endif
 
+    @if(can_manage_settings)
+      <a href="/admin/settings" class="nav-link @if(nav == "settings") nav-link-active @endif">
+        <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M8.34 1.8a1 1 0 0 1 .98-.8h1.36a1 1 0 0 1 .98.8l.3 1.48c.5.14.97.34 1.41.58l1.25-.84a1 1 0 0 1 1.27.13l.96.96a1 1 0 0 1 .13 1.26l-.84 1.25c.24.45.44.92.58 1.42l1.47.29a1 1 0 0 1 .81.98v1.36a1 1 0 0 1-.81.98l-1.47.3c-.14.49-.34.96-.58 1.41l.84 1.25a1 1 0 0 1-.13 1.26l-.96.96a1 1 0 0 1-1.27.13l-1.25-.84c-.44.24-.91.44-1.41.58l-.3 1.47a1 1 0 0 1-.98.81H9.32a1 1 0 0 1-.98-.81l-.3-1.47a7 7 0 0 1-1.41-.58l-1.25.84a1 1 0 0 1-1.26-.13l-.96-.96a1 1 0 0 1-.13-1.26l.84-1.25a7 7 0 0 1-.58-1.42l-1.48-.29A1 1 0 0 1 1 10.68V9.32a1 1 0 0 1 .81-.98l1.47-.3c.14-.49.34-.96.58-1.41l-.83-1.25a1 1 0 0 1 .13-1.26l.96-.96a1 1 0 0 1 1.26-.13l1.25.84c.45-.24.92-.44 1.42-.58l.29-1.48ZM13 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+        Settings
+      </a>
+    @endif
+
     @if(can_view_permissions)
       <a href="/admin/permissions" class="nav-link @if(nav == "permissions") nav-link-active @endif">
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 1a4 4 0 0 0-4 4v2H5.5A1.5 1.5 0 0 0 4 8.5v8A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 14.5 7H14V5a4 4 0 0 0-4-4Zm2.5 6h-5V5a2.5 2.5 0 0 1 5 0v2Z"/></svg>
