@@ -3,6 +3,32 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## 0.5.3 — 2026-09-03
+
+One line per crate, and it is the line that makes 0.5.2's headline fix real.
+
+### Fixed
+
+- **`rust-version` reached no published manifest.** 0.5.2 declared
+  `rust-version = "1.88"` in `[workspace.package]` and none of the thirty-three
+  crates inherited it: workspace package fields are opt-in, and a member takes
+  one only by asking with `rust-version.workspace = true`. crates.io reported
+  `rust_version: null` for every crate in that release, and a consumer on Rust
+  1.87 still got ``let` expressions in this position are unstable` from inside
+  `rustlavel-core` — the exact error the field exists to replace.
+
+  Found by exercising the published artifact rather than the working tree:
+  `cargo add rustlavel` on 1.87, which still locked 0.5.2 and still failed the
+  old way. With the inheritance in place cargo stops at resolution instead:
+
+  ```text
+  error: rustc 1.87.0 is not supported by the following package:
+    rustlavel-core@0.5.3 requires rustc 1.88
+  ```
+
+  Nothing else changed. If you are on Rust 1.88 or newer, 0.5.2 and 0.5.3 are
+  the same code.
+
 ## 0.5.2 — 2026-09-03
 
 An interactive `rustlavel new`, a Backup tab that does what it says, and a
