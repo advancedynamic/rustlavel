@@ -3,6 +3,71 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## 0.5.2 — 2026-09-03
+
+An interactive `rustlavel new`, a Backup tab that does what it says, and a
+minimum toolchain that is measured rather than assumed.
+
+### Added
+
+- **`rustlavel new` asks.** With no `--with`, it now asks what kind of
+  application, which database, and what else to put in. It answers itself when
+  nobody is there — every prompt falls back to its default when stdin is not a
+  terminal, and `--with`, `--all` and `--yes` skip it — so a scaffold in CI
+  produces the same project it always did rather than hanging on a question.
+- **The Backup tab has a schedule, a retention window and a destination.** The
+  retention is live: after a successful backup the ones past the window go, row
+  and file together. The schedule is a statement of intent — this application
+  has no clock, so something outside it has to act on the answer, and **the
+  panel says so, loudly, when a schedule is set and nothing has ever run one**.
+  The destination offers local disk and S3-compatible, not the four a mock-up
+  would draw: nothing here implements Google Cloud Storage or SFTP, and a
+  dropdown offering a destination backups do not reach is how somebody finds
+  out at restore time that there are none.
+- **The Language tab's number format, currency and first day of week are read
+  by something.** Every count on every administration page and the size column
+  on the Backup tab go through one formatter.
+- **A search box and a notification list in the header.** Search covers people,
+  roles, permissions, menu items and settings, and a group is included only
+  when the person may open what it links to. The notifications are the audit
+  trail rather than a second table kept in step by hand, filtered to what is
+  worth interrupting somebody for — sign-ins are left out, because a list that
+  reports every sign-in is a list nobody reads. Flash messages become toasts,
+  server-rendered first so they survive with scripting off.
+
+### Fixed
+
+- **`rust-version` was wrong, and wrong in the direction that matters.** 0.5.1
+  did not declare one; the first attempt at this said 1.85, reasoned from
+  edition 2024. The code uses let-chains (`&& let`) in twenty-one places across
+  eighteen crates, and those stabilised in 1.88. Measured by installing the
+  toolchains: 1.87 refuses, 1.88 builds the whole workspace with every feature
+  and every test target. A declared floor that is too low is worse than none —
+  cargo tells somebody on 1.86 the crate is compatible and rustc then refuses
+  it.
+- **The plugin lines never reached an auth-kit project.** `auth-kit` writes its
+  own `main.rs` and that template had no `{{plugins}}` in it, so the fix
+  shipped in 0.5.1 did nothing for the shape most people scaffold. The test
+  passed because it called the helper directly; it renders all three templates
+  and reads the output now.
+- **Every `MAIL_*` variable was inert.** There was no `config/mail.json`, and
+  `Config` has no automatic `MAIL_HOST` to `mail.host` mapping, so the mailer
+  used its defaults while the Email tab — which reads the environment directly
+  — reported that the environment was in charge.
+- **Three ways the Backup screen produced something that was not a backup**:
+  `Create` could not succeed on a stock scaffold, because the exporter
+  paginated with `order by "id"` and the RBAC pivots have no surrogate key; the
+  dump covered a hardcoded list that three tables added in one afternoon never
+  reached; and `Restore` left the settings cache alone, so an administrator
+  restoring a backup to undo a bad change saw the bad change still there.
+- `QueueDashboard::new(db.clone())` in the scaffold's own comment did not
+  compile — the signature takes an `Arc<dyn Queue>`.
+- `rustlavel-openapi`'s header example called an `OpenApi` type that has never
+  existed. The replacement is a compiled doctest, which caught the first
+  attempt at the fix.
+- `cache.path` defaulted to `storage/framework/cache` while the scaffold
+  creates `storage/cache`.
+
 ## 0.5.1 — 2026-09-03
 
 Three fixes, two of them to things 0.5.0 claimed were already done.
