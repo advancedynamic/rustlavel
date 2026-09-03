@@ -32,6 +32,7 @@ rustlavel-oauth-provider = { workspace = true, optional = true }
 rustlavel-openapi = { workspace = true, optional = true }
 rustlavel-otel = { workspace = true, optional = true }
 rustlavel-search = { workspace = true, optional = true }
+rustlavel-audit = { workspace = true, optional = true }
 rustlavel-flags = { workspace = true, optional = true }
 rustlavel-rbac = { workspace = true, optional = true }
 rustlavel-queue = { workspace = true, optional = true }
@@ -77,6 +78,7 @@ search = ["dep:rustlavel-search", "client"]
 # that says who is asking.
 # Runtime switches, resolved per user. Distinct from the Cargo feature flags
 # above: those are compile-time and decide what is in the binary at all.
+audit = ["dep:rustlavel-audit", "db", "auth"]
 flags = ["dep:rustlavel-flags", "auth"]
 rbac = ["dep:rustlavel-rbac", "db", "auth"]
 queue = ["dep:rustlavel-queue", "db"]
@@ -107,6 +109,7 @@ full = [
     "openapi",
     "otel",
     "search",
+    "audit",
     "flags",
     "rbac",
     "queue",

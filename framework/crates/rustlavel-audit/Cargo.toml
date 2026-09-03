@@ -1,0 +1,18 @@
+[package]
+name = "rustlavel-audit"
+description = "Audit logging for Rustlavel: who did what, to which record, from where"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-db.workspace = true
+rustlavel-http.workspace = true
+# For `Identity`. An audit entry's first question is who did it, and the
+# framework already has one place that decides that; asking again here would be
+# a second answer to the same question, and the two would drift.
+rustlavel-auth.workspace = true
+tokio.workspace = true

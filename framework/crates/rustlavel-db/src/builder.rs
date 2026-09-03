@@ -123,6 +123,26 @@ impl QueryBuilder {
         self
     }
 
+    /// `or column <operator> value`.
+    ///
+    /// The `or_` half of [`filter_op`](Self::filter_op), which was missing:
+    /// `or_filter` could only ever mean equality, so a search across three
+    /// columns with `like` had no way to say so.
+    pub fn or_filter_op(mut self, column: &str, operator: &str, value: impl Into<Value>) -> Self {
+        self.conditions.push(Condition::Comparison {
+            column: column.to_string(),
+            operator: operator.to_string(),
+            value: value.into(),
+            or: true,
+        });
+        self
+    }
+
+    /// `or column like pattern`.
+    pub fn or_filter_like(self, column: &str, pattern: impl Into<Value>) -> Self {
+        self.or_filter_op(column, "like", pattern)
+    }
+
     pub fn filter_in(mut self, column: &str, values: Vec<Value>) -> Self {
         self.conditions.push(Condition::In {
             column: column.to_string(),

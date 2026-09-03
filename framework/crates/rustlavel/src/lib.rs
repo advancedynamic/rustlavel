@@ -60,6 +60,9 @@ pub use rustlavel_search as search;
 pub use rustlavel_webauthn as webauthn;
 #[cfg(feature = "openapi")]
 pub use rustlavel_openapi as openapi;
+#[cfg(feature = "audit")]
+pub use rustlavel_audit as audit;
+
 #[cfg(feature = "flags")]
 pub use rustlavel_flags as flags;
 
@@ -128,6 +131,8 @@ pub mod prelude {
     pub use rustlavel_db::prelude::*;
     #[cfg(feature = "i18n")]
     pub use rustlavel_i18n::Translator;
+    #[cfg(feature = "audit")]
+    pub use rustlavel_audit::prelude::*;
     #[cfg(feature = "flags")]
     pub use rustlavel_flags::prelude::*;
     #[cfg(feature = "rbac")]
