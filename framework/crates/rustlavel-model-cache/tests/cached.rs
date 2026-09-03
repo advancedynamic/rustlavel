@@ -31,6 +31,8 @@
 //! which finished first.
 
 use rustlavel_cache::MemoryStore;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use rustlavel_db::prelude::*;
 use rustlavel_db::schema::Schema;
 use rustlavel_db::{Database, Value};
@@ -313,3 +315,58 @@ struct Typed {
     missing: Option<String>,
 }
 
+
+/// **A cache miss must cost one query, not two.**
+///
+/// It cost two: `find` called `Model::find` and then read the row again to
+/// cache it, because `Model::to_json` cannot be rehydrated — it drops the
+/// columns the database maintains. That made a cold read more expensive than
+/// no cache at all, which is the one thing a cache may not do.
+///
+/// Counted off the framework's own `db.query` events, filtered to this test's
+/// table so the concurrent suite does not contaminate the count.
+#[tokio::test]
+async fn a_cold_read_costs_one_query_and_a_warm_read_costs_none() {
+    let url = database_url!();
+    let db = fixture(&url, "mc_widgets6").await;
+    let cache = ModelCache::new(MemoryStore::new())
+        .region::<Widget6>(Region::new().ttl(Duration::from_secs(60)));
+
+    let one = cache
+        .first::<Widget6>(&db, Widget6::query().filter("name", "one"))
+        .await
+        .expect("finding")
+        .expect("row `one` exists");
+
+    // Subscribed after the fixture, so only the reads below are counted.
+    let queries = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&queries);
+    rustlavel_core::events::subscribe(move |event: &rustlavel_core::Event| {
+        let touches_this_table = event
+            .fields
+            .get("sql")
+            .and_then(rustlavel_core::Json::as_str)
+            .is_some_and(|sql| sql.contains("mc_widgets6"));
+        if event.kind == "db.query" && touches_this_table {
+            counter.fetch_add(1, Ordering::SeqCst);
+        }
+    });
+
+    let cold = cache.find::<Widget6>(&db, one.id).await.expect("cold").expect("row");
+    assert_eq!(cold.name, "one");
+    assert_eq!(queries.load(Ordering::SeqCst), 1, "a cache miss ran more than one query");
+
+    let warm = cache.find::<Widget6>(&db, one.id).await.expect("warm").expect("row");
+    assert_eq!(warm.name, "one");
+    assert_eq!(queries.load(Ordering::SeqCst), 1, "a cache hit reached the database");
+    assert_eq!(cache.stats().for_table("mc_widgets6").entity_hits, 1);
+}
+
+#[derive(Model, Default, Debug, Clone, PartialEq)]
+#[model(table = "mc_widgets6", crate = "rustlavel_db")]
+struct Widget6 {
+    #[model(primary_key, generated)]
+    id: i64,
+    name: String,
+    kind: String,
+}

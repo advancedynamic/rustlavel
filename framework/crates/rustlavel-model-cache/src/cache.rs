@@ -124,27 +124,40 @@ impl ModelCache {
         let text = Json::from(key.clone().into()).to_string();
         let cache_key = keys::entity(M::TABLE, &text);
 
-        if let Some(cached) = self.store.get(&cache_key).await? {
+        // The hit is recorded only once a model has actually come back. A row
+        // that no longer parses — the model gained a column since it was
+        // cached — is a miss, not an error and not a hit: refusing to serve
+        // the page because an old entry has the wrong shape would make a
+        // deployment an outage, and counting it as a hit would overstate the
+        // hit rate by exactly the entries that are costing a query.
+        if let Some(model) = self
+            .store
+            .get(&cache_key)
+            .await?
+            .as_ref()
+            .and_then(row_from_json)
+            .and_then(|row| M::from_row(&row).ok())
+        {
             self.stats.record(M::TABLE, Event::EntityHit);
-            // A row that no longer parses — the model gained a column since it
-            // was cached — is a miss, not an error. Refusing to serve the page
-            // because an old cache entry has the wrong shape would make a
-            // deployment an outage.
-            if let Some(model) = row_from_json(&cached).and_then(|row| M::from_row(&row).ok()) {
-                return Ok(Some(model));
-            }
-        } else {
-            self.stats.record(M::TABLE, Event::EntityMiss);
+            return Ok(Some(model));
         }
+        self.stats.record(M::TABLE, Event::EntityMiss);
 
-        let found = M::find(db, key).await?;
-        if let Some(model) = &found {
-            let row = self.select_one(db, M::TABLE, M::PRIMARY_KEY, model.key().into()).await?;
-            if let Some(json) = row.as_ref().and_then(row_to_json) {
-                self.put(&cache_key, json, region).await?;
-            }
+        // **One query, not two.** This used to call `M::find` and then read the
+        // row again to cache it, because `Model::to_json` cannot be rehydrated
+        // — it drops the columns the database maintains. Fetching the row and
+        // hydrating from it gets both from a single round trip, which matters
+        // because the two-query version made a cold read more expensive than
+        // no cache at all.
+        let Some(row) = self.select_one(db, M::TABLE, M::PRIMARY_KEY, key.into()).await? else {
+            return Ok(None);
+        };
+        let model = M::from_row(&row)?;
+
+        if let Some(json) = row_to_json(&row) {
+            self.put(&cache_key, json, region).await?;
         }
-        Ok(found)
+        Ok(Some(model))
     }
 
     /// A query's results, from the cache when they are there and still current.

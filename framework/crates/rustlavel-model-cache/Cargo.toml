@@ -17,4 +17,6 @@ rustlavel-cache.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+# For the event bus, to count queries in the miss-costs-one-query test.
+rustlavel-core.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -539,8 +539,19 @@ mod tests {
         assert_eq!(ai.prompt("Hi").text().await.unwrap(), "ok");
     }
 
-    /// The event bus is process-global, so this test owns it: it is the only
-    /// one in the crate that subscribes, and it clears up after itself.
+    /// A model name no other test answers with, so this test's events can be
+    /// told from the concurrent suite's.
+    const EVENT_TEST_MODEL: &str = "claude-sonnet-5-event-test";
+
+    /// The event bus is process-global. Being the only test that *subscribes*
+    /// is not enough — every other test in this file makes a call too, and the
+    /// suite runs concurrently, so their `ai.call` events land in this one's
+    /// collection and the count comes out wrong on whichever runs interleave.
+    ///
+    /// So the fixture answers with a model name no other test uses, and the
+    /// subscriber keeps only that. Serialising with a mutex would work as
+    /// well, but it would have to be taken by all ten of the tests that make a
+    /// call, and the one somebody adds next year would not take it.
     #[tokio::test]
     async fn a_call_is_reported_without_the_prompt_or_the_key() {
         use rustlavel_client::fake::{Fake as HttpFake, FakeResponse};
@@ -550,14 +561,17 @@ mod tests {
 
         events::clear_subscribers();
         events::subscribe(move |event: &Event| {
-            if event.kind == "ai.call" {
+            let mine = event.field("model").and_then(Json::as_str) == Some(EVENT_TEST_MODEL);
+            if event.kind == "ai.call" && mine {
                 sink.lock().unwrap().push(event.clone());
             }
         });
 
         let answer = Json::parse(
-            r#"{"model":"claude-sonnet-5","content":[{"type":"text","text":"Blue."}],
-                "stop_reason":"end_turn","usage":{"input_tokens":14,"output_tokens":9}}"#,
+            &format!(
+                r#"{{"model":"{EVENT_TEST_MODEL}","content":[{{"type":"text","text":"Blue."}}],
+                "stop_reason":"end_turn","usage":{{"input_tokens":14,"output_tokens":9}}}}"#
+            ),
         )
         .unwrap();
 
@@ -576,7 +590,7 @@ mod tests {
         assert_eq!(events.len(), 1, "expected exactly one ai.call event");
         let event = &events[0];
         assert_eq!(event.field("provider").and_then(Json::as_str), Some("anthropic"));
-        assert_eq!(event.field("model").and_then(Json::as_str), Some("claude-sonnet-5"));
+        assert_eq!(event.field("model").and_then(Json::as_str), Some(EVENT_TEST_MODEL));
         assert_eq!(event.field("input_tokens").and_then(Json::as_i64), Some(14));
         assert_eq!(event.field("output_tokens").and_then(Json::as_i64), Some(9));
         assert_eq!(event.field("streamed").and_then(Json::as_bool), Some(false));
