@@ -124,12 +124,15 @@ async fn post(endpoint: &str, protocol: Protocol, body: Vec<u8>) {
 /// So they take turns. It costs a few seconds and buys a suite that does not
 /// fail once a run for a reason nobody can reproduce — and a nightly job that
 /// is flaky is a nightly job people learn to ignore.
-static COLLECTOR: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-/// A poisoned guard is still a guard: one test panicking must not turn the rest
+/// Tokio's mutex rather than the standard library's, because the guard is held
+/// across the `await`s that post to the collector and poll its log. A blocking
+/// guard held over an await can deadlock the runtime, and this one is held over
+/// several. It also does not poison, so one test panicking cannot turn the rest
 /// into a different, more confusing failure.
-fn exclusive() -> std::sync::MutexGuard<'static, ()> {
-    COLLECTOR.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+static COLLECTOR: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+async fn exclusive() -> tokio::sync::MutexGuard<'static, ()> {
+    COLLECTOR.lock().await
 }
 
 /// Everything the collector has logged so far.
@@ -194,7 +197,7 @@ fn sample_span(name: &str, parent: SpanContext) -> Span {
 #[tokio::test]
 async fn the_collector_parses_a_protobuf_span_into_the_span_that_was_sent() {
     let (endpoint, container) = collector!();
-    let _turn = exclusive();
+    let _turn = exclusive().await;
     let name = marker("protobuf-span");
     let parent = SpanContext::root();
     let span = sample_span(&name, parent);
@@ -249,7 +252,7 @@ async fn the_collector_parses_a_protobuf_span_into_the_span_that_was_sent() {
 #[tokio::test]
 async fn the_collector_parses_a_json_span_too() {
     let (endpoint, container) = collector!();
-    let _turn = exclusive();
+    let _turn = exclusive().await;
     let name = marker("json-span");
     let parent = SpanContext::root();
     let span = sample_span(&name, parent);
@@ -285,7 +288,7 @@ async fn the_collector_parses_a_json_span_too() {
 #[tokio::test]
 async fn the_collector_parses_a_histogram_with_the_buckets_it_was_given() {
     let (endpoint, container) = collector!();
-    let _turn = exclusive();
+    let _turn = exclusive().await;
     let service = marker("metrics-service");
 
     let meter = Meter::new();
@@ -354,7 +357,7 @@ async fn the_collector_parses_a_histogram_with_the_buckets_it_was_given() {
 #[tokio::test]
 async fn a_request_and_the_query_inside_it_arrive_as_one_trace() {
     let (endpoint, container) = collector!();
-    let _turn = exclusive();
+    let _turn = exclusive().await;
     let service = marker("plugin-service");
     let table = marker("orders").replace('-', "_");
 

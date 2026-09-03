@@ -3,6 +3,26 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## 0.3.2 — 2026-09-03
+
+Three bugs that only appear when the thing is run rather than compiled.
+
+### Fixed
+
+- **`FLAGS_ON` and `FLAGS_OFF` did nothing.** The crate read `flags.on` from
+  configuration and nothing mapped the environment into it, so the documented
+  incident switch was inert. It now reads the environment when the
+  configuration key is absent.
+- **The starter kit's seeder logged the first administrator's activation link
+  at `info`**, so `LOG_LEVEL=warn` hid the only way into a new application. It
+  is printed now, with the full URL.
+- The four OTLP collector tests share one container and one log, and could
+  interleave under a full workspace run. They take turns.
+- `docker/env.sh` printed `KEY=value` without `export`, so `eval` set a shell
+  variable that `cargo` never saw and every integration suite skipped while
+  reporting a pass. It also now sets `DATABASE_URL`, without which fifteen
+  more did the same.
+
 ## 0.3.1 — 2026-09-03
 
 ### Fixed
