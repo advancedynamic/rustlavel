@@ -219,6 +219,22 @@ impl FromValue for bool {
     fn from_value(value: &Value) -> Result<Self> {
         match value {
             Value::Bool(b) => Ok(*b),
+            // **MySQL has no boolean.** `BOOLEAN` is an alias for
+            // `tinyint(1)`, and nothing on the wire tells a flag from a small
+            // counter — so the driver cannot know, and hands back an integer.
+            // The model does know: it declared the field `bool`. This is the
+            // layer where that information exists, and resolving it here is
+            // what keeps a `#[derive(Model)]` with a flag on it readable on
+            // all three databases rather than on one.
+            Value::Int(0) => Ok(false),
+            Value::Int(1) => Ok(true),
+            // Anything else is a column being read as the wrong thing — a
+            // counter declared `bool`, most likely — and guessing `true` for
+            // it would hide that for as long as the value stayed non-zero.
+            Value::Int(n) => Err(Error::msg(format!(
+                "cannot read {n} as a bool. A `bool` field maps to 0 or 1; this column holds \
+                 something else, so it is probably a number rather than a flag."
+            ))),
             other => mismatch(other),
         }
     }
@@ -280,6 +296,28 @@ mod tests {
     fn a_null_column_read_as_a_non_option_is_an_error() {
         let error = i64::from_value(&Value::Null).unwrap_err();
         assert!(error.to_string().contains("NULL"));
+    }
+
+    /// MySQL has no boolean: `BOOLEAN` is `tinyint(1)`, and the driver hands
+    /// back an integer because nothing on the wire tells a flag from a small
+    /// counter. A model that declared the field `bool` does know, so this is
+    /// where the two are reconciled — without it, every model with a flag on
+    /// it is readable on PostgreSQL and SQL Server and not on MySQL.
+    #[test]
+    fn a_mysql_tinyint_reads_into_a_bool_but_a_counter_does_not() {
+        assert!(!bool::from_value(&Value::Int(0)).unwrap());
+        assert!(bool::from_value(&Value::Int(1)).unwrap());
+        assert!(bool::from_value(&Value::Bool(true)).unwrap());
+
+        // Not "any non-zero is true": a counter column declared `bool` is a
+        // mistake, and guessing would hide it for as long as it stayed
+        // non-zero.
+        let error = bool::from_value(&Value::Int(7)).unwrap_err().to_string();
+        assert!(error.contains("cannot read 7 as a bool"), "{error}");
+        assert!(error.contains("probably a number rather than a flag"), "{error}");
+
+        // And text still never becomes a flag.
+        assert!(bool::from_value(&Value::Text("true".into())).is_err());
     }
 
     #[test]

@@ -627,21 +627,31 @@ mod tests {
         );
     }
 
-    /// The fixed sample context matters here, not just for repeatability: this
-    /// asserts a tag byte is *absent*, and random identifiers contain an
-    /// arbitrary 0x7a about one run in eleven. The sample's ids contain none,
-    /// so the absence really is the absence of the field.
+    /// The times are pinned as well as the context, and both matter: this
+    /// asserts a tag byte is *absent*, so anything non-deterministic in the
+    /// encoding can supply a stray `0x7a` and fail the test for no reason.
+    ///
+    /// It used to pin only the context, reasoning about the identifiers and
+    /// forgetting that `Span::new` timestamps itself from the clock — so the
+    /// nanoseconds went into the payload and the test failed on whichever runs
+    /// happened to contain that byte. The fixture is checked for it below
+    /// rather than assumed, so a later edit cannot reintroduce the flake
+    /// quietly.
     #[test]
     fn an_unset_status_writes_no_status_field_and_an_error_writes_both_parts() {
         let context = SpanContext::parse_traceparent(SAMPLE).expect("valid");
-        let unset = Span::new(context, "x", SpanKind::Internal).encode().into_bytes();
-        // Field 15, wire type 2, is tag 0x7a.
+        let start = SystemTime::UNIX_EPOCH + Duration::from_secs(1);
+        let span = || {
+            Span::new(context, "x", SpanKind::Internal)
+                .between(start, start + Duration::from_millis(5))
+        };
+
+        let unset = span().encode().into_bytes();
+        // Field 15, wire type 2, is tag 0x7a. Everything in this payload other
+        // than the status is fixed, so its absence is the field's absence.
         assert!(!unset.contains(&0x7a), "{unset:02x?}");
 
-        let failed = Span::new(context, "x", SpanKind::Internal)
-            .status(SpanStatus::Error("boom".into()))
-            .encode()
-            .into_bytes();
+        let failed = span().status(SpanStatus::Error("boom".into())).encode().into_bytes();
         // Status { message = "boom" (field 2), code = 2 (field 3) }.
         assert!(
             failed.windows(8).any(|w| w == [0x7a, 0x08, 0x12, 0x04, b'b', b'o', b'o', b'm']),
