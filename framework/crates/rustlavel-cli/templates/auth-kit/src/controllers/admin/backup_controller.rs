@@ -290,6 +290,17 @@ impl BackupController {
         match backup::restore(&db, &names, &dump).await {
             Ok(done) => {
                 warn!("the database was restored from the backup {name} by user {:?}", req.identity().and_then(|id| id.id_as::<i64>()));
+                // **The settings cache is now stale.** A restore writes to
+                // the database without going through the save path that
+                // invalidates it, so the process keeps serving the values it
+                // had — including the generated stylesheet. Somebody
+                // restoring a backup to undo a bad change would reload the
+                // page, see the bad change still there, and reasonably
+                // conclude the restore had not worked.
+                if let Some(settings) = req.state::<crate::support::settings::Settings>() {
+                    settings.forget();
+                }
+
                 // The single most consequential thing anybody can do from this
                 // application: it replaces every account in it. If one entry
                 // in the trail matters, it is this one.

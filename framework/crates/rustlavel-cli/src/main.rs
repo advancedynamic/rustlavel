@@ -5,6 +5,7 @@
 //! `queue:work`) are forwarded to the project's own binary, because in a
 //! compiled language the application is the only thing that knows its routes.
 
+mod ask;
 mod auth_kit;
 mod build;
 mod console;

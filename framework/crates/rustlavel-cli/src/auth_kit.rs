@@ -206,6 +206,7 @@ async fn main() -> Result<()> {
         // resolve the store from here, and fail closed if it is missing.
         .plugin(rbac)
         .plugin(audit)
+{{plugins}}
         // Order matters: the session has to exist before anything reads a
         // login out of it, and the CSRF check reads the session.
         .middleware(sessions)

@@ -77,6 +77,17 @@ const CHUNK: i64 = 500;
 ///
 /// So: a list, in the order the migrations create them. Add a table, add a
 /// line — the same one-line cost as adding it to `CATALOGUE` in `settings.rs`.
+/// **Every table this application's own migrations create.**
+///
+/// Kept in step by a test that reads `database/migrations/` and fails on
+/// anything created there and missing here — three tables were added in one
+/// afternoon and none of them reached this list, so a "database backup"
+/// silently omitted the navigation menus, the whole audit trail and the
+/// password history. A hand-kept list of what to back up is a list that goes
+/// stale exactly when it matters.
+///
+/// It still cannot cover a table the *developer* adds to their own
+/// application; see [`tables`].
 const OWN_TABLES: &[&str] = &[
     "users",
     "user_tokens",
@@ -85,6 +96,9 @@ const OWN_TABLES: &[&str] = &[
     "user_passkeys",
     "user_recovery_codes",
     "settings",
+    "menu_items",
+    "audit_logs",
+    "password_history",
     // `backups` is deliberately absent. A dump that included it would record
     // the very row describing itself, in the `running` state it was in
     // half-way through being written, and restoring that would resurrect
@@ -97,6 +111,14 @@ const OWN_TABLES: &[&str] = &[
 /// The roles and permissions live in `rustlavel-rbac`'s tables, whose names are
 /// configurable, so they are asked for rather than assumed. They come last
 /// because `user_role` holds user ids.
+///
+/// **This covers what the starter kit created, and nothing else.** A table you
+/// add to your own application is not in it, and a dump taken from this screen
+/// is therefore a backup of the kit rather than of the database. Add the name
+/// here — the list is a `Vec` so that an application can extend it — or use
+/// `pg_dump` for the real thing. Discovering the tables from the database
+/// itself would be better, and needs a schema listing this framework does not
+/// have yet.
 pub fn tables(store: Option<&Permissions>) -> Vec<String> {
     let mut names: Vec<String> = OWN_TABLES.iter().map(|name| name.to_string()).collect();
     if let Some(store) = store {
@@ -480,20 +502,38 @@ pub async fn write(
         file.write_all(b"\n").await?;
 
         for name in names {
+            // One row, to learn the columns before any page is read.
+            //
+            // The ordering has to be known for the *first* query, not the
+            // second: pages ordered differently from one another overlap and
+            // skip, which is the failure a backup can least afford because
+            // nothing about the file says it happened.
+            let probe = db.table(name).limit(1).get(db).await?;
+            let ordering: Vec<String> =
+                probe.first().map(|row| row.columns().to_vec()).unwrap_or_default();
+
             let mut offset = 0i64;
             let mut columns: Option<Vec<String>> = None;
 
-            loop {
-                // Ordered by id so the pages do not overlap or skip: an
-                // unordered `offset` is only as stable as the database feels
-                // like being, which is not a property to build a backup on.
-                let rows = db
-                    .table(name)
-                    .order_by("id", rustlavel::db::Direction::Asc)
-                    .limit(CHUNK)
-                    .offset(offset)
-                    .get(db)
-                    .await?;
+            // An empty table skips the pages and falls through to the header
+            // written below, which is what tells a restore to empty it.
+            while !ordering.is_empty() {
+                // Ordered so the pages do not overlap or skip: an unordered
+                // `offset` is only as stable as the database feels like being,
+                // which is not a property to build a backup on.
+                //
+                // **Ordered by every column, not by `id`.** A pivot table has
+                // no surrogate key — `user_role` and `user_permission` in this
+                // application's own RBAC tables do not have one — and so does
+                // any table a developer gives a composite key. Ordering by `id`
+                // made those a hard failure on the first page: the backup
+                // reported the exact SQL and stopped, which is the right way to
+                // fail and still the wrong thing to have failed at.
+                let mut query = db.table(name).limit(CHUNK).offset(offset);
+                for column in ordering.iter() {
+                    query = query.order_by(column, rustlavel::db::Direction::Asc);
+                }
+                let rows = query.get(db).await?;
                 if rows.is_empty() {
                     break;
                 }

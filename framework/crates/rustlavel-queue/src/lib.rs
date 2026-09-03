@@ -93,8 +93,9 @@ pub use rustlavel_core::{Error, Result};
 /// What a job file imports.
 pub mod prelude {
     pub use crate::{
-        Cron, DatabaseQueue, FailedJob, FakeQueue, Job, JobRegistry, MemoryQueue, Queue, QueueExt,
-        QueuedJob, ReservedJob, Scheduler, Shutdown, Weekday, Worker, run_pool,
+        Cron, DatabaseQueue, FailedJob, FakeQueue, Job, JobRegistry, MemoryQueue, Queue,
+        QueueDashboard, QueueExt, QueuedJob, ReservedJob, Scheduler, Shutdown, Weekday, Worker,
+        run_pool,
     };
     pub use rustlavel_core::{Error, Json, Result};
     pub use std::future::Future;

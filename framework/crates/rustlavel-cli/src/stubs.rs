@@ -175,7 +175,7 @@ SERVER_HOST=127.0.0.1
 SERVER_PORT=8000
 
 LOG_LEVEL=debug
-"#;
+{{database}}"#;
 
 pub const CONFIG_APP: &str = r#"{
   "name": "${APP_NAME:{{app_name}}}",
@@ -184,6 +184,47 @@ pub const CONFIG_APP: &str = r#"{
   "timezone": "UTC",
   "locale": "en"
 }
+"#;
+
+/// `config/mail.json`, written when the `mail` package is enabled.
+///
+/// **Without this file the `MAIL_*` variables reach nothing.** `Config` knows
+/// only what `config/*.json` declares — there is no automatic `MAIL_HOST` to
+/// `mail.host` mapping — so an application with a Mail block in `.env` and no
+/// file here sends through the defaults while the settings screen, which reads
+/// the environment directly, reports that the environment is in charge. The
+/// two disagreed, and this is the half that was missing.
+pub const CONFIG_MAIL: &str = r#"{
+  "transport": "${MAIL_TRANSPORT:log}",
+  "host": "${MAIL_HOST:127.0.0.1}",
+  "port": "${MAIL_PORT:1025}",
+  "username": "${MAIL_USERNAME:}",
+  "password": "${MAIL_PASSWORD:}",
+  "encryption": "${MAIL_ENCRYPTION:}",
+  "path": "${MAIL_PATH:storage/mail}",
+  "from": {
+    "address": "${MAIL_FROM_ADDRESS:}",
+    "name": "${MAIL_FROM_NAME:}"
+  }
+}
+"#;
+
+/// The `.env` block for the `mail` package.
+pub const ENV_MAIL: &str = r#"
+# --- Mail -------------------------------------------------------------------
+# `log` writes the message to the application log instead of sending it, which
+# is what you want until there is a real SMTP host. `file` writes one .eml per
+# message under MAIL_PATH; `smtp` sends.
+MAIL_TRANSPORT=log
+MAIL_HOST=127.0.0.1
+MAIL_PORT=1025
+MAIL_USERNAME=
+MAIL_PASSWORD=
+# `tls` is encrypted from the first byte; `starttls` upgrades a plain
+# connection. Empty means neither, which is only safe on localhost.
+MAIL_ENCRYPTION=
+MAIL_FROM_ADDRESS=no-reply@localhost
+MAIL_FROM_NAME="{{app_name}}"
 "#;
 
 pub const GITIGNORE: &str = r#"target/

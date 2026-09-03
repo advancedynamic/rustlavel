@@ -4,11 +4,22 @@
 //! builder carries the prose. Nothing has to be repeated in a separate file,
 //! which is the reason hand-written API docs go stale.
 //!
-//! ```ignore
-//! App::new()?
-//!     .routes(routes::api::routes)
-//!     .plugin(OpenApi::new("Orders API", "1.0"))
 //! ```
+//! # use rustlavel_openapi::Info;
+//! # use rustlavel_core::Config;
+//! # let config = Config::with_defaults();
+//! let info = Info::from_config(&config);   // openapi.title, openapi.version, openapi.prefix
+//! # assert!(!info.title.is_empty());
+//! ```
+//!
+//! and in `main.rs`, `App::new()?.routes(routes::api::routes).openapi(info)`.
+//!
+//! There is no plugin here and no `OpenApi` type. This crate generates a
+//! document rather than owning a piece of the application, so the meta-crate
+//! mounts it with `App::openapi` and [`mount`] does the same for a bare
+//! router. The paragraph that used to be here showed `.plugin(OpenApi::new(…))`
+//! — a call to a type that has never existed — and it was an `ignore` block,
+//! so nothing caught it. This one is compiled.
 
 pub mod docs;
 

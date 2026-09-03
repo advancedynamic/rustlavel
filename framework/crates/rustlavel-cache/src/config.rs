@@ -7,7 +7,7 @@
 //! ```json
 //! {
 //!   "driver": "${CACHE_DRIVER:memory}",
-//!   "path":   "storage/framework/cache",
+//!   "path":   "storage/cache",
 //!   "url":    "${REDIS_URL}",
 //!   "prefix": "${APP_NAME:rustlavel}:"
 //! }
@@ -76,7 +76,11 @@ impl Default for CacheConfig {
     fn default() -> Self {
         CacheConfig {
             driver: Driver::Memory,
-            path: PathBuf::from("storage/framework/cache"),
+            // `storage/cache` is the directory `rustlavel new --with cache`
+            // creates. The default used to be `storage/framework/cache`, which
+            // is Laravel's path and not this scaffold's, so the file driver
+            // wrote into a directory nothing had made.
+            path: PathBuf::from("storage/cache"),
             url: String::new(),
             prefix: String::new(),
             sweep_interval: std::time::Duration::from_secs(60),
@@ -89,7 +93,7 @@ impl CacheConfig {
     pub fn from_app_config(config: &Config) -> Result<Self> {
         Ok(CacheConfig {
             driver: Driver::parse(&config.string("cache.driver", "memory"))?,
-            path: PathBuf::from(config.string("cache.path", "storage/framework/cache")),
+            path: PathBuf::from(config.string("cache.path", "storage/cache")),
             url: config.string("cache.url", ""),
             prefix: config.string("cache.prefix", ""),
             ..CacheConfig::default()
