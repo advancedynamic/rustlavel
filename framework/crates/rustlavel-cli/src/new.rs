@@ -1310,6 +1310,57 @@ mod tests {
         out
     }
 
+    /// A generated file must not still hold a `{{placeholder}}`.
+    ///
+    /// 0.7.0 shipped a seeder containing the literal text `{{crate_name}}`,
+    /// because it was written straight from the constant while every other
+    /// file went through `render`. A fresh `rustlavel new --with auth-kit`
+    /// did not compile, and nothing here noticed: the templates are tested,
+    /// the writing of them was not.
+    #[test]
+    fn no_generated_file_still_carries_a_placeholder() {
+        let values = BTreeMap::from([
+            ("crate_name", "demo".to_string()),
+            ("name", "demo".to_string()),
+            ("dependency", "version = \"0.0.0\"".to_string()),
+            ("plugins", String::new()),
+            ("database", String::new()),
+        ]);
+
+        // Every constant the scaffold writes without rendering it first. If a
+        // placeholder appears in one of these, it reaches the project verbatim.
+        let written_raw: &[(&str, &str)] = &[
+            ("auth_kit::SEEDER", crate::auth_kit::SEEDER),
+            ("auth_kit::MIGRATIONS_REGISTRY", crate::auth_kit::MIGRATIONS_REGISTRY),
+            ("auth_kit::SEEDERS_REGISTRY", crate::auth_kit::SEEDERS_REGISTRY),
+            ("auth_kit::CONFIG_AUTH", crate::auth_kit::CONFIG_AUTH),
+            ("auth_kit::CONFIG_RBAC", crate::auth_kit::CONFIG_RBAC),
+        ];
+
+        for (name, source) in written_raw {
+            assert!(
+                !source.contains("{{"),
+                "{name} is written to a project without going through `render`, and still \
+                 contains a `{{{{placeholder}}}}` — either render it where it is written, or \
+                 take the placeholder out"
+            );
+        }
+
+        // And the ones that are rendered must have nothing left afterwards.
+        for (name, source) in [
+            ("auth_kit::MAIN_RS", crate::auth_kit::MAIN_RS),
+            ("stubs::MAIN_RS", stubs::MAIN_RS),
+            ("stubs::MAIN_RS_DB", stubs::MAIN_RS_DB),
+        ] {
+            let rendered = render(source, &values);
+            assert!(
+                !rendered.contains("{{"),
+                "{name} still holds a placeholder after rendering: the value it wants is not \
+                 among the ones `new` passes"
+            );
+        }
+    }
+
     /// Whether any file under this directory implements `Plugin`.
     fn ships_a_plugin(directory: &std::path::Path) -> bool {
         let Ok(entries) = std::fs::read_dir(directory) else { return false };

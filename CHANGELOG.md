@@ -3,6 +3,32 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## 0.7.1 — 2026-09-05
+
+### Fixed
+
+- **`rustlavel new --with auth-kit` did not compile on 0.7.0.** The seeder was
+  written to the project straight from its constant while every other generated
+  file went through the placeholder renderer, so it arrived carrying the literal
+  text `{{crate_name}}`. It is `crate::modules::permissions()` now — the seeder
+  compiles *inside* the crate it belongs to and cannot name it from outside —
+  and a test refuses any constant that is written unrendered while still holding
+  a placeholder, or any rendered one that has a placeholder left after.
+
+  Worth saying plainly: the templates were tested and the *writing* of them was
+  not, so nothing in the suite looked at what a real project ends up with. This
+  was found by scaffolding a project from the published crates and building it,
+  which is now the last step of a release rather than an afterthought.
+
+- **Every crate now has a README on crates.io.** All thirty-three shipped
+  without one, so each page said so. The root `README.md` could not serve: cargo
+  refuses a readme outside the package it belongs to, and `[workspace.package]
+  readme` resolves against the workspace root, which lands outside every crate.
+  So each declares its own. The meta-crate and the CLI are written by hand
+  because those are the pages people actually land on; the rest carry what the
+  reader of a package page needs — what it is, that it belongs to Rustlavel, and
+  the feature flag that turns it on.
+
 ## 0.7.0 — 2026-09-05
 
 ### Added

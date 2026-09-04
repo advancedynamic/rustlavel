@@ -400,7 +400,7 @@ impl Seeder for AuthKitSeeder {
             // The built-in list, then whatever the modules declare. A feature
             // that owns a permission declares it beside the code that checks
             // it, and this is where the two lists meet.
-            let owned = {{crate_name}}::modules::permissions();
+            let owned = crate::modules::permissions();
             let declared = PERMISSIONS.iter().copied().chain(owned.iter().copied());
             for (name, description) in declared {
                 if !existing.iter().any(|p| p.name == name) {
