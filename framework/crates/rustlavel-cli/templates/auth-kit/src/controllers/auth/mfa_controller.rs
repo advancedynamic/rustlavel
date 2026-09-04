@@ -390,13 +390,121 @@ impl MfaSettingsController {
         }
     }
 
-    pub async fn delete_passkey(req: Request) -> Result<Response> {
+    pub async fn delete_passkey(mut req: Request) -> Result<Response> {
         let user_id = req.identity().and_then(|id| id.id_as::<i64>()).unwrap_or_default();
         let db = req.state::<Database>().expect("the database is registered in main.rs").clone();
         let id = req.param_as::<i64>("id").unwrap_or_default();
 
+        // **Prove you are holding one before you take one away.**
+        //
+        // Removing a credential is the first thing somebody does with a
+        // stolen session: strip the passkeys, and what is left is a password
+        // they already have. A session cookie and a CSRF token were the whole
+        // guard here, and both travel together.
+        //
+        // The assertion may be from any of this account's passkeys, not the
+        // one being removed. Requiring *that* one sounds stricter and is
+        // worse: the reason to remove a passkey is usually that its device is
+        // gone, and a rule that can only be satisfied by the lost device is a
+        // rule that keeps a dead credential on the account forever.
+        if !Self::proved_a_passkey(&mut req, user_id).await? {
+            page::flash(
+                &req,
+                "error",
+                "Confirm with one of your passkeys before removing another. Nothing has been \
+                 changed.",
+            );
+            return Ok(Response::see_other("/settings/security"));
+        }
+
         passkeys::DbPasskeys::new(db).delete(user_id, id).await?;
+
+        if let Some(audit) = crate::support::audit::of(&req, "passkey.removed") {
+            audit.on("Passkey", id).describe("Removed a passkey").record().await;
+        }
         page::flash(&req, "warning", "That passkey has been removed.");
         Ok(Response::see_other("/settings/security"))
+    }
+
+    /// `POST /settings/security/passkeys/{id}/confirm` — the challenge for the
+    /// removal above.
+    pub async fn confirm_options(req: Request) -> Result<Response> {
+        let user_id = req.identity().and_then(|id| id.id_as::<i64>()).unwrap_or_default();
+        let (credentials, challenges) = passkeys::stores(&req);
+        let party = passkeys::relying_party(&req)?;
+
+        let options = party
+            .start_authentication_for(&user_id.to_string().into_bytes(), &*challenges, &*credentials)
+            .await?;
+        Ok(Response::json(options.json()))
+    }
+
+    /// Whether this request carries a valid assertion from one of this
+    /// account's passkeys.
+    ///
+    /// The assertion arrives as a form field rather than a JSON body, because
+    /// the removal is an ordinary form post and stays one: with scripting off
+    /// there is no assertion, the check fails, and nothing is deleted — which
+    /// is the right way for this to fail.
+    async fn proved_a_passkey(req: &mut Request, user_id: i64) -> Result<bool> {
+        let Some(assertion) = req.input("assertion").filter(|a| !a.trim().is_empty()) else {
+            return Ok(false);
+        };
+        let Ok(body) = Json::parse(&assertion) else { return Ok(false) };
+        let Ok(response) = rustlavel::webauthn::AuthenticationResponse::from_json(&body) else {
+            return Ok(false);
+        };
+
+        let (credentials, challenges) = passkeys::stores(req);
+        let party = passkeys::relying_party(req)?;
+        let Ok(authentication) =
+            party.finish_authentication(&response, &*challenges, &*credentials).await
+        else {
+            return Ok(false);
+        };
+
+        // Valid, but valid for whom. A credential from another account must
+        // not authorise a change to this one.
+        Ok(authentication.user_handle() == user_id.to_string().as_bytes())
+    }
+}
+
+#[cfg(test)]
+mod removal_tests {
+    use super::*;
+
+    /// A request that carries no proof, the way a stolen session would.
+    fn without_proof(fields: &[(&str, &str)]) -> Request {
+        Request::new(Method::Post, "/settings/security/passkeys/1/delete").with_form(fields)
+    }
+
+    /// Removing a credential is the first thing somebody does with a session
+    /// they should not have: strip the passkeys, and what is left is the
+    /// password they already stole. A session cookie and a CSRF token were the
+    /// whole guard, and both travel together — so the refusal has to hold
+    /// before anything else is consulted.
+    #[rustlavel::test]
+    async fn a_removal_with_no_assertion_is_refused() {
+        let mut request = without_proof(&[]);
+        assert!(!MfaSettingsController::proved_a_passkey(&mut request, 1).await.unwrap());
+    }
+
+    #[rustlavel::test]
+    async fn a_blank_assertion_is_refused() {
+        let mut request = without_proof(&[("assertion", "   ")]);
+        assert!(!MfaSettingsController::proved_a_passkey(&mut request, 1).await.unwrap());
+    }
+
+    /// Anything that is not an assertion is not an assertion. It must not
+    /// reach the verifier as a maybe.
+    #[rustlavel::test]
+    async fn a_field_that_is_not_an_assertion_is_refused() {
+        for rubbish in ["not json at all", "{}", "[1,2,3]", "{\"id\":\"x\"}"] {
+            let mut request = without_proof(&[("assertion", rubbish)]);
+            assert!(
+                !MfaSettingsController::proved_a_passkey(&mut request, 1).await.unwrap(),
+                "{rubbish} was accepted as proof"
+            );
+        }
     }
 }

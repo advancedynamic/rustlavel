@@ -13,3 +13,9 @@ name = "rustlavel"
 path = "src/main.rs"
 
 [dependencies]
+
+[dev-dependencies]
+# Tests only. The published binary still depends on nothing: this is here so a
+# guard can read the kit's language files with the project's own JSON parser
+# rather than a hand-rolled one.
+rustlavel-core.workspace = true

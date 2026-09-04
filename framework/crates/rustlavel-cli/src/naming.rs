@@ -139,3 +139,30 @@ mod tests {
         assert_eq!(table_name("Category"), "categories");
     }
 }
+
+/// `job_opening` becomes `Job opening`.
+///
+/// Sentence case rather than Title Case: this ends up in a doc comment and in
+/// a permission description, and "See Job Opening" reads like a headline where
+/// "See job openings" reads like a sentence somebody wrote.
+pub fn title(input: &str) -> String {
+    let words = snake(input).replace('_', " ");
+    let mut chars = words.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => words,
+    }
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::title;
+
+    #[test]
+    fn a_snake_name_becomes_a_sentence() {
+        assert_eq!(title("job_opening"), "Job opening");
+        assert_eq!(title("JobOpening"), "Job opening");
+        assert_eq!(title("backup"), "Backup");
+        assert_eq!(title(""), "");
+    }
+}

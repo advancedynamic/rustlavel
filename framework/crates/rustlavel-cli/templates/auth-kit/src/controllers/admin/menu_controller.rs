@@ -33,6 +33,21 @@ pub const ICONS: &[(&str, &str)] = &[
     ("shield", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 1.5 3.5 4v5.2c0 3.9 2.6 7.5 6.5 9.3 3.9-1.8 6.5-5.4 6.5-9.3V4L10 1.5Z" clip-rule="evenodd"/></svg>"#),
     ("lock", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 1.5A3.5 3.5 0 0 0 6.5 5v2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-.5V5A3.5 3.5 0 0 0 10 1.5ZM12 7V5a2 2 0 1 0-4 0v2h4Z" clip-rule="evenodd"/></svg>"#),
     ("bell", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 2a5 5 0 0 0-5 5v3l-1.5 3h13L15 10V7a5 5 0 0 0-5-5Zm-2 13a2 2 0 1 0 4 0H8Z"/></svg>"#),
+    // A second row, added because ten icons ran out the moment somebody built
+    // a menu for something this kit knows nothing about. All from the same
+    // 20x20 grid as the ten above, so they line up in the picker.
+    ("briefcase", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.5 4A1.5 1.5 0 0 1 9 2.5h2A1.5 1.5 0 0 1 12.5 4v1h2.75A1.75 1.75 0 0 1 17 6.75V9H3V6.75A1.75 1.75 0 0 1 4.75 5H7.5V4Zm1.5 1h2V4H9v1ZM3 10.5V15.25c0 .966.784 1.75 1.75 1.75h10.5A1.75 1.75 0 0 0 17 15.25V10.5H3Z" clip-rule="evenodd"/></svg>"#),
+    ("users", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M7 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7 0a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM1.5 17a5.5 5.5 0 0 1 11 0h-11Zm12.2 0a6.9 6.9 0 0 0-1.36-3.9A4.5 4.5 0 0 1 18.5 17h-4.8Z"/></svg>"#),
+    ("calendar", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M6 2.75A.75.75 0 0 1 6.75 3.5v.5h6.5v-.5a.75.75 0 0 1 1.5 0v.5h.5A1.75 1.75 0 0 1 17 5.75v9.5A1.75 1.75 0 0 1 15.25 17H4.75A1.75 1.75 0 0 1 3 15.25v-9.5A1.75 1.75 0 0 1 4.75 4h.5v-.5A.75.75 0 0 1 6 2.75ZM4.5 8v7.25c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25V8h-11Z" clip-rule="evenodd"/></svg>"#),
+    ("inbox", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M3 5.75A1.75 1.75 0 0 1 4.75 4h10.5A1.75 1.75 0 0 1 17 5.75v8.5A1.75 1.75 0 0 1 15.25 16H4.75A1.75 1.75 0 0 1 3 14.25v-8.5ZM4.5 11.5v2.75c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25V11.5h-3a2.5 2.5 0 0 1-5 0h-3Z" clip-rule="evenodd"/></svg>"#),
+    ("tag", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M3 4.75A1.75 1.75 0 0 1 4.75 3h4.34c.46 0 .9.18 1.23.51l6.17 6.17a1.75 1.75 0 0 1 0 2.48l-4.33 4.33a1.75 1.75 0 0 1-2.48 0L3.51 10.32A1.75 1.75 0 0 1 3 9.09V4.75ZM6.5 7.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd"/></svg>"#),
+    ("map-pin", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 1.5a5.5 5.5 0 0 0-5.5 5.5c0 4.02 4.7 10.2 4.9 10.46a.75.75 0 0 0 1.2 0C10.8 17.2 15.5 11.02 15.5 7A5.5 5.5 0 0 0 10 1.5Zm0 7.5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z" clip-rule="evenodd"/></svg>"#),
+    ("credit-card", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M3 6.75A1.75 1.75 0 0 1 4.75 5h10.5A1.75 1.75 0 0 1 17 6.75V8H3V6.75ZM3 10v3.25A1.75 1.75 0 0 0 4.75 15h10.5A1.75 1.75 0 0 0 17 13.25V10H3Zm2 2.5h3v1H5v-1Z"/></svg>"#),
+    ("box", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="m10 2 7 3.2v9.6L10 18l-7-3.2V5.2L10 2Zm0 1.7L5.1 5.9 10 8.1l4.9-2.2L10 3.7ZM4.5 7.1v6.7l4.75 2.17V9.27L4.5 7.1Zm11 0-4.75 2.17v6.7L15.5 13.8V7.1Z"/></svg>"#),
+    ("clipboard", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M8 2.5A1.5 1.5 0 0 0 6.5 4h-.75A1.75 1.75 0 0 0 4 5.75v10.5A1.75 1.75 0 0 0 5.75 18h8.5A1.75 1.75 0 0 0 16 16.25V5.75A1.75 1.75 0 0 0 14.25 4h-.75A1.5 1.5 0 0 0 12 2.5H8ZM8 4h4v.5H8V4Z" clip-rule="evenodd"/></svg>"#),
+    ("chat", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 3c-4.14 0-7.5 2.69-7.5 6 0 1.87 1.07 3.54 2.75 4.64L4.5 17l3.4-1.7c.67.13 1.37.2 2.1.2 4.14 0 7.5-2.69 7.5-6S14.14 3 10 3Z" clip-rule="evenodd"/></svg>"#),
+    ("wrench", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M13.5 2a4.5 4.5 0 0 0-4.32 5.79L3.3 13.67a1.75 1.75 0 0 0 2.48 2.47l5.88-5.88A4.5 4.5 0 0 0 17.4 5.2l-2.3 2.3-2.12-2.12 2.3-2.3A4.5 4.5 0 0 0 13.5 2Z" clip-rule="evenodd"/></svg>"#),
+    ("truck", r#"<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M2 6.25A1.25 1.25 0 0 1 3.25 5h7.5A1.25 1.25 0 0 1 12 6.25V8h1.9c.4 0 .78.19 1.02.51l1.85 2.47c.15.2.23.45.23.7v2.07A1.25 1.25 0 0 1 15.75 15h-.35a2 2 0 0 1-4 0h-3.3a2 2 0 0 1-4 0h-.85A1.25 1.25 0 0 1 2 13.75v-7.5ZM12 9.5v2h3.2l-1.5-2H12Z"/></svg>"#),
 ];
 
 /// The markup for an icon name, or nothing.
@@ -41,9 +56,74 @@ pub fn icon(name: Option<&str>) -> &'static str {
     ICONS.iter().find(|(key, _)| *key == name).map(|(_, svg)| *svg).unwrap_or("")
 }
 
+/// Say so when an item names a permission that does not exist.
+///
+/// The field is free text on purpose — a menu may point at a feature whose
+/// permission has not been created yet. What is not on purpose is the silence:
+/// an item guarded by a permission nobody holds is drawn for nobody, so it is
+/// saved, it is listed on this screen, and it never appears in the sidebar. A
+/// person then reports that menus do not work, which is a fair reading of what
+/// they saw.
+async fn warn_if_unknown(req: &Request, item: &MenuItem) {
+    let Some(permission) = item.permission.as_deref().filter(|p| !p.is_empty()) else { return };
+    let Some(store) = req.state::<rustlavel::rbac::Permissions>() else { return };
+
+    let known = store.permissions().await.unwrap_or_default();
+    if known.iter().any(|p| p.name == permission) {
+        return;
+    }
+
+    page::flash(
+        req,
+        "error",
+        format!(
+            "Saved, but no permission is called `{permission}`, so this item is hidden from              everybody until one exists. Create it under Permissions, or clear the field to              show the item to everybody signed in."
+        ),
+    );
+}
+
 pub struct MenuController;
 
 impl MenuController {
+    /// `POST /admin/menus/dashboard` — where the Dashboard entry points.
+    ///
+    /// On this screen rather than in Settings because it is navigation, and
+    /// this is the screen that edits navigation. Blank restores the built-in
+    /// page rather than leaving an entry that goes nowhere.
+    pub async fn dashboard(mut req: Request) -> Result<Response> {
+        let Some(settings) = req.state::<crate::support::settings::Settings>() else {
+            return Ok(Response::see_other("/admin/menus"));
+        };
+        let store = settings.clone();
+
+        let url = req.input("dashboard_url").unwrap_or_default().trim().to_string();
+        // A path within this application, or nothing. Not an arbitrary URL: the
+        // logo and the first entry in the rail both point here, and sending
+        // everybody's home button to another site is not a menu edit.
+        if !url.is_empty() && !url.starts_with('/') {
+            page::flash(&req, "error", "That has to be a path inside this application, like `/reports`.");
+            return Ok(Response::see_other("/admin/menus"));
+        }
+
+        store.put("menus.dashboard_url", &url).await?;
+
+        if let Some(audit) = crate::support::audit::of(&req, "menus.updated") {
+            audit
+                .describe(match url.is_empty() {
+                    true => "Reset the Dashboard entry to the built-in page".to_string(),
+                    false => format!("Pointed the Dashboard entry at {url}"),
+                })
+                .record()
+                .await;
+        }
+
+        page::flash(&req, "success", match url.is_empty() {
+            true => "The Dashboard entry points at the built-in page again.".to_string(),
+            false => format!("The Dashboard entry now opens {url}."),
+        });
+        Ok(Response::see_other("/admin/menus"))
+    }
+
     /// `GET /admin/menus` and `GET /admin/menus/{location}`
     pub async fn index(req: Request) -> Result<Response> {
         let db = req.state::<Database>().expect("the database is registered in main.rs").clone();
@@ -109,7 +189,18 @@ impl MenuController {
             .with("locations", Json::Array(location_options(&location)))
             .with("icons", Json::Array(icon_options()))
             .with("q", Json::from(req.query("q").unwrap_or_default().to_string()))
-            .with("empty", Json::from(total == 0));
+            .with("empty", Json::from(total == 0))
+            .with("can_manage", Json::from(req.can("menus.manage").await?))
+            // The stored value, blank when it has never been set — so the
+            // field shows what was chosen rather than the default dressed up
+            // as a choice somebody made.
+            .with(
+                "dashboard_setting",
+                Json::from(match req.state::<crate::support::settings::Settings>() {
+                    Some(settings) => settings.get("menus.dashboard_url").await,
+                    None => String::new(),
+                }),
+            );
         req.view("admin/menus/index", &context)
     }
 
@@ -161,6 +252,7 @@ impl MenuController {
                 .await;
         }
         page::flash(&req, "success", format!("\"{}\" has been added.", item.label));
+        warn_if_unknown(&req, &item).await;
         Ok(Response::see_other(format!("/admin/menus/{location}")))
     }
 
@@ -185,6 +277,7 @@ impl MenuController {
                 .await;
         }
         page::flash(&req, "success", format!("\"{}\" has been saved.", item.label));
+        warn_if_unknown(&req, &item).await;
         Ok(Response::see_other(format!("/admin/menus/{}", item.location)))
     }
 

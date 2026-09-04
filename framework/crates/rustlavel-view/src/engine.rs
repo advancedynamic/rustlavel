@@ -4,6 +4,7 @@ use crate::ast::{Node, Template};
 use crate::context::{Context, Scope};
 use crate::parser;
 use crate::render::Renderer;
+use crate::translate::Translate;
 use rustlavel_core::{Error, Result};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -31,11 +32,19 @@ pub struct Engine {
     reload: bool,
     /// Parsed templates, keyed by view name.
     cache: RwLock<HashMap<String, Arc<Template>>>,
+    /// Where `@lang` gets its words. Application-wide, like the engine itself;
+    /// the *locale* is per page and travels in the context instead.
+    translator: Option<Arc<dyn Translate>>,
 }
 
 impl Engine {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Engine { root: root.into(), reload: false, cache: RwLock::new(HashMap::new()) }
+        Engine {
+            root: root.into(),
+            reload: false,
+            cache: RwLock::new(HashMap::new()),
+            translator: None,
+        }
     }
 
     /// Re-read every template from disk on every render.
@@ -47,6 +56,21 @@ impl Engine {
     pub fn with_reload(mut self, reload: bool) -> Self {
         self.reload = reload;
         self
+    }
+
+    /// Give `@lang` somewhere to look.
+    ///
+    /// Without one the directive renders the key it was given, which is the
+    /// same thing a missing translation does — a page saying `auth.sign_in` is
+    /// a page somebody fixes.
+    pub fn with_translator(mut self, translator: Arc<dyn Translate>) -> Self {
+        self.translator = Some(translator);
+        self
+    }
+
+    /// The translator, for the renderer.
+    pub(crate) fn translator(&self) -> Option<&dyn Translate> {
+        self.translator.as_deref()
     }
 
     pub fn root(&self) -> &Path {

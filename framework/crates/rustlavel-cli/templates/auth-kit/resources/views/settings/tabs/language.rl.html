@@ -2,8 +2,7 @@
 @section("tab")
   <h3 class="mb-1 text-lg font-semibold">Language</h3>
   <p class="mb-5 text-sm text-ink-500 dark:text-ink-400">
-    The language the interface is drawn in, and what to fall back to when a
-    translation is missing.
+    The language this application is written in, and how it writes numbers.
   </p>
 
   <form method="post" action="/admin/settings/language" class="space-y-5">
@@ -17,7 +16,11 @@
             <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
           @endforeach
         </select>
-        <p class="field-hint">Used for anybody who has not chosen one of their own.</p>
+        <p class="field-hint">
+          Sets <code>lang</code> on every page, which is what a screen reader
+          and a browser's translate offer read. The interface text itself needs
+          the translation files below.
+        </p>
       </div>
 
     </div>
@@ -34,16 +37,10 @@
             <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
           @endforeach
         </select>
-        <p class="field-hint">Used for every count on the administration pages.</p>
-      </div>
-
-      <div>
-        <label for="app_currency" class="field-label">Currency Display</label>
-        <select id="app_currency" name="app.currency" class="field-input">
-          @foreach(s.app_currency.choices as choice)
-            <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
-          @endforeach
-        </select>
+        <p class="field-hint">
+          Every count on every administration page. Written this way now:
+          <span class="font-mono font-semibold text-ink-700 dark:text-ink-300">{{ number_sample }}</span>
+        </p>
       </div>
 
     </div>
@@ -51,10 +48,22 @@
     <div class="card border-ink-200 bg-ink-50 dark:bg-ink-800/40">
       <div class="card-body">
         <p class="text-sm font-medium">Translation files</p>
+        {{-- **This panel used to promise something untrue.** It said "adding
+             one is the whole of adding a language", and it is not: this kit
+             does not enable `rustlavel-i18n`, and no template here asks a
+             translator for anything. A file could hold a thousand phrases and
+             not one word on screen would change. Saying so is the least this
+             screen owes somebody who is about to write one. --}}
         <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">
           One JSON file per language under <code>lang/</code>, named by its code
-          &mdash; <code>lang/id.json</code> for Bahasa Indonesia. A language with
-          no file falls back, so adding one is the whole of adding a language.
+          &mdash; <code>lang/id.json</code> for Bahasa Indonesia.
+        </p>
+        <p class="mt-2 text-sm text-amber-700 dark:text-amber-400">
+          <strong>The sign-in pages and the sidebar are translated; the rest is
+          not yet.</strong> Adding a phrase to a file here changes the page it
+          appears on. The settings tabs and the administration screens still
+          hold their English inline &mdash; they are converted the same way, a
+          screen at a time.
         </p>
         <ul class="mt-3 space-y-1 text-sm">
           @foreach(languages as language)

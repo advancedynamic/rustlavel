@@ -11,6 +11,10 @@ repository.workspace = true
 [dependencies]
 rustlavel-core.workspace = true
 rustlavel-http.workspace = true
+# For the `Translate` trait the `@lang` directive asks for. The view crate has
+# no idea what a translator is and does not depend on this one; the arrow
+# points this way so the template engine stays free of the HTTP stack.
+rustlavel-view.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true }

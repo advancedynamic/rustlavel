@@ -1102,3 +1102,124 @@ async fn main() -> Result<()> {
     Ok(())
 }
 "#;
+
+/// A feature that owns everything it needs.
+pub const MODULE_STUB: &str = r#"//! {{title}}.
+//!
+//! A module owns its routes, its controller, its migrations, the permissions
+//! that guard it and the settings that configure it. Nothing here is
+//! discovered: add it to the list in `src/modules/mod.rs` and it is registered;
+//! leave it out and it is not.
+
+pub mod controller;
+
+use rustlavel::prelude::*;
+use rustlavel::{Plugin, Setup};
+
+use crate::modules::Module;
+use crate::support::settings::Setting;
+
+pub use controller::{{class}};
+
+/// The same guard the rest of the administration area uses.
+#[allow(dead_code)]
+fn guard(permission: &str) -> Can {
+    Can::permission(permission).login_path("/login")
+}
+
+/// What may be granted, as `(name, description)`. The seeder creates these and
+/// a test refuses any that nothing checks.
+static PERMISSIONS: [(&str, &str); 1] = [("{{snake}}.view", "See {{title}}")];
+
+/// Settings this feature reads, beside the code that reads them. A test refuses
+/// any that nothing reads.
+static SETTINGS: [Setting; 0] = [];
+
+pub struct {{struct}};
+
+impl Plugin for {{struct}} {
+    fn name(&self) -> &'static str {
+        "{{snake}}"
+    }
+
+    fn register(self: Box<Self>, setup: &mut Setup<'_>) {
+        // **The middleware comes with the routes.** A module registers on the
+        // bare router, so it inherits nothing: whatever a route needs —
+        // signing in, an idle timeout, a permission — it says here.
+        setup.router.group("/{{kebab}}", |r| {
+            r.middleware(Authenticate::default().login_path("/login"));
+            r.middleware(crate::support::idle::IdleTimeout);
+
+            r.get("", {{class}}::index)
+                .name("{{snake}}.index")
+                .middleware(guard("{{snake}}.view"));
+        });
+    }
+}
+
+impl Module for {{struct}} {
+    fn permissions(&self) -> &'static [(&'static str, &'static str)] {
+        &PERMISSIONS
+    }
+
+    fn settings(&self) -> &'static [Setting] {
+        &SETTINGS
+    }
+
+    // Add `migrations` and `seeders` when this feature owns a table:
+    //
+    //     fn migrations(&self) -> Vec<&'static dyn rustlavel::db::Migration> {
+    //         vec![&crate::database::migrations::…]
+    //     }
+}
+"#;
+
+/// The controller a new module starts with.
+pub const MODULE_CONTROLLER_STUB: &str = r#"use rustlavel::prelude::*;
+
+use crate::support::page;
+
+pub struct {{class}};
+
+impl {{class}} {
+    /// `GET /{{kebab}}`
+    pub async fn index(req: Request) -> Result<Response> {
+        let context = page::shell(&req, "{{snake}}").await;
+        req.view("{{snake}}.index", &context)
+    }
+}
+"#;
+
+/// A service: work that is neither a controller nor a model.
+pub const SERVICE_STUB: &str = r#"//! {{title}}.
+//!
+//! A service is the work itself, with the request left at the door: it takes
+//! what it needs and returns what it found, so it can be tested without a
+//! server and reused from a controller, a job, or a command.
+
+use rustlavel::prelude::*;
+
+pub struct {{struct}} {
+    db: Database,
+}
+
+impl {{struct}} {
+    pub fn new(db: Database) -> Self {
+        {{struct}} { db }
+    }
+
+    /// Replace this with what the service is for.
+    pub async fn run(&self) -> Result<()> {
+        let _ = &self.db;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// A service is testable without a server, which is most of why it is a
+    /// service. Write that test here.
+    #[test]
+    fn it_has_a_test() {}
+}
+"#;

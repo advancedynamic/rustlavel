@@ -66,14 +66,25 @@ impl AdminSettingsController {
 
         if *slug == "backup" {
             context =
-                crate::controllers::admin::backup_controller::BackupController::context(&req, context)
+                crate::modules::backup::BackupController::context(&req, context)
                     .await?;
         }
         if *slug == "email" {
             context = context.with("test_to", Json::from(""));
         }
         if *slug == "language" {
-            context = context.with("languages", Self::languages(&req, &settings).await);
+            // A worked example, because the setting is otherwise invisible on
+            // a page with nothing to count: this application's own numbers are
+            // 1 and 2 on a fresh install, and 1 looks the same in every format
+            // there is. Somebody changes the dropdown, sees nothing move, and
+            // reasonably concludes the control does not work.
+            let number = crate::support::format::number_format(&req).await;
+            context = context
+                .with("languages", Self::languages(&req).await)
+                .with(
+                    "number_sample",
+                    Json::from(crate::support::format::integer(1_234_567, &number)),
+                );
         }
 
         req.view(&format!("settings/tabs/{slug}"), &context)
@@ -206,11 +217,24 @@ impl AdminSettingsController {
             .collect()
     }
 
+    /// How many phrases a language file holds.
+    ///
+    /// The leaves, not the top-level keys. Counting the latter reported "3
+    /// phrases" for a file with thirty-six in it, because the file is grouped —
+    /// `{"nav": {...}, "auth": {...}}` — and a group is not a phrase.
+    fn count_phrases(value: &Json) -> i64 {
+        match value.as_object() {
+            Some(fields) => fields.values().map(Self::count_phrases).sum(),
+            None => 1,
+        }
+    }
+
     /// Which languages have a translation file, for the Language tab.
-    async fn languages(req: &Request, settings: &Settings) -> Json {
-        let root = req.config().string("view.lang", "lang");
-        let chosen = settings.get("app.locale").await;
-        let _ = chosen;
+    async fn languages(req: &Request) -> Json {
+        // `app.lang_path`, the key `i18n::from_config` reads. This asked for
+        // `view.lang`, so a project that moved its language files would have
+        // had the translator looking in one place and this list in another.
+        let root = req.config().string("app.lang_path", "lang");
 
         let listed = declared("app.locale").map(|setting| setting.choices).unwrap_or(&[]);
         Json::Array(
@@ -221,7 +245,7 @@ impl AdminSettingsController {
                     let phrases = std::fs::read_to_string(&path)
                         .ok()
                         .and_then(|source| Json::parse(&source).ok())
-                        .and_then(|value| value.as_object().map(|fields| fields.len() as i64))
+                        .map(|value| Self::count_phrases(&value))
                         .unwrap_or(0);
 
                     Json::object([

@@ -98,6 +98,8 @@ const OWN_TABLES: &[&str] = &[
     "settings",
     "menu_items",
     "password_history",
+    "notifications",
+    "notification_reads",
     // `backups` is deliberately absent. A dump that included it would record
     // the very row describing itself, in the `running` state it was in
     // half-way through being written, and restoring that would resurrect

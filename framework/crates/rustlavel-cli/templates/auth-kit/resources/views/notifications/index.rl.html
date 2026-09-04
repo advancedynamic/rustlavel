@@ -1,0 +1,97 @@
+@extends("layouts.app")
+@section("title", "Notifications")
+
+@section("content")
+  <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 class="text-xl font-extrabold tracking-tight">Notifications</h2>
+      <p class="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
+        Addressed to you, and announcements sent to everybody.
+      </p>
+    </div>
+    @if(unread)
+      <form method="post" action="/notifications/read">
+        {!! csrf_field !!}
+        <button type="submit" class="btn-secondary btn-sm">Mark all as read</button>
+      </form>
+    @endif
+  </div>
+
+  @include("partials.flash")
+
+  @if(may_send)
+    {{-- Somebody has to be able to write one, or the announcement half of this
+         page is a feature nothing can reach. --}}
+    <details class="card mb-4">
+      <summary class="card-body cursor-pointer text-sm font-semibold">Send a notification</summary>
+      <form method="post" action="/notifications" class="card-body border-t border-ink-200 dark:border-ink-800">
+        {!! csrf_field !!}
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="sm:col-span-2">
+            <label for="title" class="field-label">Title</label>
+            <input id="title" name="title" type="text" required maxlength="200" class="field-input">
+          </div>
+          <div class="sm:col-span-2">
+            <label for="body" class="field-label">Message</label>
+            <textarea id="body" name="body" rows="3" class="field-input"></textarea>
+          </div>
+          <div>
+            <label for="user_id" class="field-label">To</label>
+            <input id="user_id" name="user_id" type="text" placeholder="everybody" class="field-input font-mono">
+            <p class="field-hint">A person's id, or leave it blank to announce it to everybody.</p>
+          </div>
+          <div>
+            <label for="level" class="field-label">Tone</label>
+            <select id="level" name="level" class="field-input">
+              <option value="info">Information</option>
+              <option value="success">Good news</option>
+              <option value="warning">Warning</option>
+              <option value="danger">Urgent</option>
+            </select>
+          </div>
+          <div class="sm:col-span-2">
+            <label for="url" class="field-label">Link <span class="font-normal text-ink-400">(optional)</span></label>
+            <input id="url" name="url" type="text" placeholder="/admin/users" class="field-input font-mono">
+          </div>
+        </div>
+        <div class="mt-4">
+          <button type="submit" class="btn-primary">Send</button>
+        </div>
+      </form>
+    </details>
+  @endif
+
+  <div class="card">
+    @if(empty)
+      <div class="card-body py-10 text-center text-sm text-ink-500 dark:text-ink-400">
+        Nothing yet. Notices addressed to you, and anything announced to everybody, arrive here.
+      </div>
+    @else
+      <ul class="divide-y divide-ink-200 dark:divide-ink-800">
+        @foreach(notifications as notice)
+          <li class="flex items-start gap-3 px-4 py-3.5 @if(!notice.read) bg-brand-50/40 dark:bg-brand-500/5 @endif">
+            <span class="mt-0.5 h-2 w-2 shrink-0 rounded-full @if(notice.read) bg-transparent @else bg-brand-600 @endif"
+                  aria-hidden="true"></span>
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-sm font-semibold">{{ notice.title }}</p>
+                @if(notice.broadcast)<span class="badge-neutral">Everybody</span>@endif
+                @if(notice.level != "info")<span class="{{ notice.tint }}">{{ notice.level }}</span>@endif
+              </div>
+              @if(notice.body)
+                <p class="mt-1 text-sm text-ink-600 dark:text-ink-400">{{ notice.body }}</p>
+              @endif
+              <p class="mt-1 text-xs text-ink-400 dark:text-ink-500">
+                {{ notice.when }} &middot; {{ notice.ago }}
+              </p>
+            </div>
+            @if(notice.has_url)
+              <a href="{{ notice.href }}" class="btn-secondary btn-sm shrink-0">Open</a>
+            @endif
+          </li>
+        @endforeach
+      </ul>
+      @include("partials.pagination")
+    @endif
+  </div>
+@endsection

@@ -3,6 +3,201 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## 0.7.0 — 2026-09-05
+
+### Added
+
+- **Modules: a feature owns its routes, permissions and settings.** The kit was
+  laid out by technical layer — every controller together, every model together
+  — and the cost is that changing one feature means opening six files in four
+  directories with nothing in the tree saying those six belong together.
+  `src/modules/` is the alternative, and `backup` is the first to move: its
+  dump format, schedule arithmetic, controller, four permissions, three
+  settings and four routes are one directory now, and `mod.rs` is the whole of
+  what the application has to know about it.
+
+  Nothing is discovered. `modules::all()` is a hand-written list, the way
+  `main.rs` is. The seam is the existing `Plugin` trait, which already carried
+  routes, middleware and state; `Module` extends it with the four things a
+  plugin could not register because the application collected them centrally.
+
+  **The middleware comes with the routes.** Those four routes lived inside
+  `r.group("/admin", …)`, which applied `Authenticate` and `IdleTimeout` to
+  everything in it. A module registers on the bare router and inherits neither,
+  so the move states them — a version that forgot would have put four
+  unauthenticated routes into the application, one of which restores the
+  database.
+
+- **`make:module` and `make:service`**, and `route:list` gained `--path`,
+  `--method` and `--name` with a count under the table. Ninety-six routes do
+  not fit a screen, and piping through `grep` loses the header row that says
+  what the columns are.
+
+- **`@lang` in the template engine, and the sign-in pages and sidebar
+  translated.** Settings → Language documented a `lang/<code>.json` convention
+  and, until this release, promised that "adding one is the whole of adding a
+  language". It was untrue three times over: the kit did not enable
+  `rustlavel-i18n`, created no `lang/` directory, and **no template anywhere
+  asked a translator for a word**. A file could hold a thousand phrases and not
+  one word on screen would change.
+
+  `@lang("auth.sign_in")` now exists, with `@lang("key", "name", value)` for a
+  phrase carrying `:name` placeholders. Two decisions in it are worth stating.
+  The key is a literal fixed at parse time, so a template still cannot compute
+  what it renders — this is not the "calls in templates" the engine rejects.
+  And the words are looked up when the page is written, never when it is
+  parsed: one `Engine` serves every request and a parsed template is cached and
+  shared, so resolving early would have served the first reader's language to
+  everybody after them. There is a test for exactly that.
+
+  The translator sits on the `Engine`, which is application-wide; the locale
+  travels in the view context under `app_locale`, which is per page and which
+  `page::shell` already set. `rustlavel-view` defines a small `Translate` trait
+  and `rustlavel-i18n` implements it, so the template engine keeps its single
+  dependency and the HTTP stack stays out of it.
+
+  Translated so far: the sidebar, the header, and the sign-in pages, in English
+  and Indonesian. The settings tabs and administration screens are not, and the
+  Language tab says so rather than implying otherwise. Two guards keep the rest
+  honest: every `@lang` key a template writes must have an English phrase, and
+  every language file must carry exactly the same keys.
+
+- **Twelve more icons for a menu item**, and the Dashboard entry is first in
+  the sidebar and points where you say. The rail's first entry is the one people
+  reach for without reading, so adding a custom menu no longer pushes it down —
+  and `menus.dashboard_url`, edited on the Menus screen rather than in Settings
+  because it is navigation, decides where it and the logo above it go. A path
+  inside the application only: the home button is not a place to send everybody
+  off-site.
+- **Bahasa Melayu is off the language list.** Two languages with files, not
+  three with one that would never have had one.
+
+- **Notifications have a page and a table of their own.** The bell in the header
+  was the audit trail wearing a different label: it read `/admin/notifications`,
+  which was a filtered view of who-did-what, and "See the whole trail" took you
+  to the audit log. So it showed nothing addressed to you, and it was hidden
+  entirely from anybody without `audit.view` — which is most people, all of whom
+  have notices of their own. There is now a `notifications` table where a null
+  `user_id` means everybody: a notice for one person and an announcement to all
+  of them are the same row, because they are the same thing to a reader. Read
+  state is a separate table, per person, so the first reader of an announcement
+  does not mark it read for the rest. `/notifications` lists yours with the
+  unread ones marked, "Mark all as read" clears them, and anybody holding the
+  new `notifications.send` permission can write one — to a person or to
+  everybody — from the page itself, because the alternative is an announcement
+  feature nothing can reach.
+
+### Security
+
+- **Removing a passkey now asks for one.** It was an ordinary form post with
+  nothing behind it but the session cookie and a CSRF token, which travel
+  together — so stripping every passkey off an account was the first and easiest
+  thing to do with a stolen session, and what it left behind was a password the
+  thief already had. The removal now carries a WebAuthn assertion, checked
+  against this account's credentials and against the user handle in the
+  assertion, before anything is deleted. It is refused when the proof is
+  missing, blank, or not an assertion at all — the three shapes a forged request
+  takes, each with a test.
+
+  The assertion may come from **any** of the account's passkeys, not the one
+  being removed. Requiring that one sounds stricter and is worse: the reason to
+  remove a passkey is usually that its device is gone, and a rule only the lost
+  device can satisfy leaves a dead credential on the account for good.
+
+### Fixed
+
+- **`declare_module` destroyed any `mod.rs` that held more than declarations.**
+  It collected every line, dropped the blanks and sorted the lot — correct for
+  a file that is nothing but `pub mod` lines, and fatal for one that also holds
+  a trait and a function. The first `make:module` turned `src/modules/mod.rs`
+  into sorted fragments and the project stopped compiling. It inserts now, in
+  order, leaving every other line where it was.
+- **Test fixtures shared a directory between runs.** Seven tests across four
+  crates named a temp directory after the test and then deleted it on the way
+  in — enough for one run, and not for two: a second `cargo test` on the same
+  machine wiped the first one's tree half-way through, and both failed
+  somewhere unrelated. The process id is in the name now. This is the rule the
+  project already states, applied to the places that were missing it.
+
+- **`App` replaced a view engine the application had built for itself.** It
+  registered its own whenever `resources/views` existed — which is whenever an
+  application has views — so `.views(...)` silently did nothing. An engine
+  carrying a translator was swapped for one that could not translate, and
+  `@lang` rendered its keys. It now defers to an engine already registered.
+- **The Language tab listed translation files from a different directory than
+  the translator reads.** The tab asked config for `view.lang`; `i18n` reads
+  `app.lang_path`. A project that moved its language files would have had the
+  two looking in different places.
+
+- **The Language tab looked broken, and one third of it was.** Changing
+  anything there appeared to do nothing, for three different reasons.
+  `app.currency` genuinely did nothing: `money()` was called only by its own
+  tests, and the one caller of `preferences()` wrote `let (number, _) = ...` —
+  it fetched the currency and threw it away. The setting is gone and `money()`
+  takes the symbol from its caller, since there is no money in an account and a
+  role. `app.number_format` did work, invisibly: a fresh install counts 1 user
+  and 2 roles, and `1` is `1` in every format there is — the tab now prints a
+  worked example (`1.234.567`) beside the dropdown, and a test requires the
+  three formats to render differently. `app.locale` also worked, invisibly: it
+  sets `lang` on every page, which the tab now says, rather than implying it
+  translates the interface.
+
+  Worth recording about the guard rather than the bug: the catalogue test
+  passed `app.currency` all along, because reading a key and discarding the
+  value counts as reading it. That test proves a key is *fetched*, not that it
+  is *used*.
+
+- **The Menus screen wrote rows the sidebar never read.** It has always saved
+  menu items — and told a person, in its own empty state, that "the application
+  falls back to its built-in navigation until you add something". Nothing read
+  the table, so adding something changed nothing: `partials/nav.rl.html` was a
+  hard-coded list. The sidebar now draws the `sidebar` location when it has
+  items, honouring order, nesting and each item's permission, and treating a
+  parent that points at `#` as a heading rather than a dead link. If that leaves
+  the viewer with nothing, the built-in navigation comes back — a custom menu is
+  a convenience, not a way to edit yourself out of the application: the custom
+  menu sits *above* the built-in list rather than replacing it. Replacing it was
+  the first attempt and it was wrong — adding one item took Users, Roles,
+  Settings and the audit trail off the rail for an administrator who never asked
+  to lose them. Each built-in entry checks its own permission already, so an
+  administrator keeps everything and everybody else keeps what they are granted.
+  Which items appear is a pure function with tests; the viewer's permissions are
+  fetched once rather than once per item.
+- **A menu item naming a permission that does not exist saved silently and then
+  never appeared.** The field is free text on purpose, since a menu may point at
+  a feature whose permission has not been created yet. The silence was not on
+  purpose: an item guarded by a permission nobody holds is drawn for nobody, so
+  it looked saved, listed correctly, and vanished. Saving one now says which
+  permission is missing and what to do about it.
+- **Signing in with a passkey and no authenticator app answered 419.** The
+  scripts read the CSRF token out of the hidden `_token` field, which exists
+  only where a form rendered — and on the two-factor page that form sits behind
+  `@if(has_totp)`. Somebody enrolled in a passkey and nothing else got a page
+  with no token anywhere on it, so "Use a passkey" posted an empty one and was
+  refused. It worked in the configuration it was built in (passkey *and*
+  authenticator) and in no other. The token is now a `<meta>` in both layouts,
+  so every page carries one whether or not it renders a form, and the scripts
+  read that first. Measured: the empty token still answers 419, the meta token
+  reaches the handler.
+- **Settings → Appearance did not change the colours until a minute later.**
+  `/css/theme.css` is generated from those settings and changes the moment
+  somebody clicks Save — and it was served `Cache-Control: public, max-age=60`
+  with no `ETag`, so the browser went on painting the old colours out of its own
+  cache. The one file in the application that changes on every Save was the one
+  told to be cached, while `app.css`, which changes only on a rebuild, already
+  revalidated. It now sends `no-cache` and a weak `ETag`, and answers the
+  revalidation it invites: unchanged colours come back `304` with no body, and
+  a changed colour comes back `200`. Measured both ways, not assumed.
+
+### Removed
+
+- **The "Check against breached passwords" switch is gone from Settings →
+  Security.** It was never implemented: the lookup needs an outbound HTTPS call
+  behind a feature flag a project may not have enabled, so the honest thing at
+  the time was to refuse every new password while the switch was on and say so
+  on the tab. That is still worse than not offering it. A starter kit should not
+  ship a control whose only working state is off.
+
 ## 0.6.0 — 2026-09-04
 
 ### Changed

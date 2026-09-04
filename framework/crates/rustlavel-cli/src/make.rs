@@ -37,8 +37,72 @@ pub fn run(command: &str, args: &[String]) -> Result<(), String> {
         "make:job" => simple(&project, name, Kind::Job),
         "make:mail" => simple(&project, name, Kind::Mail),
         "make:notification" => simple(&project, name, Kind::Notification),
+        "make:module" => module(&project, name),
+        "make:service" => service(&project, name),
         other => Err(format!("unknown generator `{other}`")),
     }
+}
+
+/// `make:module <name>` — a feature that owns everything it needs.
+fn module(project: &Project, name: &str) -> Result<(), String> {
+    let snake = naming::snake(name);
+    let structure = naming::pascal(&snake);
+    let class = format!("{structure}Controller");
+
+    let mut values = BTreeMap::new();
+    values.insert("struct", structure.clone());
+    values.insert("class", class);
+    values.insert("snake", snake.clone());
+    values.insert("kebab", naming::kebab(&snake));
+    values.insert("title", naming::title(&snake));
+
+    let root = project.root.join("src/modules").join(&snake);
+    write_new(&root.join("mod.rs"), &render(stubs::MODULE_STUB, &values))?;
+    write_new(&root.join("controller.rs"), &render(stubs::MODULE_CONTROLLER_STUB, &values))?;
+    console::created(&relative(project, &root));
+
+    // Declaring it is not registering it: a module reaches the application
+    // only through the list in `modules/mod.rs`, and that list is written by
+    // hand on purpose.
+    let mod_file = project.root.join("src/modules/mod.rs");
+    if project::declare_module(&mod_file, &snake)? {
+        console::updated(&relative(project, &mod_file));
+    }
+
+    console::success(&format!(
+        "{structure} created. Two things left, both in src/modules/mod.rs:\n\n  \
+         1. add it to `all()`:  Box::new({snake}::{structure}),\n  \
+         2. write resources/views/{snake}/index.rl.html"
+    ));
+    Ok(())
+}
+
+/// `make:service <name>` — work that is neither a controller nor a model.
+fn service(project: &Project, name: &str) -> Result<(), String> {
+    let base = name.trim_end_matches("Service").trim_end_matches("_service");
+    let structure = naming::pascal(base);
+    let snake = naming::snake(&structure);
+
+    let mut values = BTreeMap::new();
+    values.insert("struct", structure.clone());
+    values.insert("title", naming::title(&snake));
+
+    // `support/` today. When this feature becomes a module, the file moves
+    // beside the rest of it and nothing about its shape changes.
+    let path = project.root.join("src/support").join(format!("{snake}.rs"));
+    write_new(&path, &render(stubs::SERVICE_STUB, &values))?;
+    console::created(&relative(project, &path));
+
+    let mod_file = project.root.join("src/support/mod.rs");
+    if project::declare_module(&mod_file, &snake)? {
+        console::updated(&relative(project, &mod_file));
+    }
+
+    console::success(&format!(
+        "{structure} created. Build it where it is needed:\n\n  \
+         let service = {structure}::new(db.clone());"
+    ));
+    Ok(())
 }
 
 fn controller(project: &Project, name: &str) -> Result<(), String> {

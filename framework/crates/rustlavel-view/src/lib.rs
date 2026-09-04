@@ -28,6 +28,9 @@
 //! @section("body") ... @endsection
 //! @yield("body")
 //! @include("parts.nav")
+//!
+//! @lang("auth.sign_in")                            a translated phrase
+//! @lang("mail.greeting", "name", user.name)        with a `:name` placeholder
 //! ```
 //!
 //! Inside `@foreach`, `loop` carries `index`, `iteration`, `first`, `last`, and
@@ -49,6 +52,22 @@
 //! Expressions are equally limited — paths, literals, comparisons, `&&`, `||`,
 //! `!` — for the same reason. There is no arithmetic and there are no calls.
 //!
+//! `@lang` looks like the exception and is not. It calls nothing the template
+//! chose: the key is a literal fixed at parse time, the only thing it can reach
+//! is a phrase table, and the worst a wrong key can do is print itself. What
+//! `@php` and calls would let a template do — read the filesystem, hit the
+//! database, decide something — none of that is reachable from here. The
+//! alternative is worse in the way this crate cares about: without it, every
+//! translated string has to be computed in Rust and passed in, which puts the
+//! wording of the page somewhere nobody looks for wording.
+//!
+//! The locale is not a parameter to the directive. It comes from the context
+//! under the reserved name `app_locale`, because one [`Engine`] serves every
+//! request and two people reading at once may be reading different languages —
+//! and because a parsed template is cached and shared, so the words cannot be
+//! decided until the moment the page is written. With no `app_locale` and no
+//! translator, `@lang` prints its key.
+//!
 //! # Escaping
 //!
 //! `{{ }}` escapes `&`, `<`, `>`, `"` and `'`, every time, with no way to turn
@@ -64,12 +83,14 @@ pub mod expr;
 pub mod lexer;
 pub mod parser;
 pub mod source;
+pub mod translate;
 pub mod value;
 
 mod render;
 
 pub use ast::{Branch, Node, Template, TemplateRef};
 pub use context::{Context, Scope};
+pub use translate::Translate;
 pub use engine::{DEFAULT_ROOT, EXTENSION, Engine};
 pub use escape::escape;
 pub use expr::{BinaryOp, Expr};

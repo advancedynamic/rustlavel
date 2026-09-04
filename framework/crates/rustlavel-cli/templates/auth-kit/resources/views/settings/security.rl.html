@@ -91,9 +91,15 @@
                   <p class="truncate text-sm font-medium">{{ key.label }}</p>
                   <p class="text-xs text-ink-500 dark:text-ink-400">Added {{ key.created_at }} &middot; last used {{ key.last_used_at }}</p>
                 </div>
+                {{-- Removing a passkey asks for one first. The script fills
+                     `assertion` in after the browser has proved you hold a
+                     passkey on this account; with scripting off it stays
+                     empty, the server refuses, and nothing is removed. --}}
                 <form method="post" action="/settings/security/passkeys/{{ key.id }}/delete"
-                      data-confirm="Remove this passkey?">
+                      data-passkey-confirm data-allow-resubmit
+                      data-confirm-url="/settings/security/passkeys/confirm">
                   {!! csrf_field !!}
+                  <input type="hidden" name="assertion" value="">
                   <button type="submit" class="btn-ghost btn-sm text-red-600 dark:text-red-400">Remove</button>
                 </form>
               </li>

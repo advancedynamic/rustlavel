@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn loads_a_directory_of_locales() {
-        let dir = std::env::temp_dir().join("rustlavel-i18n-load");
+        let dir = std::env::temp_dir().join(format!("rustlavel-i18n-load-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("en.json"), r#"{"a":"A"}"#).unwrap();
         std::fs::write(dir.join("id.json"), r#"{"a":"A dalam Bahasa"}"#).unwrap();
@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn a_malformed_translation_file_names_itself() {
-        let dir = std::env::temp_dir().join("rustlavel-i18n-broken");
+        let dir = std::env::temp_dir().join(format!("rustlavel-i18n-broken-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("en.json"), "{not json").unwrap();
 
@@ -356,5 +356,77 @@ mod tests {
     #[test]
     fn a_missing_lang_directory_is_not_an_error() {
         assert_eq!(Translator::new().load_dir("/definitely/not/here").unwrap(), 0);
+    }
+}
+
+/// What the `@lang` directive in a template asks for.
+///
+/// The template engine defines this trait and knows nothing about this crate —
+/// it depends on `rustlavel-core` alone, and this crate pulls in
+/// `rustlavel-http` for its locale middleware. Implementing it here is what
+/// keeps the HTTP stack out of the template engine.
+///
+/// `get_in` rather than `get`: `get` reads a process-global default locale, and
+/// a page is rendered for one reader whose language is their own.
+impl rustlavel_view::Translate for Translator {
+    fn line(&self, locale: &str, key: &str, replacements: &[(&str, String)]) -> String {
+        let borrowed: Vec<(&str, &str)> =
+            replacements.iter().map(|(name, value)| (*name, value.as_str())).collect();
+
+        match locale.is_empty() {
+            // No locale on the page: the translator's own default, which is
+            // what `get_with` uses.
+            true => self.get_with(key, &borrowed),
+            false => self.get_in(locale, key, &borrowed),
+        }
+    }
+}
+
+#[cfg(test)]
+mod translate_tests {
+    use super::*;
+    use rustlavel_view::Translate;
+
+    fn dictionary() -> Translator {
+        let translator = Translator::new();
+        translator.insert(
+            "en",
+            Json::parse(r#"{"auth":{"sign_in":"Sign in","welcome":"Hello, :name"}}"#).unwrap(),
+        );
+        translator.insert(
+            "id",
+            Json::parse(r#"{"auth":{"sign_in":"Masuk","welcome":"Halo, :name"}}"#).unwrap(),
+        );
+        translator
+    }
+
+    #[test]
+    fn a_line_is_read_in_the_locale_it_is_asked_for() {
+        let translator = dictionary();
+        assert_eq!(translator.line("en", "auth.sign_in", &[]), "Sign in");
+        assert_eq!(translator.line("id", "auth.sign_in", &[]), "Masuk");
+    }
+
+    #[test]
+    fn a_placeholder_is_filled() {
+        let translator = dictionary();
+        let filled = translator.line("id", "auth.welcome", &[("name", "Ada".to_string())]);
+        assert_eq!(filled, "Halo, Ada");
+    }
+
+    /// A page that carries no locale is rendered in the default rather than
+    /// failing or coming back blank.
+    #[test]
+    fn an_empty_locale_falls_back_to_the_default() {
+        let translator = dictionary();
+        translator.set_default("id");
+        assert_eq!(translator.line("", "auth.sign_in", &[]), "Masuk");
+    }
+
+    /// The key shows itself, so a phrase nobody wrote is visible on the page
+    /// rather than being a hole in it.
+    #[test]
+    fn a_missing_key_comes_back_as_itself() {
+        assert_eq!(dictionary().line("en", "auth.nothing", &[]), "auth.nothing");
     }
 }

@@ -1,0 +1,44 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "administration": "Administration",
+    "users": "Users",
+    "roles": "Roles",
+    "permissions": "Permissions",
+    "menus": "Menus",
+    "settings": "Settings",
+    "audit": "Audit Logs",
+    "account": "Account",
+    "profile": "Profile",
+    "security": "Security",
+    "sign_out": "Sign out"
+  },
+  "shell": {
+    "search": "Search people, roles, settings…",
+    "search_label": "Search people, roles, permissions and settings",
+    "notifications": "Notifications",
+    "notifications_hint": "Yours, and anything announced to everybody.",
+    "notifications_all": "See all notifications",
+    "open_menu": "Collapse the menu",
+    "theme": "Switch to the :theme theme",
+    "home": "Home"
+  },
+  "auth": {
+    "hero": "One place for the people who use this, and what they may do in it.",
+    "hero_sub": "Accounts, roles and permissions, with every sign-in and every change written to an audit trail you can read.",
+    "recorded": "Sign-in attempts are recorded.",
+    "sign_in": "Sign in",
+    "sign_in_heading": "Sign in",
+    "or_register": "or",
+    "create_account": "create an account",
+    "email": "Email",
+    "password": "Password",
+    "forgot": "Forgot?",
+    "show_password": "Show the password",
+    "remember": "Keep me signed in",
+    "or": "or",
+    "magic_link": "Email me a sign-in link",
+    "locked_title": "Too many failed attempts.",
+    "locked_body": "This account is locked for another :minutes. Waiting is the only way in; trying again sooner does not reset the clock."
+  }
+}

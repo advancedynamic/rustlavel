@@ -17,7 +17,8 @@
 use rustlavel::prelude::*;
 
 use crate::controllers::admin::users_controller::rbac;
-use crate::support::{backup, format, page, schedule, tokens};
+use crate::modules::backup::{archive as backup, schedule};
+use crate::support::{format, page, tokens};
 
 /// The note a scheduled run writes, so the tab can tell one from a manual one
 /// and answer "has the schedule ever fired?" without a column of its own.

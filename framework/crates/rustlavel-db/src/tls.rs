@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn a_pem_file_that_is_not_a_certificate_says_so() {
-        let path = std::env::temp_dir().join("rustlavel-tls-not-a-cert.pem");
+        let path = std::env::temp_dir().join(format!("rustlavel-tls-not-a-cert-{}.pem", std::process::id()));
         std::fs::write(&path, "just some text\n").unwrap();
 
         let error = root_store_from_pem(path.to_str().unwrap()).unwrap_err().to_string();

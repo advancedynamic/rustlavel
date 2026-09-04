@@ -4,6 +4,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{{-- Every page carries the CSRF token, whether or not it happens to render a
+     form. `public/js/app.js` reads it from here for the requests it makes
+     itself — registering a passkey, signing in with one. It used to read the
+     hidden field inside a form, and on the two-factor page that field is
+     inside `@if(has_totp)`: somebody with a passkey and no authenticator app
+     got a page with no token on it at all, and "Use a passkey" answered 419. --}}
+<meta name="csrf-token" content="{{ csrf_token }}">
 @if(app_description)
 <meta name="description" content="{{ app_description }}">
 @endif
@@ -37,7 +44,7 @@
              its icons. One control, because a person looking for the menu
              looks in one place whatever width they are at. --}}
         <button type="button" data-sidebar-toggle
-                class="btn-secondary btn-sm shrink-0" aria-label="Collapse the menu" aria-expanded="true"
+                class="btn-secondary btn-sm shrink-0" aria-label="@lang("shell.open_menu")" aria-expanded="true"
                 aria-controls="sidebar">
           <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
             <path d="M3 5.75A.75.75 0 0 1 3.75 5h12.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 5.75Zm0 4.25a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 10Zm.75 3.5a.75.75 0 0 0 0 1.5h12.5a.75.75 0 0 0 0-1.5H3.75Z"/>
@@ -47,7 +54,7 @@
         {{-- Where you are, then what you are looking at. Two lines in the
              height one used, which is what the design does with its header. --}}
         <div class="min-w-0 shrink-0">
-          <p class="truncate text-[10px] font-medium text-ink-400 dark:text-ink-500">Home / @yield("title", "Dashboard")</p>
+          <p class="truncate text-[10px] font-medium text-ink-400 dark:text-ink-500">@lang("shell.home") / @yield("title", "Dashboard")</p>
           <h1 class="min-w-0 truncate text-[15px] font-bold leading-tight">@yield("title", "Dashboard")</h1>
         </div>
 
@@ -56,9 +63,9 @@
              filtered server-side by what the person may open, so this cannot
              be used to enumerate what exists. --}}
         <div class="relative mx-auto hidden min-w-0 max-w-[440px] flex-1 md:block" data-search>
-          <label for="global-search" class="sr-only">Search people, roles, permissions and settings</label>
+          <label for="global-search" class="sr-only">@lang("shell.search_label")</label>
           <input id="global-search" type="search" autocomplete="off" spellcheck="false"
-                 placeholder="Search people, roles, settings…"
+                 placeholder="@lang("shell.search")"
                  class="field-input search-input pl-9" role="combobox" aria-expanded="false"
                  aria-controls="search-results" aria-autocomplete="list">
           <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 3.383 9.836l3.14 3.141a.75.75 0 1 0 1.061-1.06l-3.14-3.141A5.5 5.5 0 0 0 9 3.5ZM5 9a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z" clip-rule="evenodd"/></svg>
@@ -68,10 +75,13 @@
         </div>
 
         <div class="ml-auto flex shrink-0 items-center gap-1.5">
-          @if(can_view_audit)
+          {{-- Not behind a permission any more. The bell used to be the audit
+               trail in disguise, so it was hidden from everybody who could not
+               read that trail — which is most people, and all of them have
+               notices of their own. --}}
             <div class="relative">
               <button type="button" data-menu-toggle="notifications" data-notifications
-                      class="btn-ghost btn-sm relative" aria-label="Notifications"
+                      class="btn-ghost btn-sm relative" aria-label="@lang("shell.notifications")"
                       aria-expanded="false" aria-controls="notifications" aria-haspopup="true">
                 <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 2a5 5 0 0 0-5 5v3l-1.5 3h13L15 10V7a5 5 0 0 0-5-5Zm-2 13a2 2 0 1 0 4 0H8Z"/></svg>
                 <span hidden data-notification-dot
@@ -81,19 +91,18 @@
                    class="absolute right-0 z-30 mt-2 w-80 overflow-hidden rounded-lg border
                           border-ink-200 bg-white shadow-lg dark:border-ink-800 dark:bg-ink-900">
                 <div class="border-b border-ink-200 px-3 py-2 dark:border-ink-800">
-                  <p class="text-sm font-medium">Recent activity</p>
-                  <p class="text-xs text-ink-500 dark:text-ink-400">Sign-ins are left out on purpose.</p>
+                  <p class="text-sm font-medium">@lang("shell.notifications")</p>
+                  <p class="text-xs text-ink-500 dark:text-ink-400">@lang("shell.notifications_hint")</p>
                 </div>
                 <div data-notification-list class="max-h-80 overflow-y-auto"></div>
-                <a href="/admin/audit" class="block border-t border-ink-200 px-3 py-2 text-center text-sm font-medium text-brand-600 hover:bg-ink-50 dark:border-ink-800 dark:text-brand-400 dark:hover:bg-ink-800">See the whole trail</a>
+                <a href="/notifications" class="block border-t border-ink-200 px-3 py-2 text-center text-sm font-medium text-brand-600 hover:bg-ink-50 dark:border-ink-800 dark:text-brand-400 dark:hover:bg-ink-800">@lang("shell.notifications_all")</a>
               </div>
             </div>
-          @endif
 
           <form method="post" action="/settings/theme" class="contents">
             {!! csrf_field !!}
             <input type="hidden" name="theme" value="{{ theme_next }}">
-            <button type="submit" class="btn-ghost btn-sm" aria-label="Switch to the {{ theme_next }} theme">
+            <button type="submit" class="btn-ghost btn-sm" aria-label="@lang("shell.theme", "theme", theme_next)">
               @if(theme == "dark")
                 <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 2a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2Zm0 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 1.75a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75ZM18 10a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 18 10ZM4.25 10.75a.75.75 0 0 0 0-1.5h-1.5a.75.75 0 0 0 0 1.5h1.5Zm10.86-5.86a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0ZM6.01 13.99a.75.75 0 0 0-1.06-1.06l-1.06 1.06a.75.75 0 1 0 1.06 1.06l1.06-1.06Zm9.1 1.06a.75.75 0 0 1-1.06 0l-1.06-1.06a.75.75 0 1 1 1.06-1.06l1.06 1.06a.75.75 0 0 1 0 1.06ZM4.95 6.01a.75.75 0 0 0 1.06-1.06L4.95 3.89a.75.75 0 0 0-1.06 1.06l1.06 1.06Z"/></svg>
               @else

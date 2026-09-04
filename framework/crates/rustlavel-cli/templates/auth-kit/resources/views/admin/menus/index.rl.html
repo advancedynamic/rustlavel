@@ -24,6 +24,28 @@
     </div>
   </div>
 
+  {{-- Where the first entry in the rail goes. It is here rather than in
+       Settings because it is navigation, and this is where navigation is
+       edited. --}}
+  @if(can_manage)
+    <form method="post" action="/admin/menus/dashboard" class="card mb-4">
+      {!! csrf_field !!}
+      <div class="card-body flex flex-wrap items-end gap-3">
+        <div class="min-w-0 flex-1">
+          <label for="dashboard_url" class="field-label">Dashboard opens</label>
+          <input id="dashboard_url" name="dashboard_url" type="text" value="{{ dashboard_setting }}"
+                 placeholder="/dashboard" spellcheck="false" autocomplete="off"
+                 class="field-input font-mono">
+          <p class="field-hint">
+            The first entry in the sidebar, and the logo above it. A path inside
+            this application; leave it blank for the built-in page.
+          </p>
+        </div>
+        <button type="submit" class="btn-secondary">Save</button>
+      </div>
+    </form>
+  @endif
+
   <div class="card mb-5">
     <div class="card-body flex flex-wrap items-center gap-3">
       <form method="get" action="/admin/menus/{{ location }}" class="flex min-w-0 flex-1 items-center gap-3">

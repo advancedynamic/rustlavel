@@ -8,7 +8,6 @@ use rustlavel::prelude::*;
 
 use crate::controllers::admin::appearance_controller::AppearanceController;
 use crate::controllers::admin::audit_controller::AuditController;
-use crate::controllers::admin::backup_controller::BackupController;
 use crate::controllers::admin::search_controller::SearchController;
 use crate::controllers::admin::menu_controller::MenuController;
 use crate::controllers::admin::permissions_controller::PermissionsController;
@@ -21,6 +20,7 @@ use crate::controllers::auth::mfa_controller::{MfaController, MfaSettingsControl
 use crate::controllers::auth::password_controller::PasswordController;
 use crate::controllers::auth::register_controller::{ActivationController, RegisterController};
 use crate::controllers::dashboard_controller::DashboardController;
+use crate::controllers::notification_controller::NotificationController;
 use crate::controllers::profile_controller::ProfileController;
 use crate::controllers::settings_controller::{ImpersonationController, SettingsController};
 use crate::controllers::theme_controller::ThemeController;
@@ -79,6 +79,15 @@ pub fn routes(r: &mut Router) {
 
         auth.get("/dashboard", DashboardController::index).name("dashboard");
 
+        // Your own notices, and anything announced to everybody. No permission
+        // to read them — they are addressed to you; sending one needs
+        // `notifications.send`.
+        auth.get("/notifications", NotificationController::index).name("notifications");
+        auth.get("/notifications/recent", NotificationController::recent);
+        auth.post("/notifications/read", NotificationController::read_all);
+        auth.post("/notifications", NotificationController::store)
+            .middleware(guard("notifications.send"));
+
         auth.get("/profile", ProfileController::show).name("profile");
         auth.post("/profile", ProfileController::update);
         auth.get("/profile/email/{token}", ProfileController::confirm_email).name("profile.email");
@@ -94,6 +103,9 @@ pub fn routes(r: &mut Router) {
         auth.post("/settings/security/recovery-codes", MfaSettingsController::recovery_codes);
         auth.post("/settings/security/passkeys/options", MfaSettingsController::passkey_options);
         auth.post("/settings/security/passkeys", MfaSettingsController::store_passkey);
+        // The challenge that authorises the removal below. Removing a
+        // credential is what somebody does with a stolen session first.
+        auth.post("/settings/security/passkeys/confirm", MfaSettingsController::confirm_options);
         auth.post("/settings/security/passkeys/{id}/delete", MfaSettingsController::delete_passkey);
 
         // Stopping needs no permission on purpose: an administrator whose
@@ -141,13 +153,6 @@ pub fn routes(r: &mut Router) {
         admin.post("/settings/appearance/logos", AppearanceController::save_logos).middleware(guard("settings.manage"));
         admin.post("/settings/appearance/logo", AppearanceController::upload).middleware(guard("settings.manage"));
 
-        // Each backup action carries the permission for its own verb rather
-        // than the blanket one: restoring replaces every account in the
-        // application, which is not the same authority as changing a mail host.
-        admin.post("/settings/backup/create", BackupController::store).middleware(guard("backups.create"));
-        admin.get("/settings/backup/{id}/download", BackupController::download).middleware(guard("backups.view"));
-        admin.post("/settings/backup/{id}/restore", BackupController::restore).middleware(guard("backups.restore"));
-        admin.post("/settings/backup/{id}/delete", BackupController::destroy).middleware(guard("backups.delete"));
 
         // Registered last, so the specific paths above win over `{tab}`.
         admin.post("/settings/{tab}", AdminSettingsController::save).middleware(guard("settings.manage"));
@@ -171,6 +176,7 @@ pub fn routes(r: &mut Router) {
         admin.post("/menus/{location}", MenuController::store).middleware(guard("menus.manage"));
         admin.post("/menus/{location}/reorder", MenuController::reorder).middleware(guard("menus.manage"));
         admin.post("/menus/{location}/clear-cache", MenuController::clear_cache).middleware(guard("menus.manage"));
+        admin.post("/menus/dashboard", MenuController::dashboard).middleware(guard("menus.manage"));
 
         // The audit trail. Read-only on purpose: an audit log with a delete
         // button is an audit log anybody who matters can edit. Pruning it is a

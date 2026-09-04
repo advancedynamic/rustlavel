@@ -6,6 +6,7 @@
 
 use rustlavel::prelude::*;
 
+use crate::models::menu_item::{self, MenuItem};
 use crate::models::user::User;
 
 /// Start a context with everything the layouts need.
@@ -34,7 +35,14 @@ pub async fn shell(req: &Request, nav: &str) -> ViewContext {
         .with("app_locale", Json::from(if locale.is_empty() { "en" } else { locale.as_str() }))
         .with("app_initial", Json::from(name.chars().next().unwrap_or('R').to_string()))
         .with("nav", Json::from(nav))
-        .with("csrf_field", Json::from(rustlavel::auth::csrf::field(req)));
+        // The field for forms, and the bare token for the layouts' <meta>.
+        // The scripts need it on pages where no form happens to render — see
+        // the comment on the meta tag in `layouts/app.rl.html`.
+        .with("csrf_field", Json::from(rustlavel::auth::csrf::field(req)))
+        .with(
+            "csrf_token",
+            Json::from(rustlavel::auth::csrf::token(req).unwrap_or_default()),
+        );
 
     // The theme is a cookie the server reads, not a class JavaScript adds after
     // the page has painted. Doing it here is what keeps the CSP free of the
@@ -104,6 +112,28 @@ pub async fn with_user(mut context: ViewContext, req: &Request, user: &User) -> 
     let impersonating = rustlavel::auth::Impersonation::is_impersonating(req.session());
     context = context.with("impersonating", Json::from(impersonating));
 
+    // The menu somebody built on Settings → Menus, if they built one and if
+    // this viewer may see any of it.
+    let menu = sidebar(req).await?;
+    context = context
+        .with("menu_custom", Json::from(!menu.is_empty()))
+        .with("menu", Json::Array(menu));
+
+    // Where the Dashboard entry points. An application that has a better first
+    // page than the built-in one should be able to say so without editing a
+    // template — that is what the Menus screen is for.
+    let dashboard = match req.state::<crate::support::settings::Settings>() {
+        Some(settings) => settings.get("menus.dashboard_url").await,
+        None => String::new(),
+    };
+    context = context.with(
+        "dashboard_url",
+        Json::from(match dashboard.trim().is_empty() {
+            true => "/dashboard",
+            false => dashboard.trim(),
+        }),
+    );
+
     for (flag, permission) in [
         ("can_view_users", "users.view"),
         ("can_view_roles", "roles.view"),
@@ -115,6 +145,71 @@ pub async fn with_user(mut context: ViewContext, req: &Request, user: &User) -> 
         context = context.with(flag, Json::from(req.can(permission).await?));
     }
     Ok(context)
+}
+
+/// The sidebar the Menus screen edits, when there is one.
+///
+/// **The rows that screen writes had no reader.** It has always saved menu
+/// items and told a person, in its own empty state, that "the application falls
+/// back to its built-in navigation until you add something" — and nothing ever
+/// read the table, so adding something changed nothing. This is the reader.
+///
+/// An item is drawn only when the viewer may reach what it points at, which is
+/// the same rule the built-in menu follows: a menu full of links that answer
+/// 403 teaches people to ignore the menu. And if that leaves nothing, the
+/// built-in navigation comes back rather than a person being left with an empty
+/// rail — a custom menu is a convenience, not a way to lock yourself out.
+pub async fn sidebar(req: &Request) -> Result<Vec<Json>> {
+    let Some(db) = req.state::<Database>() else { return Ok(Vec::new()) };
+
+    let items = MenuItem::get(db, MenuItem::in_location("sidebar")).await?;
+    if items.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // The viewer's permissions once, rather than a `can` call per item: a menu
+    // of twenty entries would otherwise be twenty round trips to draw a rail.
+    let granted = req.permission_list().await.unwrap_or_default();
+    Ok(entries(items, &granted))
+}
+
+/// The rows a viewer with `granted` may see, in the order they are drawn.
+///
+/// Separated from the loading so it can be tested: which items appear is the
+/// part with rules in it, and the part that was wrong for as long as nothing
+/// read this table at all.
+pub fn entries(items: Vec<MenuItem>, granted: &[String]) -> Vec<Json> {
+    let live: Vec<MenuItem> = items.into_iter().filter(|item| item.is_active).collect();
+
+    let mut drawn = Vec::new();
+    for node in menu_item::flatten(&menu_item::tree(live)) {
+        // Blank means everybody signed in. A permission nobody holds — a typo,
+        // or one not created yet — hides the item, and the Menus screen says so
+        // when it is saved rather than leaving somebody to wonder.
+        if let Some(permission) = node.item.permission.as_deref().filter(|p| !p.is_empty())
+            && !granted.iter().any(|held| held == permission)
+        {
+            continue;
+        }
+
+        let href = node.item.href();
+        drawn.push(Json::object([
+            ("label", Json::from(node.item.label.as_str())),
+            ("href", Json::from(href.as_str())),
+            (
+                "icon",
+                Json::from(crate::controllers::admin::menu_controller::icon(
+                    node.item.icon.as_deref(),
+                )),
+            ),
+            ("depth", Json::from(node.depth as i64)),
+            ("external", Json::from(node.item.is_external())),
+            // A parent that points nowhere is a heading, not a dead link.
+            ("heading", Json::from(href.starts_with('#'))),
+        ]));
+    }
+
+    drawn
 }
 
 /// Remember a message for the next page this session renders.
@@ -163,4 +258,85 @@ pub fn errors(context: ViewContext, errors: &rustlavel::validation::Errors) -> V
         }
     }
     context.with("error_summary", first.map_or(Json::Null, Json::from))
+}
+
+#[cfg(test)]
+mod sidebar_tests {
+    use super::*;
+
+    fn item(id: i64, label: &str, route: &str, permission: Option<&str>, parent: Option<i64>) -> MenuItem {
+        MenuItem {
+            id,
+            location: "sidebar".into(),
+            parent_id: parent,
+            label: label.into(),
+            route: Some(route.into()),
+            url: None,
+            icon: None,
+            permission: permission.map(str::to_string),
+            sort_order: id,
+            is_active: true,
+            target: None,
+        }
+    }
+
+    fn labels(entries: &[Json]) -> Vec<String> {
+        entries
+            .iter()
+            .filter_map(|e| e.get("label").and_then(|l| l.as_str()).map(str::to_string))
+            .collect()
+    }
+
+    /// The rows the Menus screen writes had no reader at all: the sidebar was
+    /// hard-coded, so adding an item changed nothing on the page it promised
+    /// to change.
+    #[test]
+    fn an_item_with_no_permission_is_drawn_for_anybody_signed_in() {
+        let entries = entries(vec![item(1, "Reports", "/reports", None, None)], &[]);
+        assert_eq!(labels(&entries), ["Reports"]);
+    }
+
+    /// The same rule the built-in menu follows: a link that answers 403
+    /// teaches people to ignore the menu.
+    #[test]
+    fn an_item_is_drawn_only_for_somebody_who_holds_its_permission() {
+        let rows = vec![item(1, "Openings", "/ats/job/opening", Some("ats.job.opening"), None)];
+
+        assert!(labels(&entries(rows.clone(), &[])).is_empty());
+        assert!(labels(&entries(rows.clone(), &["users.view".into()])).is_empty());
+        assert_eq!(labels(&entries(rows, &["ats.job.opening".into()])), ["Openings"]);
+    }
+
+    /// A child is drawn under its parent, and says how deep it is so the rail
+    /// can indent it.
+    #[test]
+    fn a_child_follows_its_parent_and_carries_its_depth() {
+        let rows = vec![
+            item(1, "ATS", "#ats", None, None),
+            item(2, "Openings", "/ats/job/opening", None, Some(1)),
+        ];
+        let entries = entries(rows, &[]);
+
+        assert_eq!(labels(&entries), ["ATS", "Openings"]);
+        assert_eq!(entries[0].get("depth").and_then(|d| d.as_f64()), Some(0.0));
+        assert_eq!(entries[1].get("depth").and_then(|d| d.as_f64()), Some(1.0));
+    }
+
+    /// A parent that points at `#` is a grouping label. Drawing it as a link
+    /// gives the rail an entry that goes nowhere.
+    #[test]
+    fn an_item_pointing_at_a_fragment_is_a_heading_not_a_link() {
+        let group = entries(vec![item(1, "ATS", "#ats", None, None)], &[]);
+        assert_eq!(group[0].get("heading").and_then(|h| h.as_bool()), Some(true));
+
+        let link = entries(vec![item(1, "Reports", "/reports", None, None)], &[]);
+        assert_eq!(link[0].get("heading").and_then(|h| h.as_bool()), Some(false));
+    }
+
+    #[test]
+    fn an_item_switched_off_is_not_drawn() {
+        let mut off = item(1, "Hidden", "/hidden", None, None);
+        off.is_active = false;
+        assert!(labels(&entries(vec![off], &[])).is_empty());
+    }
 }

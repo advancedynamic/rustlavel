@@ -34,6 +34,7 @@ pub enum Kind {
 }
 
 /// One declared setting.
+#[derive(Clone, Copy)]
 pub struct Setting {
     pub key: &'static str,
     pub kind: Kind,
@@ -43,15 +44,15 @@ pub struct Setting {
     pub choices: &'static [(&'static str, &'static str)],
 }
 
-const fn s(key: &'static str, kind: Kind, default: &'static str) -> Setting {
+pub(crate) const fn s(key: &'static str, kind: Kind, default: &'static str) -> Setting {
     Setting { key, kind, default, env: None, choices: &[] }
 }
 
-const fn env(key: &'static str, kind: Kind, default: &'static str, variable: &'static str) -> Setting {
+pub(crate) const fn env(key: &'static str, kind: Kind, default: &'static str, variable: &'static str) -> Setting {
     Setting { key, kind, default, env: Some(variable), choices: &[] }
 }
 
-const fn choice(
+pub(crate) const fn choice(
     key: &'static str,
     default: &'static str,
     choices: &'static [(&'static str, &'static str)],
@@ -108,25 +109,7 @@ const TIMEOUTS: &[(&str, &str)] = &[
     ("1440", "24 hours"),
 ];
 
-/// How often a backup should be taken.
-///
-/// A schedule is a *statement of intent*: something has to run it, and this
-/// application has no clock of its own. The Backup tab says so, and says what
-/// to add — a schedule that quietly does nothing is worse than no schedule.
-const SCHEDULES: &[(&str, &str)] = &[
-    ("disabled", "Disabled — take them by hand"),
-    ("6h", "Every 6 hours"),
-    ("daily", "Daily"),
-    ("weekly", "Weekly (Sunday)"),
-];
 
-/// How many backups to keep. Applied after each successful one.
-const RETENTIONS: &[(&str, &str)] = &[
-    ("0", "Keep everything"),
-    ("7", "Keep the last 7"),
-    ("14", "Keep the last 14"),
-    ("30", "Keep the last 30"),
-];
 
 // `backup.destination` and `backup.bucket` used to live here, offering "local"
 // or an S3-compatible store. Nothing in this framework writes a backup anywhere
@@ -137,14 +120,12 @@ const RETENTIONS: &[(&str, &str)] = &[
 // is `backup.path`, which `backup_controller` now actually reads.
 
 /// How a number is written.
-const NUMBERS: &[(&str, &str)] = &[
+pub(crate) const NUMBERS: &[(&str, &str)] = &[
     ("id", "1.234.567,89 — dot for thousands"),
     ("en", "1,234,567.89 — comma for thousands"),
     ("plain", "1234567.89 — no separator"),
 ];
 
-const CURRENCIES: &[(&str, &str)] =
-    &[("Rp ", "Rp 1.234.567"), ("IDR ", "IDR 1.234.567"), ("$", "$1,234,567"), ("", "1.234.567")];
 
 const ATTEMPTS: &[(&str, &str)] =
     &[("3", "3"), ("5", "5"), ("10", "10"), ("0", "No limit (not advised)")];
@@ -156,11 +137,14 @@ const LOCKOUTS: &[(&str, &str)] = &[
     ("1440", "24 hours"),
 ];
 
-const LOCALES: &[(&str, &str)] =
-    &[("en", "English"), ("id", "Bahasa Indonesia"), ("ms", "Bahasa Melayu")];
+const LOCALES: &[(&str, &str)] = &[("en", "English"), ("id", "Bahasa Indonesia")];
 
-/// Every setting the application has. Nothing outside this list can be written.
-pub const CATALOGUE: &[Setting] = &[
+/// The settings that belong to no module in particular.
+///
+/// A feature that lives in `src/modules/` declares its own beside the code
+/// that reads them — `Module::settings` — and `CATALOGUE` below is the two
+/// lists joined. Nothing outside the join can be written.
+const BUILT_IN: &[Setting] = &[
     // --- General -------------------------------------------------------
     env("app.name", Kind::Text, "Rustlavel", "APP_NAME"),
     env("app.url", Kind::Text, "http://localhost:8000", "APP_URL"),
@@ -189,16 +173,19 @@ pub const CATALOGUE: &[Setting] = &[
     s("auth.password.lowercase", Kind::Toggle, "false"),
     s("auth.password.number", Kind::Toggle, "false"),
     s("auth.password.symbol", Kind::Toggle, "false"),
-    s("auth.password.breached", Kind::Toggle, "false"),
     choice("auth.password.reuse", "0", REUSE),
     choice("auth.session.timeout", "120", TIMEOUTS),
     choice("auth.lockout.attempts", "5", ATTEMPTS),
     choice("auth.lockout.minutes", "15", LOCKOUTS),
 
     // --- Backup --------------------------------------------------------
-    choice("backup.schedule", "disabled", SCHEDULES),
-    choice("backup.retention", "0", RETENTIONS),
-    env("backup.path", Kind::Text, "storage/backups", "BACKUP_PATH"),
+    // `backup.*` moved with the feature: see `modules::backup`.
+
+    // --- Navigation ----------------------------------------------------
+    // Where the sidebar's Dashboard entry goes. It has no Settings tab on
+    // purpose — `TABS` has no `menus.` prefix — because the screen that edits
+    // the rest of the navigation is the one place to look for it.
+    s("menus.dashboard_url", Kind::Text, "/dashboard"),
 
     // --- Language ------------------------------------------------------
     // `app.locale` reaches the pages as the `lang` attribute on <html>. The
@@ -207,7 +194,6 @@ pub const CATALOGUE: &[Setting] = &[
     // enable, and there is no calendar here to start on a Monday.
     choice("app.locale", "en", LOCALES),
     choice("app.number_format", "id", NUMBERS),
-    choice("app.currency", "Rp ", CURRENCIES),
 
     // --- Appearance ----------------------------------------------------
     // The one colour that reaches the whole application. Everything else on
@@ -237,6 +223,18 @@ pub const CATALOGUE: &[Setting] = &[
     s("theme.logo.light", Kind::Text, ""),
     s("theme.logo.dark", Kind::Text, ""),
 ];
+
+/// Every setting the application has: the built-in ones, and whatever the
+/// modules declare.
+///
+/// A `LazyLock` rather than a `const`, because the module list is a function.
+/// Built once on first use, and the modules are a hand-written list, so the
+/// order is stable between runs.
+pub static CATALOGUE: std::sync::LazyLock<Vec<Setting>> = std::sync::LazyLock::new(|| {
+    let mut all: Vec<Setting> = BUILT_IN.to_vec();
+    all.extend(crate::modules::settings());
+    all
+});
 
 pub fn declared(key: &str) -> Option<&'static Setting> {
     CATALOGUE.iter().find(|setting| setting.key == key)
@@ -438,7 +436,7 @@ impl Settings {
     /// Everything, for the export button. Secrets are named but not included.
     pub async fn export(&self) -> Result<Json> {
         let mut fields = Vec::new();
-        for setting in CATALOGUE {
+        for setting in CATALOGUE.iter() {
             let value = if setting.kind == Kind::Secret {
                 Json::from("(not exported)")
             } else {

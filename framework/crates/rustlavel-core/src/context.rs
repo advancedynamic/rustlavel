@@ -72,6 +72,15 @@ impl ContextBuilder {
         self
     }
 
+    /// Whether something of this type has already been registered.
+    ///
+    /// For the case where the framework would otherwise supply a default and
+    /// quietly replace what the application built for itself — see how `App`
+    /// decides whether to construct a view engine.
+    pub fn has_state<T: Send + Sync + 'static>(&self) -> bool {
+        self.state.contains_key(&TypeId::of::<T>())
+    }
+
     pub fn build(self) -> Context {
         Context { inner: Arc::new(Inner { config: self.config, state: self.state }) }
     }

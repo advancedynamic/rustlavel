@@ -21,12 +21,23 @@
 /// entries here are run through the placeholder renderer on the way out, and a
 /// woff2 put through a text renderer is a corrupt woff2.
 pub const FILES: &[(&str, &str)] = &[
+    ("src/modules/mod.rs", include_str!("../templates/auth-kit/src/modules/mod.rs")),
+    ("src/modules/backup/mod.rs", include_str!("../templates/auth-kit/src/modules/backup/mod.rs")),
+    ("src/modules/backup/archive.rs", include_str!("../templates/auth-kit/src/modules/backup/archive.rs")),
+    ("src/modules/backup/controller.rs", include_str!("../templates/auth-kit/src/modules/backup/controller.rs")),
+    ("src/modules/backup/schedule.rs", include_str!("../templates/auth-kit/src/modules/backup/schedule.rs")),
+    ("lang/en.json", include_str!("../templates/auth-kit/lang/en.json")),
+    ("lang/id.json", include_str!("../templates/auth-kit/lang/id.json")),
     ("database/migrations/2026_09_02_000100_create_users_table.rs", include_str!("../templates/auth-kit/database/migrations/2026_09_02_000100_create_users_table.rs")),
     ("database/migrations/2026_09_02_000200_create_user_tokens_table.rs", include_str!("../templates/auth-kit/database/migrations/2026_09_02_000200_create_user_tokens_table.rs")),
     ("database/migrations/2026_09_02_000300_create_login_attempts_table.rs", include_str!("../templates/auth-kit/database/migrations/2026_09_02_000300_create_login_attempts_table.rs")),
     ("database/migrations/2026_09_02_000400_create_user_mfa_tables.rs", include_str!("../templates/auth-kit/database/migrations/2026_09_02_000400_create_user_mfa_tables.rs")),
     ("database/migrations/2026_09_03_000100_create_settings_table.rs", include_str!("../templates/auth-kit/database/migrations/2026_09_03_000100_create_settings_table.rs")),
     ("database/migrations/2026_09_03_000200_create_password_history_table.rs", include_str!("../templates/auth-kit/database/migrations/2026_09_03_000200_create_password_history_table.rs")),
+    ("src/models/notification.rs", include_str!("../templates/auth-kit/src/models/notification.rs")),
+    ("src/controllers/notification_controller.rs", include_str!("../templates/auth-kit/src/controllers/notification_controller.rs")),
+    ("resources/views/notifications/index.rl.html", include_str!("../templates/auth-kit/resources/views/notifications/index.rl.html")),
+    ("database/migrations/2026_09_04_000100_create_notifications_table.rs", include_str!("../templates/auth-kit/database/migrations/2026_09_04_000100_create_notifications_table.rs")),
     ("database/migrations/2026_09_03_000300_create_menu_items_table.rs", include_str!("../templates/auth-kit/database/migrations/2026_09_03_000300_create_menu_items_table.rs")),
     ("public/css/app.css", include_str!("../templates/auth-kit/public/css/app.css")),
     ("public/js/app.js", include_str!("../templates/auth-kit/public/js/app.js")),
@@ -71,7 +82,6 @@ pub const FILES: &[(&str, &str)] = &[
     ("resources/views/settings/tabs/security.rl.html", include_str!("../templates/auth-kit/resources/views/settings/tabs/security.rl.html")),
     ("src/controllers/admin/appearance_controller.rs", include_str!("../templates/auth-kit/src/controllers/admin/appearance_controller.rs")),
     ("src/controllers/admin/audit_controller.rs", include_str!("../templates/auth-kit/src/controllers/admin/audit_controller.rs")),
-    ("src/controllers/admin/backup_controller.rs", include_str!("../templates/auth-kit/src/controllers/admin/backup_controller.rs")),
     ("src/controllers/admin/menu_controller.rs", include_str!("../templates/auth-kit/src/controllers/admin/menu_controller.rs")),
     ("src/controllers/admin/mod.rs", include_str!("../templates/auth-kit/src/controllers/admin/mod.rs")),
     ("src/controllers/admin/permissions_controller.rs", include_str!("../templates/auth-kit/src/controllers/admin/permissions_controller.rs")),
@@ -100,7 +110,6 @@ pub const FILES: &[(&str, &str)] = &[
     ("src/routes/mod.rs", include_str!("../templates/auth-kit/src/routes/mod.rs")),
     ("src/routes/web.rs", include_str!("../templates/auth-kit/src/routes/web.rs")),
     ("src/support/audit.rs", include_str!("../templates/auth-kit/src/support/audit.rs")),
-    ("src/support/backup.rs", include_str!("../templates/auth-kit/src/support/backup.rs")),
     ("src/support/format.rs", include_str!("../templates/auth-kit/src/support/format.rs")),
     ("src/support/idle.rs", include_str!("../templates/auth-kit/src/support/idle.rs")),
     ("src/support/lockout.rs", include_str!("../templates/auth-kit/src/support/lockout.rs")),
@@ -111,7 +120,6 @@ pub const FILES: &[(&str, &str)] = &[
     ("src/support/passkeys.rs", include_str!("../templates/auth-kit/src/support/passkeys.rs")),
     ("src/support/passwords.rs", include_str!("../templates/auth-kit/src/support/passwords.rs")),
     ("src/support/pdf.rs", include_str!("../templates/auth-kit/src/support/pdf.rs")),
-    ("src/support/schedule.rs", include_str!("../templates/auth-kit/src/support/schedule.rs")),
     ("src/support/settings.rs", include_str!("../templates/auth-kit/src/support/settings.rs")),
     ("src/support/stats.rs", include_str!("../templates/auth-kit/src/support/stats.rs")),
     ("src/support/tokens.rs", include_str!("../templates/auth-kit/src/support/tokens.rs")),
@@ -182,6 +190,7 @@ pub const CONFIG_WEBAUTHN: &str = r#"{
 /// `src/main.rs` for a project scaffolded with the kit.
 pub const MAIN_RS: &str = r#"use rustlavel::prelude::*;
 use {{crate_name}}::support::settings::Settings;
+use {{crate_name}}::modules;
 use {{crate_name}}::{database, routes};
 
 #[rustlavel::main]
@@ -202,6 +211,22 @@ async fn main() -> Result<()> {
     let cache = CacheStore::from_config(app.config())?;
     let mailer = rustlavel::mail::Mail::from_config(app.config())?;
     let rbac = Rbac::from_config(db.clone(), app.config())?;
+
+    // The words on the page. `lang/en.json` is the source; a language with a
+    // file of its own is used for anybody whose locale is set to it, and
+    // anything untranslated falls back to English rather than going blank.
+    //
+    // The translator goes onto the view engine rather than only into state:
+    // `@lang` in a template asks the engine, and the engine is built here
+    // rather than by `App` so it has something to ask. The *locale* is not
+    // here — it is per page, and `page::shell` puts it in the context.
+    let translator = Translator::new();
+    translator.load_dir(app.config().string("app.lang_path", "lang"))?;
+    translator.set_fallback("en");
+    // The same engine `App` would have built, with somewhere for `@lang` to
+    // look. Built here because `App` builds its own only when nobody has.
+    let views = rustlavel::engine_from_config(app.config(), app.root())
+        .with_translator(std::sync::Arc::new(translator.clone()));
     // The audit trail: who did what, to which record, from where. Registered
     // as a plugin so `req.audit(...)` can find it from any handler.
     let audit = rustlavel::audit::Audit::new(db.clone());
@@ -217,24 +242,50 @@ async fn main() -> Result<()> {
         FileStore::new("storage/sessions"),
     )?;
 
-    app.state(db.clone())
+    // The chain breaks here rather than running to `.run()`, because the
+    // modules are a list and a list needs a loop. Everything above the loop is
+    // what this application is; everything below it is how it is served.
+    let mut app = app
+        .state(db.clone())
         // The cache backs the per-address half of the sign-in lockout.
         .state(cache)
         .state(mailer)
         .state(settings)
+        // Handlers that translate outside a template — a flash message, a
+        // validation error — resolve it from here.
+        .state(translator)
+        .views(views)
         // Roles and permissions. `req.can(...)` and the `Can` guard both
         // resolve the store from here, and fail closed if it is missing.
         .plugin(rbac)
         .plugin(audit)
-{{plugins}}
+{{plugins}}        ;
+
+    // Each feature registers its own routes, middleware and state. `all()` is a
+    // hand-written list in `src/modules/mod.rs` — a module that registered
+    // itself by existing would be a module nobody can find the registration
+    // for.
+    for module in modules::all() {
+        app = app.plugin_boxed(module);
+    }
+
+    app
         // Order matters: the session has to exist before anything reads a
         // login out of it, and the CSRF check reads the session.
         .middleware(sessions)
         .middleware(Csrf::new())
         .routes(routes::auth::routes)
         .routes(routes::web::routes)
-        .migrations(database::migrations::all())
-        .seeders(database::seeders::all())
+        // The built-in migrations, then whatever the modules own.
+        .migrations(
+            database::migrations::all()
+                .into_iter()
+                .chain(modules::migrations())
+                .collect(),
+        )
+        .seeders(
+            database::seeders::all().into_iter().chain(modules::seeders()).collect(),
+        )
         .run()
         .await
 }
@@ -261,6 +312,8 @@ mod create_settings_table;
 mod create_password_history_table;
 #[path = "2026_09_03_000300_create_menu_items_table.rs"]
 mod create_menu_items_table;
+#[path = "2026_09_04_000100_create_notifications_table.rs"]
+mod create_notifications_table;
 
 use rustlavel::db::Migration;
 
@@ -278,6 +331,7 @@ pub fn all() -> Vec<&'static dyn Migration> {
         &create_settings_table::CreateSettingsTable,
         &create_password_history_table::CreatePasswordHistoryTable,
         &create_menu_items_table::CreateMenuItemsTable,
+        &create_notifications_table::CreateNotificationsTable,
     ];
     migrations.extend(rustlavel::rbac::migrations());
     migrations.extend(rustlavel::audit::migrations());
@@ -316,15 +370,14 @@ const PERMISSIONS: &[(&str, &str)] = &[
     ("permissions.update", "Rename or describe a permission"),
     ("permissions.delete", "Delete a permission"),
     ("settings.manage", "Change the application's settings"),
-    ("backups.view", "See the list of database backups"),
-    ("backups.create", "Take a backup"),
-    ("backups.restore", "Restore the database from a backup"),
-    ("backups.delete", "Delete a backup"),
+    // `backups.*` moved with the feature: see `modules::backup`, and the
+    // seeder below reads `modules::permissions()` alongside this list.
     ("menus.view", "See the navigation menus"),
     ("menus.manage", "Add, edit and reorder navigation items"),
     // No `audit.delete`. An audit log with a delete button is an audit log
     // that whoever matters can edit, which is not an audit log. Pruning it is
     // a scheduled job's decision, not a screen's.
+    ("notifications.send", "Send a notification, or announce one to everybody"),
     ("audit.view", "Read the audit trail"),
 ];
 
@@ -344,8 +397,13 @@ impl Seeder for AuthKitSeeder {
             let store = Permissions::from_config(db.clone(), &Config::with_defaults())?;
 
             let existing = store.permissions().await?;
-            for (name, description) in PERMISSIONS {
-                if !existing.iter().any(|p| p.name == *name) {
+            // The built-in list, then whatever the modules declare. A feature
+            // that owns a permission declares it beside the code that checks
+            // it, and this is where the two lists meet.
+            let owned = {{crate_name}}::modules::permissions();
+            let declared = PERMISSIONS.iter().copied().chain(owned.iter().copied());
+            for (name, description) in declared {
+                if !existing.iter().any(|p| p.name == name) {
                     store.create_permission_with(name, description).await?;
                 }
             }

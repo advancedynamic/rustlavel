@@ -254,10 +254,15 @@ mod tests {
             }
         }
 
-        /// Named after the test, because these run concurrently and a shared
-        /// fixture directory is the flake rule six exists to prevent.
+        /// Named after the test *and* the process.
+        ///
+        /// The test name alone is enough for one run, and not enough for two:
+        /// this function starts by removing the directory, so a second
+        /// `cargo test` on the same machine deletes the first one's tree
+        /// half-way through and both fail somewhere confusing.
         pub fn create(name: &str) -> Guard {
-            let path = std::env::temp_dir().join(format!("rustlavel-storage-link-{name}"));
+            let path = std::env::temp_dir()
+                .join(format!("rustlavel-storage-link-{name}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&path);
             std::fs::create_dir_all(&path).expect("a temporary directory");
             Guard(path)

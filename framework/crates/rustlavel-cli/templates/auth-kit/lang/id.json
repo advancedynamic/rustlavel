@@ -1,0 +1,44 @@
+{
+  "nav": {
+    "dashboard": "Dasbor",
+    "administration": "Administrasi",
+    "users": "Pengguna",
+    "roles": "Peran",
+    "permissions": "Hak Akses",
+    "menus": "Menu",
+    "settings": "Pengaturan",
+    "audit": "Catatan Audit",
+    "account": "Akun",
+    "profile": "Profil",
+    "security": "Keamanan",
+    "sign_out": "Keluar"
+  },
+  "shell": {
+    "search": "Cari orang, peran, pengaturan…",
+    "search_label": "Cari orang, peran, hak akses, dan pengaturan",
+    "notifications": "Notifikasi",
+    "notifications_hint": "Milik Anda, dan pengumuman untuk semua orang.",
+    "notifications_all": "Lihat semua notifikasi",
+    "open_menu": "Sempitkan menu",
+    "theme": "Ganti ke tema :theme",
+    "home": "Beranda"
+  },
+  "auth": {
+    "hero": "Satu tempat untuk orang-orang yang memakainya, dan apa saja yang boleh mereka lakukan.",
+    "hero_sub": "Akun, peran, dan hak akses — setiap kali masuk dan setiap perubahan tercatat dalam jejak audit yang bisa Anda baca.",
+    "recorded": "Setiap percobaan masuk dicatat.",
+    "sign_in": "Masuk",
+    "sign_in_heading": "Masuk",
+    "or_register": "atau",
+    "create_account": "buat akun",
+    "email": "Email",
+    "password": "Kata sandi",
+    "forgot": "Lupa?",
+    "show_password": "Tampilkan kata sandi",
+    "remember": "Biarkan saya tetap masuk",
+    "or": "atau",
+    "magic_link": "Kirimi saya tautan masuk",
+    "locked_title": "Terlalu banyak percobaan gagal.",
+    "locked_body": "Akun ini terkunci :minutes lagi. Menunggu adalah satu-satunya jalan masuk; mencoba lebih cepat tidak mengulang hitungannya."
+  }
+}

@@ -125,7 +125,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let auth_kit = packages.iter().any(|p| p == "auth-kit");
     if auth_kit {
         for required in
-            ["audit", "auth", "db", "view", "validation", "rbac", "webauthn", "cache", "mail"]
+            [
+                "audit", "auth", "db", "view", "validation", "rbac", "webauthn", "cache",
+                "mail", "i18n",
+            ]
         {
             packages.push(required.to_string());
         }
@@ -162,7 +165,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     // `auth-kit` writes its own `main.rs`, and that file already registers two
     // of these — naming them again as owed would tell somebody to add a line
     // that is four lines above.
-    let already: &[&str] = if auth_kit { &["rbac", "audit"] } else { &[] };
+    let already: &[&str] = if auth_kit { &["rbac", "audit", "i18n"] } else { &[] };
     values.insert("plugins", plugin_lines(&packages, already));
     // A `DATABASE_URL` for the engine that was chosen, so somebody who said
     // "MySQL" is not handed a PostgreSQL line to correct. Blank when nothing
@@ -306,7 +309,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         // The kit's own main.rs, registry and seeder replace the plain ones
         // the scaffold has just written.
         write(&root.join("src/main.rs"), &render(auth_kit::MAIN_RS, &values))?;
-        write(&root.join("src/lib.rs"), &format!("{LIB_RS}pub mod database;\npub mod models;\npub mod support;\n"))?;
+        write(&root.join("src/lib.rs"), &format!("{LIB_RS}pub mod database;\npub mod models;\npub mod modules;\npub mod support;\n"))?;
         write(&root.join("database/migrations/mod.rs"), auth_kit::MIGRATIONS_REGISTRY)?;
         write(&root.join("database/seeders/auth_kit_seeder.rs"), auth_kit::SEEDER)?;
         write(&root.join("database/seeders/mod.rs"), auth_kit::SEEDERS_REGISTRY)?;
@@ -388,6 +391,7 @@ const NEEDS_WIRING: &[(&str, &str)] = &[
     // `Socialite::new()` would mount two routes that answer "unknown
     // provider" to everything, which is a line that looks registered and
     // is not.
+    ("i18n", "Translator::new() — load_dir(\"lang\"), then .state(it) and .views(engine.with_translator(...))"),
     ("mcp", "Mcp::new(server)"),
     ("oauth", "Socialite::new().provider(client)"),
     ("oauth-provider", "OAuthProvider::new(server)"),
@@ -592,7 +596,7 @@ mod tests {
             for (template, already) in [
                 (stubs::MAIN_RS, &[] as &[&str]),
                 (stubs::MAIN_RS_DB, &[]),
-                (crate::auth_kit::MAIN_RS, &["rbac", "audit"][..]),
+                (crate::auth_kit::MAIN_RS, &["rbac", "audit", "i18n"][..]),
             ] {
                 let mut values = BTreeMap::new();
                 values.insert("plugins", plugin_lines(&[(*package).to_string()], already));
@@ -627,7 +631,7 @@ mod tests {
     fn the_backup_covers_every_table_the_kit_creates() {
         let migrations = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("templates/auth-kit/database/migrations");
-        let backup = include_str!("../templates/auth-kit/src/support/backup.rs");
+        let backup = include_str!("../templates/auth-kit/src/modules/backup/archive.rs");
 
         let mut missing = Vec::new();
         for entry in std::fs::read_dir(&migrations).expect("the migrations directory") {
@@ -768,11 +772,26 @@ mod tests {
     fn every_setting_in_the_catalogue_is_read_by_something() {
         let kit = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates/auth-kit");
         let catalogue = std::fs::read_to_string(kit.join("src/support/settings.rs")).unwrap();
-        let body = catalogue
-            .split_once("pub const CATALOGUE")
+        // The built-in list, plus whatever each module declares beside the
+        // code that reads it. The catalogue is the two joined, so a guard that
+        // reads only one of them reports a module's settings as undeclared.
+        let mut body = catalogue
+            .split_once("const BUILT_IN")
             .and_then(|(_, rest)| rest.split_once("\n];"))
-            .expect("the catalogue is no longer a `pub const CATALOGUE` ending in `];`")
-            .0;
+            .expect("the built-in settings are no longer a `const BUILT_IN` ending in `];`")
+            .0
+            .to_string();
+
+        let mut module_files = Vec::new();
+        gather(&kit.join("src/modules"), &["mod.rs"], &mut module_files);
+        for (_, text) in &module_files {
+            if let Some((_, rest)) = text.split_once("static SETTINGS")
+                && let Some((declared, _)) = rest.split_once("\n];")
+            {
+                body.push_str(declared);
+            }
+        }
+        let body = body.as_str();
 
         let mut keys: Vec<&str> = Vec::new();
         for piece in body.split('"').skip(1).step_by(2) {
@@ -800,6 +819,9 @@ mod tests {
                 && !path.contains("settings_controller")
                 && !path.contains("views/settings")
         });
+        for entry in &mut files {
+            entry.1 = without_declarations(&entry.1);
+        }
 
         let dead: Vec<&str> = keys
             .iter()
@@ -837,16 +859,37 @@ mod tests {
             .and_then(|(_, rest)| rest.split_once("\n];"))
             .expect("the seeder no longer declares PERMISSIONS as a table")
             .0;
-        let seeded: Vec<&str> = table
+        let mut seeded: Vec<String> = table
             .split("(\"")
             .skip(1)
-            .filter_map(|piece| piece.split_once('"').map(|(name, _)| name))
+            .filter_map(|piece| piece.split_once('"').map(|(name, _)| name.to_string()))
             .collect();
+
+        // A module declares its own beside the code that checks them, and the
+        // seeder reads both lists. So must this.
+        let mut module_files = Vec::new();
+        gather(&kit.join("src/modules"), &["mod.rs"], &mut module_files);
+        for (_, text) in &module_files {
+            if let Some((_, rest)) = text.split_once("static PERMISSIONS")
+                && let Some((declared, _)) = rest.split_once("\n];")
+            {
+                seeded.extend(
+                    declared
+                        .split("(\"")
+                        .skip(1)
+                        .filter_map(|piece| piece.split_once('"').map(|(n, _)| n.to_string())),
+                );
+            }
+        }
+        let seeded: Vec<&str> = seeded.iter().map(String::as_str).collect();
         assert!(seeded.len() > 15, "only {} permissions parsed: {seeded:?}", seeded.len());
 
         let mut files = Vec::new();
         gather(&kit.join("src"), &[".rs"], &mut files);
         gather(&kit.join("resources"), &[".html"], &mut files);
+        for entry in &mut files {
+            entry.1 = without_declarations(&entry.1);
+        }
 
         for name in &seeded {
             let quoted = format!("\"{name}\"");
@@ -1086,7 +1129,7 @@ mod tests {
             .collect();
 
         let mut on_disk = Vec::new();
-        for directory in ["src", "resources", "public", "config", "database", "tests"] {
+        for directory in ["src", "resources", "public", "config", "database", "tests", "lang"] {
             let mut found = Vec::new();
             gather(&kit.join(directory), &[""], &mut found);
             for (path, _) in found {
@@ -1108,6 +1151,163 @@ mod tests {
             "these files are in `templates/auth-kit/` and in neither manifest, so `rustlavel \
              new` writes a project without them: {missing:?}"
         );
+    }
+
+    /// The scripts' CSRF token cannot depend on a form having rendered.
+    ///
+    /// `app.js` posts on its own for passkeys, and it needs a token. It used to
+    /// read the hidden `_token` field, which exists only inside a form — and on
+    /// the two-factor page that form is behind `@if(has_totp)`. Somebody with a
+    /// passkey and no authenticator app got a page with no token anywhere,
+    /// so "Use a passkey" sent an empty one and the server answered 419. The
+    /// token belongs in the layout, where every page gets one.
+    #[test]
+    fn every_layout_carries_the_csrf_token_for_the_scripts() {
+        let kit = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates/auth-kit");
+
+        let mut layouts = Vec::new();
+        gather(&kit.join("resources/views/layouts"), &[".html"], &mut layouts);
+        assert!(layouts.len() >= 2, "expected an app and a guest layout, found {}", layouts.len());
+
+        for (path, text) in &layouts {
+            assert!(
+                text.contains(r#"<meta name="csrf-token""#),
+                "{path} renders pages whose scripts post, and carries no CSRF token of its own"
+            );
+        }
+
+        // And the script has to prefer it, or the meta tag is decoration.
+        let js = std::fs::read_to_string(kit.join("public/js/app.js")).unwrap();
+        let reads_meta = js.find(r#"meta[name="csrf-token"]"#);
+        let reads_field = js.find("input[name=_token]");
+        assert!(reads_meta.is_some(), "app.js never looks at the meta tag");
+        assert!(
+            reads_meta < reads_field || reads_field.is_none(),
+            "app.js reads the form field before the meta tag, so a page with no form still \
+             sends an empty token"
+        );
+    }
+
+    /// Every flat key in a language file, so two files can be compared.
+    fn phrase_keys(value: &rustlavel_core::Json, prefix: &str, into: &mut Vec<String>) {
+        if let Some(fields) = value.as_object() {
+            for (name, child) in fields {
+                let key =
+                    if prefix.is_empty() { name.clone() } else { format!("{prefix}.{name}") };
+                match child.as_object().is_some() {
+                    true => phrase_keys(child, &key, into),
+                    false => into.push(key),
+                }
+            }
+        }
+    }
+
+    /// A `@lang` key with no phrase behind it renders as itself on the page.
+    ///
+    /// The translator does that deliberately — a visible `auth.sign_in` is
+    /// something somebody fixes, where a blank button is not. But it should be
+    /// caught here rather than by a reader, and only enumerating the templates
+    /// can catch it: the key is a string in markup and the phrase is a string
+    /// in JSON, and nothing makes them agree.
+    #[test]
+    fn every_lang_key_a_template_writes_has_an_english_phrase() {
+        let kit = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates/auth-kit");
+        let english = std::fs::read_to_string(kit.join("lang/en.json")).unwrap();
+        let english = rustlavel_core::Json::parse(&english).expect("lang/en.json is not JSON");
+
+        let mut known = Vec::new();
+        phrase_keys(&english, "", &mut known);
+        assert!(known.len() > 10, "only {} phrases in lang/en.json", known.len());
+
+        let mut views = Vec::new();
+        gather(&kit.join("resources/views"), &[".html"], &mut views);
+
+        let mut missing: Vec<String> = Vec::new();
+        for (path, text) in &views {
+            let mut rest = text.as_str();
+            while let Some(at) = rest.find("@lang(\"") {
+                rest = &rest[at + "@lang(\"".len()..];
+                let Some(end) = rest.find('"') else { break };
+                let key = &rest[..end];
+                if !known.iter().any(|had| had == key) {
+                    missing.push(format!("{key} (in {path})"));
+                }
+            }
+        }
+
+        assert!(
+            missing.is_empty(),
+            "these keys are written into a template and have no phrase in lang/en.json, so the \
+             page shows the key itself: {missing:?}"
+        );
+    }
+
+    /// A language file that has drifted from the source leaves half a page in
+    /// the wrong language, which is worse than a page in one wrong language.
+    #[test]
+    fn every_language_file_carries_the_same_keys() {
+        let kit = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates/auth-kit");
+        let read = |name: &str| {
+            let source = std::fs::read_to_string(kit.join(format!("lang/{name}.json")))
+                .unwrap_or_else(|e| panic!("lang/{name}.json: {e}"));
+            let value = rustlavel_core::Json::parse(&source)
+                .unwrap_or_else(|e| panic!("lang/{name}.json is not JSON: {e}"));
+            let mut keys = Vec::new();
+            phrase_keys(&value, "", &mut keys);
+            keys.sort();
+            keys
+        };
+
+        let english = read("en");
+
+        // Every file beside `en.json`, rather than a list here that would have
+        // to be remembered: adding `ms.json` should put it under this guard
+        // without anybody editing the guard.
+        let mut others: Vec<String> = std::fs::read_dir(kit.join("lang"))
+            .expect("lang/")
+            .filter_map(Result::ok)
+            .filter_map(|entry| {
+                let path = entry.path();
+                let stem = path.file_stem()?.to_str()?.to_string();
+                (path.extension()? == "json" && stem != "en").then_some(stem)
+            })
+            .collect();
+        others.sort();
+        assert!(!others.is_empty(), "no language beside English to check against");
+
+        for other in others {
+            let other = other.as_str();
+            let theirs = read(other);
+            let untranslated: Vec<&String> =
+                english.iter().filter(|key| !theirs.contains(key)).collect();
+            let stale: Vec<&String> =
+                theirs.iter().filter(|key| !english.contains(key)).collect();
+
+            assert!(untranslated.is_empty(), "lang/{other}.json is missing: {untranslated:?}");
+            assert!(stale.is_empty(), "lang/{other}.json has keys English does not: {stale:?}");
+        }
+    }
+
+    /// A module file with its own declaration blocks cut out.
+    ///
+    /// A module declares its settings and permissions in `mod.rs`, beside the
+    /// code that uses them — which is the point of a module and a problem for
+    /// a guard that asks "does anything use this": the declaration is itself a
+    /// mention, so every key would look used. These blocks come out before the
+    /// search, and the rest of the file stays in, because a module's routes
+    /// and guards live there too.
+    fn without_declarations(text: &str) -> String {
+        let mut out = text.to_string();
+        for block in ["static SETTINGS", "static PERMISSIONS"] {
+            while let Some(at) = out.find(block) {
+                let end = match out[at..].find("\n];") {
+                    Some(offset) => at + offset + "\n];".len(),
+                    None => out.len(),
+                };
+                out.replace_range(at..end, "");
+            }
+        }
+        out
     }
 
     /// Whether any file under this directory implements `Plugin`.

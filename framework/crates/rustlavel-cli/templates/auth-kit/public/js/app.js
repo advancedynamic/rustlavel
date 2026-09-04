@@ -303,7 +303,12 @@
     btoa(String.fromCharCode(...new Uint8Array(buffer)))
       .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
+  /* The <meta> in the layout first: it is on every page. The hidden field is
+     the fallback, and it is only there when a form rendered — which is how
+     the passkey button on the two-factor page came to send an empty token. */
   const csrfToken = () => {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta && meta.content) return meta.content;
     const field = document.querySelector("input[name=_token]");
     return field ? field.value : "";
   };
@@ -368,6 +373,49 @@
       if (error && error.name !== "NotAllowedError") showPasskeyError(error.message || String(error));
     } finally {
       button.disabled = false;
+    }
+  });
+
+  /* Removing a passkey asks for one first.
+   *
+   * The form is an ordinary post and stays one: this intercepts the submit,
+   * gets an assertion, writes it into the hidden field and submits for real.
+   * With scripting off the field stays empty and the server refuses — which is
+   * the right way round for a control that deletes a credential. */
+  on("submit", "[data-passkey-confirm]", async (event, form) => {
+    const field = form.querySelector('input[name="assertion"]');
+    if (!field || field.value) return; /* Already proved; let it through. */
+    event.preventDefault();
+
+    const button = form.querySelector("button");
+    if (button) button.disabled = true;
+    try {
+      const options = await (await fetch(form.dataset.confirmUrl, {
+        method: "POST",
+        headers: { "x-csrf-token": csrfToken() },
+        credentials: "same-origin",
+      })).json();
+
+      options.challenge = fromBase64Url(options.challenge);
+      (options.allowCredentials || []).forEach((c) => { c.id = fromBase64Url(c.id); });
+
+      const assertion = await navigator.credentials.get({ publicKey: options });
+      field.value = JSON.stringify({
+        id: assertion.id,
+        rawId: toBase64Url(assertion.rawId),
+        type: assertion.type,
+        response: {
+          clientDataJSON: toBase64Url(assertion.response.clientDataJSON),
+          authenticatorData: toBase64Url(assertion.response.authenticatorData),
+          signature: toBase64Url(assertion.response.signature),
+          userHandle: assertion.response.userHandle ? toBase64Url(assertion.response.userHandle) : null,
+        },
+      });
+      form.submit();
+    } catch (_) {
+      /* Cancelled at the prompt, or no passkey on this device. Nothing is
+         removed, and the button comes back so it can be tried again. */
+      if (button) button.disabled = false;
     }
   });
 
@@ -553,7 +601,7 @@
 
     const load = async () => {
       try {
-        const response = await fetch("/admin/notifications", {
+        const response = await fetch("/notifications/recent", {
           credentials: "same-origin",
           headers: { accept: "application/json" },
         });
@@ -562,19 +610,25 @@
 
         list.replaceChildren();
         if (!data.items.length) {
-          list.append(el("p", "px-3 py-6 text-center text-sm text-ink-500", "Nothing recent."));
+          list.append(el("p", "px-3 py-6 text-center text-sm text-ink-500", "Nothing yet."));
         }
         for (const item of data.items) {
+          /* A notice with a link opens it; one without still has to be
+             readable, so it becomes a link to the page that holds it. */
           const link = el("a", "flex gap-3 px-3 py-2.5 hover:bg-ink-100 dark:hover:bg-ink-800");
-          link.href = item.href;
-          const badge = el("span", "mt-0.5 h-2 w-2 shrink-0 rounded-full " + item.tint);
+          link.href = item.has_url ? item.href : "/notifications";
+          const badge = el(
+            "span",
+            "mt-1.5 h-2 w-2 shrink-0 rounded-full " + (item.read ? "bg-ink-300" : "bg-brand-600"),
+          );
           const body = el("div", "min-w-0");
-          body.append(el("p", "text-sm", item.text));
-          body.append(el("p", "text-xs text-ink-500 dark:text-ink-400", item.when));
+          body.append(el("p", "text-sm " + (item.read ? "" : "font-semibold"), item.title));
+          if (item.body) body.append(el("p", "text-xs text-ink-500 dark:text-ink-400", item.body));
+          body.append(el("p", "text-xs text-ink-400 dark:text-ink-500", item.ago));
           link.append(badge, body);
           list.append(link);
         }
-        if (dot) dot.hidden = data.count === 0;
+        if (dot) dot.hidden = data.unread === 0;
       } catch (_) {
         /* A dropdown that cannot load is a dropdown that shows nothing. */
       }

@@ -361,7 +361,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_kubernetes_login_sends_the_service_account_jwt() {
-        let path = std::env::temp_dir().join("rustlavel-vault-k8s-jwt-sends");
+        let path = std::env::temp_dir().join(format!("rustlavel-vault-k8s-jwt-sends-{}", std::process::id()));
         std::fs::write(&path, "eyJhbGciOi.pod.jwt\n").unwrap();
 
         let client = vault(Fake::new().fallback(login_response()));

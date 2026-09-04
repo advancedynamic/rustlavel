@@ -44,6 +44,12 @@ pub fn integer(value: i64, format: &str) -> String {
 }
 
 /// An amount with its currency prefix, to two decimals when it has them.
+///
+/// Nothing in the kit itself renders money — there is none in an account and a
+/// role — so the symbol is a parameter rather than a setting. It was a setting
+/// once, on the Language tab, and every reader of it threw the value away.
+/// Kept because the application built on this kit will want it, and grouping a
+/// number correctly is fiddlier than it looks.
 pub fn money(cents: i64, format: &str, currency: &str) -> String {
     let (_, decimal) = separators(format);
     let whole = integer(cents / 100, format);
@@ -73,18 +79,45 @@ pub fn bytes(count: i64) -> String {
 }
 
 /// The two settings this module needs, read once per request.
-pub async fn preferences(req: &Request) -> (String, String) {
+/// How this application writes a number, as Settings → Language has it.
+///
+/// This returned a `(number_format, currency)` pair, and the only caller wrote
+/// `let (number, _) = ...`. A currency setting that every reader discarded is
+/// how the Language tab came to have a control that changed nothing; the
+/// setting is gone, and `money` below takes the symbol from whoever calls it.
+pub async fn number_format(req: &Request) -> String {
     match req.state::<Settings>() {
-        Some(settings) => {
-            (settings.get("app.number_format").await, settings.get("app.currency").await)
-        }
-        None => ("id".to_string(), "Rp ".to_string()),
+        Some(settings) => settings.get("app.number_format").await,
+        None => "id".to_string(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Language tab offers three; three have to look different.
+    ///
+    /// This is the same guard the date formats carry, and it exists because
+    /// the tab is easy to disbelieve: a fresh install counts 1 user and 2
+    /// roles, and `1` is `1` in every format there is. The sample the tab now
+    /// prints uses a number big enough to show the difference — this makes
+    /// sure there is a difference to show.
+    #[test]
+    fn every_number_format_the_tab_offers_renders_differently() {
+        let mut seen: Vec<(&str, String)> = Vec::new();
+
+        for (value, label) in crate::support::settings::NUMBERS {
+            let shown = integer(1_234_567, value);
+            assert!(
+                !seen.iter().any(|(_, other)| *other == shown),
+                "`{value}` ({label}) renders 1234567 as {shown:?}, the same as another format on \
+                 the tab — the formatter does not know this value"
+            );
+            seen.push((value, shown));
+        }
+        assert_eq!(seen.len(), crate::support::settings::NUMBERS.len());
+    }
 
     #[test]
     fn a_number_is_grouped_the_way_the_setting_asks() {

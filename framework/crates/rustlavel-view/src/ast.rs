@@ -20,6 +20,14 @@ pub enum Node {
     Yield { section: String, default: Option<Expr> },
     /// `@include("partial")`.
     Include(TemplateRef),
+    /// `@lang("auth.sign_in")`, and `@lang("greeting", "name", user.name)` when
+    /// the phrase has placeholders.
+    ///
+    /// The key is resolved when the page is rendered, never when the template
+    /// is parsed. A parsed template is cached and shared between requests, so
+    /// baking one language's words into it would serve those words to
+    /// everybody — see `Engine::translator`.
+    Lang { key: String, replacements: Vec<(String, Expr)> },
 }
 
 /// One arm of an `@if` chain.

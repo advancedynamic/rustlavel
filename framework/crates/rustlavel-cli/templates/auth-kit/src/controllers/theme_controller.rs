@@ -21,7 +21,7 @@ impl ThemeController {
     /// `GET /css/theme.css`
     pub async fn stylesheet(req: Request) -> Result<Response> {
         let Some(settings) = req.state::<Settings>() else {
-            return Ok(css_response(String::new()));
+            return Ok(css_response(&req, String::new()));
         };
 
         let mut css = String::from(
@@ -71,7 +71,7 @@ impl ThemeController {
              :root.dark {{\n{dark}}}\n"
         ));
 
-        Ok(css_response(css))
+        Ok(css_response(&req, css))
     }
 }
 
@@ -83,13 +83,48 @@ impl ThemeController {
 /// apply a stylesheet served as plain text, with no error anywhere except a
 /// console warning nobody was looking at. That is how every colour on the
 /// Appearance tab came to do nothing at all.
-fn css_response(css: String) -> Response {
+fn css_response(req: &Request, css: String) -> Response {
+    // Weak, because two runs that produce the same bytes are the same
+    // stylesheet whatever else changed around them.
+    let etag = format!("W/\"{:016x}\"", fingerprint(css.as_bytes()));
+
+    // The browser asking "still this one?" gets an answer with no body. An
+    // ETag nothing acts on is decoration, and this application registers no
+    // ETag middleware to act on it — so the check belongs here, beside the
+    // hash it compares.
+    if req.header("if-none-match").is_some_and(|sent| sent.split(',').any(|one| one.trim() == etag)) {
+        return Response::new(Status::NOT_MODIFIED)
+            .with_header("cache-control", "no-cache")
+            .with_header("etag", etag);
+    }
+
     Response::ok()
         .with_body(css.into_bytes())
         .with_header("content-type", "text/css; charset=utf-8")
-        // Short, because it changes when somebody clicks Save and they will
-        // reload immediately to look at it.
-        .with_header("cache-control", "public, max-age=60")
+        // **Revalidate every time.** This file is generated from Settings →
+        // Appearance, so it changes the moment somebody clicks Save — and it
+        // used to say `max-age=60`, which meant the browser kept painting the
+        // old colours from its own cache and the tab looked broken. A minute
+        // is long enough for a person to decide the feature does not work, and
+        // Chrome's memory cache can hold a parsed stylesheet longer than that
+        // again. It is about a kilobyte; asking is cheap, and the ETag turns
+        // the usual answer into a 304 with no body at all.
+        .with_header("cache-control", "no-cache")
+        .with_header("etag", etag)
+}
+
+/// A 64-bit FNV-1a of the generated stylesheet.
+///
+/// Not a cryptographic hash and not trying to be: this decides whether a
+/// browser already has these bytes, and the cost of a collision is a stale
+/// colour until the next save.
+fn fingerprint(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }
 
 /// A stored colour, or a safe one.
@@ -118,10 +153,34 @@ mod tests {
     /// is why the type is asserted rather than assumed.
     #[test]
     fn the_stylesheet_is_served_as_css_not_as_plain_text() {
-        let response = css_response("body{}".to_string());
+        let response = css_response(&Request::new(Method::Get, "/css/theme.css"), "body{}".to_string());
 
         assert_eq!(response.headers.get("content-type"), Some("text/css; charset=utf-8"));
         assert_eq!(response.body_string(), "body{}");
+    }
+
+    /// The colours change on Save, so the answer must not come from a cache
+    /// this application cannot reach into. It used to say `max-age=60`, and a
+    /// person who pressed Save saw the old colours and concluded the tab was
+    /// broken.
+    #[test]
+    fn the_stylesheet_is_revalidated_rather_than_held() {
+        let request = Request::new(Method::Get, "/css/theme.css");
+        let response = css_response(&request, "body{}".to_string());
+
+        assert_eq!(response.headers.get("cache-control"), Some("no-cache"));
+        let etag = response.headers.get("etag").expect("no etag").to_string();
+
+        // And the revalidation it invites is answered without a body.
+        let conditional =
+            Request::new(Method::Get, "/css/theme.css").with_header("if-none-match", etag.clone());
+        let again = css_response(&conditional, "body{}".to_string());
+        assert_eq!(again.status, Status::NOT_MODIFIED);
+        assert!(again.body_string().is_empty(), "a 304 carries no body");
+
+        // Different colours are a different stylesheet.
+        let other = css_response(&conditional, "body{color:red}".to_string());
+        assert_ne!(other.status, Status::NOT_MODIFIED, "changed CSS must not answer 304");
     }
 
     use super::colour;

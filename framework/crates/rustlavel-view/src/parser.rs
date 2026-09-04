@@ -72,6 +72,7 @@ impl<'a> Parser<'a> {
                         "section" => self.section(span, offset)?,
                         "extends" => self.extends(span, offset)?,
                         "yield" => nodes.push(self.yield_section(span)?),
+                        "lang" => nodes.push(self.lang(span)?),
                         "include" => {
                             let name = self.template_name(&span, "include")?;
                             nodes.push(Node::Include(self.reference(name, offset)));
@@ -184,6 +185,45 @@ impl<'a> Parser<'a> {
             section: self.literal(arguments.first(), &span, "yield")?,
             default: arguments.get(1).cloned(),
         })
+    }
+
+    /// `@lang("auth.sign_in")`, or with placeholders:
+    /// `@lang("auth.welcome", "name", user.name)`.
+    ///
+    /// Alternating name/value after the key rather than a map literal, because
+    /// this expression grammar has no map literal and inventing one for a
+    /// single directive is a worse trade than a convention. The names are
+    /// quoted like the key; the values are ordinary expressions, so a
+    /// placeholder can carry anything the page already has.
+    fn lang(&mut self, span: Span<'_>) -> Result<Node> {
+        let arguments = expr::parse_arguments(span)?;
+        let key = self.literal(arguments.first(), &span, "lang")?;
+
+        let rest = &arguments[1.min(arguments.len())..];
+        if rest.len() % 2 != 0 {
+            return Err(span.error(
+                0,
+                "`@lang` takes a key and then pairs of name and value, like \
+                 `@lang(\"mail.greeting\", \"name\", user.name)` — one name here has no value",
+            ));
+        }
+
+        let mut replacements = Vec::with_capacity(rest.len() / 2);
+        for pair in rest.chunks(2) {
+            let name = match &pair[0] {
+                Expr::Str(name) => name.clone(),
+                _ => {
+                    return Err(span.error(
+                        0,
+                        "a `@lang` placeholder name has to be quoted, like \
+                         `@lang(\"mail.greeting\", \"name\", user.name)`",
+                    ))
+                }
+            };
+            replacements.push((name, pair[1].clone()));
+        }
+
+        Ok(Node::Lang { key, replacements })
     }
 
     /// Read the single quoted view name a directive expects.
@@ -370,5 +410,40 @@ mod tests {
             error("@section(\"a\")1@endsection\n@section(\"a\")2@endsection\n");
 
         assert!(message.contains("two `@section`"), "{message}");
+    }
+
+    /// The key is resolved at parse time and cached with the template, so it
+    /// cannot come from the data — the same rule `@include` follows.
+    #[test]
+    fn a_lang_key_has_to_be_a_literal() {
+        let (_, _, message) = error(r#"@lang(key)"#);
+        assert!(message.contains("`@lang` needs a quoted name"), "{message}");
+    }
+
+    /// A placeholder without a value is a typo that would otherwise render the
+    /// name as if it were the phrase.
+    #[test]
+    fn a_lang_placeholder_needs_a_value() {
+        let (_, _, message) = error(r#"@lang("mail.greeting", "name")"#);
+        assert!(message.contains("no value"), "{message}");
+    }
+
+    #[test]
+    fn a_lang_placeholder_name_has_to_be_quoted() {
+        let (_, _, message) = error(r#"@lang("mail.greeting", name, user.name)"#);
+        assert!(message.contains("has to be quoted"), "{message}");
+    }
+
+    #[test]
+    fn a_lang_directive_keeps_its_key_and_pairs() {
+        let template = template(r#"@lang("auth.welcome", "name", user.name)"#);
+        match &template.nodes[0] {
+            Node::Lang { key, replacements } => {
+                assert_eq!(key, "auth.welcome");
+                assert_eq!(replacements.len(), 1);
+                assert_eq!(replacements[0].0, "name");
+            }
+            other => panic!("expected a Lang node, got {other:?}"),
+        }
     }
 }

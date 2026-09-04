@@ -238,20 +238,6 @@
             <span class="text-sm">Require a special character</span>
           </label>
 
-          <label class="flex items-start gap-3 rounded-lg border border-ink-200 p-3 transition hover:bg-ink-50 sm:col-span-2 dark:border-ink-800 dark:hover:bg-ink-800/50">
-            <input type="checkbox" name="auth.password.breached" value="true"
-                   @if(s.auth_password_breached.on) checked @endif
-                   @if(s.auth_password_breached.locked) disabled @endif
-                   class="mt-0.5 shrink-0">
-            <span class="min-w-0">
-              <span class="block text-sm">Check against breached passwords (Have I Been Pwned)</span>
-              <span class="block text-xs text-amber-700 dark:text-amber-400">
-                Not implemented in this starter kit. The lookup needs an outbound
-                HTTPS call, and a breach check that quietly fails open is worse
-                than none &mdash; so while this is on, every new password is
-                refused rather than waved through unchecked.
-              </span>
-            </span>
           </label>
         </div>
       </div>

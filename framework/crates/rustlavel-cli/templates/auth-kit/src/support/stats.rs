@@ -26,7 +26,7 @@ pub fn card(label: &str, value: i64, tint: &str, icon: &str) -> Json {
 
 /// The same cards with their numbers written the way Settings → Language asks.
 pub async fn formatted(req: &Request, cards: Json) -> Json {
-    let (number, _) = crate::support::format::preferences(req).await;
+    let number = crate::support::format::number_format(req).await;
     let Json::Array(cards) = cards else { return cards };
     Json::Array(
         cards

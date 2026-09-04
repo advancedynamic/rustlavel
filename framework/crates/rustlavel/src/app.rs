@@ -147,11 +147,21 @@ impl App {
     }
 
     /// Enable an optional package.
-    pub fn plugin(mut self, plugin: impl Plugin) -> Self {
+    pub fn plugin(self, plugin: impl Plugin) -> Self {
+        self.plugin_boxed(Box::new(plugin))
+    }
+
+    /// The same, for a plugin chosen at runtime.
+    ///
+    /// `plugin` takes a concrete type, which is right when `main.rs` names each
+    /// one. An application that keeps its features in a list — a module per
+    /// feature, registered by walking the list — has `Box<dyn Plugin>` instead,
+    /// and had no way in.
+    pub fn plugin_boxed(mut self, plugin: Box<dyn Plugin>) -> Self {
         let name = plugin.name();
         let mut setup =
             Setup { router: &mut self.router, config: &self.config, context: &mut self.context };
-        Box::new(plugin).register(&mut setup);
+        plugin.register(&mut setup);
         rustlavel_core::debug!("plugin registered: {name}");
         self
     }
@@ -245,9 +255,20 @@ impl App {
             }
 
         // A `resources/views` directory is enough to turn views on, the way a
-        // `public` directory turns on static files.
+        // `public` directory turns on static files — **unless the application
+        // built its own engine**. It used to register one either way, which
+        // meant `.views(...)` silently did nothing for any application that had
+        // a views directory, which is every application that has views. An
+        // engine carrying a translator was replaced by one that could not
+        // translate, and `@lang` rendered its keys.
         #[cfg(feature = "view")]
-        if self.root.join(self.config.string("view.root", rustlavel_view::DEFAULT_ROOT)).is_dir() {
+        if self.root.join(self.config.string("view.root", rustlavel_view::DEFAULT_ROOT)).is_dir()
+            && !self
+                .context
+                .as_ref()
+                .expect("context builder")
+                .has_state::<rustlavel_view::Engine>()
+        {
             let engine = crate::view::engine_from_config(&self.config, &self.root);
             self.context = Some(self.context.take().expect("context builder").state(engine));
         }
@@ -271,7 +292,7 @@ impl App {
                 // Finish first, so the listing includes the routes the
                 // framework and any plugin add.
                 let (router, _) = self.finish();
-                print_route_table(&router);
+                print_route_table(&router, &args[1..]);
                 Ok(())
             }
             // Everything else the CLI forwards is answered by the console,
@@ -330,17 +351,83 @@ impl App {
 }
 
 /// Print the route table, the way `php artisan route:list` does.
-fn print_route_table(router: &Router) {
-    let width = router.routes().iter().map(|r| r.pattern.len()).max().unwrap_or(4).max(4);
+/// `route:list`, and the filters that make it readable past fifty routes.
+///
+/// An application of any size lists more than fits a screen, and the answer to
+/// "where is the route for X" should not be piping this through `grep` — which
+/// works, and loses the header row that says what the columns are.
+///
+/// ```text
+/// route:list --path admin      only paths containing `admin`
+/// route:list --method post     only POSTs (any case)
+/// route:list --name auth       only named routes matching `auth`
+/// ```
+fn matching_routes<'a>(
+    router: &'a Router,
+    filters: &[String],
+) -> Vec<&'a rustlavel_http::router::Route> {
+    let value_of = |flag: &str| -> Option<String> {
+        filters
+            .iter()
+            .position(|argument| argument == flag)
+            .and_then(|at| filters.get(at + 1))
+            .map(|value| value.to_lowercase())
+    };
+
+    let path = value_of("--path");
+    let method = value_of("--method");
+    let name = value_of("--name");
+
+    router
+        .routes()
+        .iter()
+        .filter(|route| {
+            path.as_ref().is_none_or(|want| route.pattern.to_lowercase().contains(want))
+                && method
+                    .as_ref()
+                    .is_none_or(|want| route.method.as_str().eq_ignore_ascii_case(want))
+                && name.as_ref().is_none_or(|want| {
+                    route.name.as_deref().is_some_and(|had| had.to_lowercase().contains(want))
+                })
+        })
+        .collect()
+}
+
+fn print_route_table(router: &Router, filters: &[String]) {
+    let value_of = |flag: &str| -> Option<String> {
+        filters
+            .iter()
+            .position(|argument| argument == flag)
+            .and_then(|at| filters.get(at + 1))
+            .map(|value| value.to_lowercase())
+    };
+
+    let path = value_of("--path");
+    let method = value_of("--method");
+    let name = value_of("--name");
+
+    let matching = matching_routes(router, filters);
+    let _ = (&path, &method, &name);
+
+    let width = matching.iter().map(|r| r.pattern.len()).max().unwrap_or(4).max(4);
 
     println!("\n  {:<8}{:<width$}  NAME", "METHOD", "URI");
-    for route in router.routes() {
+    for route in &matching {
         println!(
             "  {:<8}{:<width$}  {}",
             route.method.as_str(),
             route.pattern,
             route.name.as_deref().unwrap_or("")
         );
+    }
+
+    // The count, and — when a filter hid some — what it hid, so a search that
+    // finds nothing says so rather than printing an empty table.
+    let total = router.routes().len();
+    match matching.len() {
+        0 => println!("\n  no route matches, out of {total}"),
+        shown if shown == total => println!("\n  {shown} routes"),
+        shown => println!("\n  {shown} of {total} routes"),
     }
     println!();
 }
@@ -426,5 +513,34 @@ mod tests {
 
         let table = app.route_table();
         assert!(table.contains(&("GET".into(), "/users/{id}".into(), "users.show".into())));
+    }
+
+    /// A hundred routes do not fit a screen, and `grep` loses the header.
+    #[test]
+    fn route_list_filters_by_path_method_and_name() {
+        use rustlavel_http::router::Router;
+
+        let mut router = Router::new();
+        router.get("/admin/users", |_req: Request| async { "" }).name("admin.users");
+        router.post("/admin/users", |_req: Request| async { "" });
+        router.get("/login", |_req: Request| async { "" }).name("login");
+
+        let matching = |filters: &[&str]| {
+            let filters: Vec<String> = filters.iter().map(|f| f.to_string()).collect();
+            super::matching_routes(&router, &filters)
+                .iter()
+                .map(|r| format!("{} {}", r.method.as_str(), r.pattern))
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(matching(&[]).len(), 3, "no filter lists everything");
+        assert_eq!(matching(&["--path", "admin"]).len(), 2);
+        assert_eq!(matching(&["--method", "POST"]), ["POST /admin/users"]);
+        // Case does not matter: nobody remembers whether they typed `post`.
+        assert_eq!(matching(&["--method", "post"]), ["POST /admin/users"]);
+        assert_eq!(matching(&["--name", "login"]), ["GET /login"]);
+        // Filters narrow together rather than replacing one another.
+        assert_eq!(matching(&["--path", "admin", "--method", "get"]), ["GET /admin/users"]);
+        assert!(matching(&["--path", "nowhere"]).is_empty());
     }
 }

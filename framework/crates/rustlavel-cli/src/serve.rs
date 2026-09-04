@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn build_output_is_never_watched() {
-        let dir = std::env::temp_dir().join("rustlavel-serve-test");
+        let dir = std::env::temp_dir().join(format!("rustlavel-serve-test-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("target/debug")).unwrap();
         std::fs::create_dir_all(dir.join("src")).unwrap();
         std::fs::write(dir.join("src/main.rs"), "fn main() {}").unwrap();

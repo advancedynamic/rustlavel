@@ -270,7 +270,6 @@ pub struct Policy {
     pub lowercase: bool,
     pub number: bool,
     pub symbol: bool,
-    pub breached: bool,
 }
 
 impl Policy {
@@ -283,7 +282,6 @@ impl Policy {
             lowercase: false,
             number: false,
             symbol: false,
-            breached: false,
         }
     }
 
@@ -302,7 +300,6 @@ impl Policy {
             lowercase: settings.bool("auth.password.lowercase").await,
             number: settings.bool("auth.password.number").await,
             symbol: settings.bool("auth.password.symbol").await,
-            breached: settings.bool("auth.password.breached").await,
         }
     }
 
@@ -339,30 +336,6 @@ impl Policy {
         }
         if !missing.is_empty() {
             errors.add("password", format!("The password needs {}.", and_list(&missing)));
-        }
-
-        if self.breached {
-            // Deliberately a refusal and not a shrug.
-            //
-            // Checking against Have I Been Pwned means an outbound HTTPS call
-            // this kit cannot make: the framework's HTTP client is behind a
-            // feature flag a project may not have enabled. A check that fails
-            // open would report "not breached" for every password whenever the
-            // network is down, which is worse than not offering it — so while
-            // the setting is on and the call is missing, nothing gets through.
-            //
-            // What building it needs, exactly: SHA-1 the password, send only
-            // the first five hex characters of the digest to
-            // `https://api.pwnedpasswords.com/range/{prefix}`, and match the
-            // remaining thirty-five characters against the returned suffixes
-            // locally. That is the k-anonymity model — the password never
-            // leaves the process, and neither does its full hash.
-            errors.add(
-                "password",
-                "Checking passwords against Have I Been Pwned is not implemented in this \
-                 starter kit, so no password can be accepted while that setting is on. \
-                 Turn it off under Settings → Security, or implement the range lookup.",
-            );
         }
 
         if password != confirmation {
@@ -410,7 +383,6 @@ mod tests {
             lowercase: true,
             number: true,
             symbol: true,
-            breached: false,
         }
     }
 
@@ -504,16 +476,6 @@ mod tests {
                 "{password:?} contains a non-alphanumeric character and should have passed"
             );
         }
-    }
-
-    #[test]
-    fn the_breach_check_refuses_rather_than_waves_through() {
-        let policy = Policy { breached: true, ..Policy::length_only(12) };
-        let complaint = message(&policy, "correct horse battery staple");
-
-        assert!(!complaint.is_empty(), "an unimplemented check must not pass silently");
-        assert!(complaint.contains("not implemented"), "{complaint}");
-        assert!(complaint.contains("Settings"), "the message should say where to turn it off");
     }
 
     #[test]

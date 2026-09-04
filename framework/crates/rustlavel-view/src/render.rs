@@ -99,6 +99,31 @@ impl<'a> Renderer<'a> {
                 }
                 self.nodes(&template.nodes, scope, out, depth + 1)?;
             }
+            Node::Lang { key, replacements } => {
+                // The locale comes from the page, not from the engine: one
+                // engine serves every request, and two people reading at once
+                // may be reading in different languages. `app_locale` is the
+                // reserved name the application puts it under — with nothing
+                // there, the translator falls back to its own default.
+                let locale = to_text(&scope.lookup("app_locale").cloned().unwrap_or(Json::Null));
+
+                let filled: Vec<(&str, String)> = replacements
+                    .iter()
+                    .map(|(name, expr)| (name.as_str(), to_text(&expr.eval(scope))))
+                    .collect();
+
+                let text = match self.engine.translator() {
+                    Some(translator) => translator.line(&locale, key, &filled),
+                    // No translator: the key, which is what a missing
+                    // translation shows too. Both are visible, and both are
+                    // meant to be.
+                    None => key.clone(),
+                };
+                // Escaped, because a translation is text. A phrase that needs
+                // markup around it belongs in the template with the words
+                // pulled out of it, not in a language file.
+                out.push_str(&escape(&text));
+            }
         }
         Ok(())
     }
@@ -248,5 +273,113 @@ mod tests {
             render("{{ item }}@foreach(items as item){{ item }}@endforeach{{ item }}", &context),
             "outerinnerouter"
         );
+    }
+}
+
+#[cfg(test)]
+mod lang_tests {
+    use super::*;
+    use crate::context::Context;
+    use crate::translate::Translate;
+    use std::sync::Arc;
+
+    /// Two languages, so a test can tell them apart.
+    struct Dictionary;
+
+    impl Translate for Dictionary {
+        fn line(&self, locale: &str, key: &str, replacements: &[(&str, String)]) -> String {
+            let phrase = match (locale, key) {
+                ("id", "auth.sign_in") => "Masuk",
+                ("id", "auth.welcome") => "Halo, :name",
+                (_, "auth.sign_in") => "Sign in",
+                (_, "auth.welcome") => "Hello, :name",
+                // What a real translator does with a key it does not have.
+                _ => return key.to_string(),
+            };
+            let mut text = phrase.to_string();
+            for (name, value) in replacements {
+                text = text.replace(&format!(":{name}"), value);
+            }
+            text
+        }
+    }
+
+    fn engine() -> Engine {
+        Engine::default().with_translator(Arc::new(Dictionary))
+    }
+
+    fn render_in(locale: &str, source: &str) -> String {
+        let context = Context::new().with("app_locale", Json::from(locale));
+        engine().render_source("test", source, &context).unwrap()
+    }
+
+    #[test]
+    fn a_key_is_translated_into_the_page_locale() {
+        assert_eq!(render_in("en", r#"@lang("auth.sign_in")"#), "Sign in");
+        assert_eq!(render_in("id", r#"@lang("auth.sign_in")"#), "Masuk");
+    }
+
+    /// **The one that matters.** A parsed template is cached and shared between
+    /// requests, so a directive that resolved its words at parse time would
+    /// serve the first reader's language to everybody after them. Both renders
+    /// below go through the same `Engine`, and the second must not inherit the
+    /// first's words.
+    #[test]
+    fn one_cached_template_serves_two_languages() {
+        let engine = engine();
+        let source = r#"@lang("auth.sign_in")"#;
+
+        let english = Context::new().with("app_locale", Json::from("en"));
+        let indonesian = Context::new().with("app_locale", Json::from("id"));
+
+        assert_eq!(engine.render_source("shared", source, &english).unwrap(), "Sign in");
+        assert_eq!(engine.render_source("shared", source, &indonesian).unwrap(), "Masuk");
+        // And back, in case the second render is what poisoned it.
+        assert_eq!(engine.render_source("shared", source, &english).unwrap(), "Sign in");
+    }
+
+    #[test]
+    fn a_placeholder_is_filled_from_the_page() {
+        let context = Context::new()
+            .with("app_locale", Json::from("id"))
+            .with("user", Json::object([("name", Json::from("Ada"))]));
+        let out = engine()
+            .render_source("test", r#"@lang("auth.welcome", "name", user.name)"#, &context)
+            .unwrap();
+        assert_eq!(out, "Halo, Ada");
+    }
+
+    /// A page with no locale still renders: the translator decides.
+    #[test]
+    fn a_page_with_no_locale_falls_back_to_the_translator() {
+        let out = engine().render_source("test", r#"@lang("auth.sign_in")"#, &Context::new()).unwrap();
+        assert_eq!(out, "Sign in");
+    }
+
+    /// An application that never registered a translator gets the key, which is
+    /// visible and fixable. A blank button is neither.
+    #[test]
+    fn without_a_translator_the_key_shows_itself() {
+        let out = Engine::default()
+            .render_source("test", r#"@lang("auth.sign_in")"#, &Context::new())
+            .unwrap();
+        assert_eq!(out, "auth.sign_in");
+    }
+
+    /// Translations are text. A phrase carrying markup must not become markup.
+    #[test]
+    fn a_translation_is_escaped() {
+        struct Hostile;
+        impl Translate for Hostile {
+            fn line(&self, _: &str, _: &str, _: &[(&str, String)]) -> String {
+                "<script>alert(1)</script>".to_string()
+            }
+        }
+        let out = Engine::default()
+            .with_translator(Arc::new(Hostile))
+            .render_source("test", r#"@lang("anything")"#, &Context::new())
+            .unwrap();
+        assert!(!out.contains("<script>"), "{out}");
+        assert!(out.contains("&lt;script&gt;"), "{out}");
     }
 }

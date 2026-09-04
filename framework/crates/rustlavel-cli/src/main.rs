@@ -98,6 +98,9 @@ fn help() {
     row("  --with <pkgs>", "Enable packages: db, view, auth, cache, ai, …");
     row("serve", "Run the app, reloading when files change");
     row("route:list", "Show the registered routes");
+    row("  --path <text>", "Only paths containing this");
+    row("  --method <verb>", "Only this method");
+    row("  --name <text>", "Only named routes matching this");
     row("migrate", "Run pending migrations");
     row("migrate:rollback", "Undo the last batch of migrations");
     row("migrate:fresh", "Drop every table and migrate from scratch");
@@ -120,6 +123,8 @@ fn help() {
     // Appended rather than printed, because a resource nobody wired up is a
     // resource that does not work, and the file it goes in is generated.
     row("  (routes)", "Appended to src/routes/web.rs, or printed to paste");
+    row("make:module <name>", "A feature that owns its routes, permissions and settings");
+    row("make:service <Name>", "Work that is neither a controller nor a model");
     row("make:controller <Name>", "Create a controller");
     row("make:middleware <name>", "Create a middleware function");
     row("make:model <Name>", "Create a model");

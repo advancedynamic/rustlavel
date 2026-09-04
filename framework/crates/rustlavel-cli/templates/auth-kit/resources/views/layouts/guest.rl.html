@@ -4,6 +4,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{{-- Every page carries the CSRF token, whether or not it happens to render a
+     form. `public/js/app.js` reads it from here for the requests it makes
+     itself — registering a passkey, signing in with one. It used to read the
+     hidden field inside a form, and on the two-factor page that field is
+     inside `@if(has_totp)`: somebody with a passkey and no authenticator app
+     got a page with no token on it at all, and "Use a passkey" answered 419. --}}
+<meta name="csrf-token" content="{{ csrf_token }}">
 @if(app_description)
 <meta name="description" content="{{ app_description }}">
 @endif
@@ -31,11 +38,11 @@
       </div>
 
       <div>
-        <p class="max-w-md text-[34px] font-extrabold leading-tight tracking-tight text-white">@yield("hero", "One place for the people who use this, and what they may do in it.")</p>
-        <p class="mt-4 max-w-md text-sm leading-relaxed text-white/70">Accounts, roles and permissions, with every sign-in and every change written to an audit trail you can read.</p>
+        <p class="max-w-md text-[34px] font-extrabold leading-tight tracking-tight text-white">@lang("auth.hero")</p>
+        <p class="mt-4 max-w-md text-sm leading-relaxed text-white/70">@lang("auth.hero_sub")</p>
       </div>
 
-      <p class="text-[11px] text-white/60">Sign-in attempts are recorded.</p>
+      <p class="text-[11px] text-white/60">@lang("auth.recorded")</p>
     </div>
 
     {{-- The form. --}}

@@ -355,7 +355,7 @@ mod tests {
 
     #[test]
     fn reads_env_values_ignoring_comments_and_quotes() {
-        let dir = std::env::temp_dir().join("rustlavel-doctor-env");
+        let dir = std::env::temp_dir().join(format!("rustlavel-doctor-env-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join(".env"),
@@ -373,7 +373,7 @@ mod tests {
 
     #[test]
     fn a_missing_env_file_is_a_warning_not_a_failure() {
-        let dir = std::env::temp_dir().join("rustlavel-doctor-missing");
+        let dir = std::env::temp_dir().join(format!("rustlavel-doctor-missing-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let _ = std::fs::remove_file(dir.join(".env"));
 
