@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.5.3"
+version = "0.6.0"
 edition = "2024"
 # Measured, not assumed. Edition 2024 puts the floor at 1.85, but the code uses
 # let-chains (`&& let`) in twenty-one places, and those stabilised in 1.88.
@@ -30,35 +30,35 @@ authors = ["Advance Dynamic Software"]
 repository = "https://github.com/advancedynamic/rustlavel"
 
 [workspace.dependencies]
-rustlavel-core = { path = "crates/rustlavel-core", version = "0.5.3" }
-rustlavel-http = { path = "crates/rustlavel-http", version = "0.5.3" }
-rustlavel-auth = { path = "crates/rustlavel-auth", version = "0.5.3" }
-rustlavel-debugbar = { path = "crates/rustlavel-debugbar", version = "0.5.3" }
-rustlavel-i18n = { path = "crates/rustlavel-i18n", version = "0.5.3" }
-rustlavel-client = { path = "crates/rustlavel-client", version = "0.5.3" }
-rustlavel-cache = { path = "crates/rustlavel-cache", version = "0.5.3" }
-rustlavel-db = { path = "crates/rustlavel-db", version = "0.5.3" }
-rustlavel-ldap = { path = "crates/rustlavel-ldap", version = "0.5.3" }
-rustlavel-otel = { path = "crates/rustlavel-otel", version = "0.5.3" }
-rustlavel-search = { path = "crates/rustlavel-search", version = "0.5.3" }
-rustlavel-macros = { path = "crates/rustlavel-macros", version = "0.5.3" }
-rustlavel-view = { path = "crates/rustlavel-view", version = "0.5.3" }
-rustlavel-model-cache = { path = "crates/rustlavel-model-cache", version = "0.5.3" }
-rustlavel-metrics = { path = "crates/rustlavel-metrics", version = "0.5.3" }
-rustlavel-oauth = { path = "crates/rustlavel-oauth", version = "0.5.3" }
-rustlavel-oauth-provider = { path = "crates/rustlavel-oauth-provider", version = "0.5.3" }
-rustlavel-openapi = { path = "crates/rustlavel-openapi", version = "0.5.3" }
-rustlavel-storage = { path = "crates/rustlavel-storage", version = "0.5.3" }
-rustlavel-validation = { path = "crates/rustlavel-validation", version = "0.5.3" }
-rustlavel-vault = { path = "crates/rustlavel-vault", version = "0.5.3" }
-rustlavel-telescope = { path = "crates/rustlavel-telescope", version = "0.5.3" }
-rustlavel-ai = { path = "crates/rustlavel-ai", version = "0.5.3" }
-rustlavel-audit = { path = "crates/rustlavel-audit", version = "0.5.3" }
-rustlavel-flags = { path = "crates/rustlavel-flags", version = "0.5.3" }
-rustlavel-rbac = { path = "crates/rustlavel-rbac", version = "0.5.3" }
-rustlavel-queue = { path = "crates/rustlavel-queue", version = "0.5.3" }
-rustlavel-mail = { path = "crates/rustlavel-mail", version = "0.5.3" }
-rustlavel-mcp = { path = "crates/rustlavel-mcp", version = "0.5.3" }
-rustlavel-webauthn = { path = "crates/rustlavel-webauthn", version = "0.5.3" }
-rustlavel-ws = { path = "crates/rustlavel-ws", version = "0.5.3" }
+rustlavel-core = { path = "crates/rustlavel-core", version = "0.6.0" }
+rustlavel-http = { path = "crates/rustlavel-http", version = "0.6.0" }
+rustlavel-auth = { path = "crates/rustlavel-auth", version = "0.6.0" }
+rustlavel-debugbar = { path = "crates/rustlavel-debugbar", version = "0.6.0" }
+rustlavel-i18n = { path = "crates/rustlavel-i18n", version = "0.6.0" }
+rustlavel-client = { path = "crates/rustlavel-client", version = "0.6.0" }
+rustlavel-cache = { path = "crates/rustlavel-cache", version = "0.6.0" }
+rustlavel-db = { path = "crates/rustlavel-db", version = "0.6.0" }
+rustlavel-ldap = { path = "crates/rustlavel-ldap", version = "0.6.0" }
+rustlavel-otel = { path = "crates/rustlavel-otel", version = "0.6.0" }
+rustlavel-search = { path = "crates/rustlavel-search", version = "0.6.0" }
+rustlavel-macros = { path = "crates/rustlavel-macros", version = "0.6.0" }
+rustlavel-view = { path = "crates/rustlavel-view", version = "0.6.0" }
+rustlavel-model-cache = { path = "crates/rustlavel-model-cache", version = "0.6.0" }
+rustlavel-metrics = { path = "crates/rustlavel-metrics", version = "0.6.0" }
+rustlavel-oauth = { path = "crates/rustlavel-oauth", version = "0.6.0" }
+rustlavel-oauth-provider = { path = "crates/rustlavel-oauth-provider", version = "0.6.0" }
+rustlavel-openapi = { path = "crates/rustlavel-openapi", version = "0.6.0" }
+rustlavel-storage = { path = "crates/rustlavel-storage", version = "0.6.0" }
+rustlavel-validation = { path = "crates/rustlavel-validation", version = "0.6.0" }
+rustlavel-vault = { path = "crates/rustlavel-vault", version = "0.6.0" }
+rustlavel-telescope = { path = "crates/rustlavel-telescope", version = "0.6.0" }
+rustlavel-ai = { path = "crates/rustlavel-ai", version = "0.6.0" }
+rustlavel-audit = { path = "crates/rustlavel-audit", version = "0.6.0" }
+rustlavel-flags = { path = "crates/rustlavel-flags", version = "0.6.0" }
+rustlavel-rbac = { path = "crates/rustlavel-rbac", version = "0.6.0" }
+rustlavel-queue = { path = "crates/rustlavel-queue", version = "0.6.0" }
+rustlavel-mail = { path = "crates/rustlavel-mail", version = "0.6.0" }
+rustlavel-mcp = { path = "crates/rustlavel-mcp", version = "0.6.0" }
+rustlavel-webauthn = { path = "crates/rustlavel-webauthn", version = "0.6.0" }
+rustlavel-ws = { path = "crates/rustlavel-ws", version = "0.6.0" }
 tokio = { version = "1", features = ["full"] }

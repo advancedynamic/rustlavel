@@ -16,6 +16,10 @@
 //! scanned by Tailwind. `include_str!` puts them in the binary at build time.
 
 /// Every file the kit writes, as (path relative to the project, contents).
+///
+/// Text only — see `BINARY_FILES` for the rest. The split is not tidiness: the
+/// entries here are run through the placeholder renderer on the way out, and a
+/// woff2 put through a text renderer is a corrupt woff2.
 pub const FILES: &[(&str, &str)] = &[
     ("database/migrations/2026_09_02_000100_create_users_table.rs", include_str!("../templates/auth-kit/database/migrations/2026_09_02_000100_create_users_table.rs")),
     ("database/migrations/2026_09_02_000200_create_user_tokens_table.rs", include_str!("../templates/auth-kit/database/migrations/2026_09_02_000200_create_user_tokens_table.rs")),
@@ -112,6 +116,19 @@ pub const FILES: &[(&str, &str)] = &[
     ("src/support/stats.rs", include_str!("../templates/auth-kit/src/support/stats.rs")),
     ("src/support/tokens.rs", include_str!("../templates/auth-kit/src/support/tokens.rs")),
     ("tests/web.rs", include_str!("../templates/auth-kit/tests/web.rs")),
+];
+
+/// The files that are not text, written byte for byte.
+///
+/// Inter, subset to Latin and Latin Extended, under the SIL Open Font License
+/// — the licence travels with it, because a font shipped without one is a font
+/// somebody has to go and look up. Two files rather than one: `unicode-range`
+/// in the stylesheet means a page that never shows an accented character never
+/// asks for the 85K half.
+pub const BINARY_FILES: &[(&str, &[u8])] = &[
+    ("public/fonts/inter-latin.woff2", include_bytes!("../templates/auth-kit/public/fonts/inter-latin.woff2")),
+    ("public/fonts/inter-latin-ext.woff2", include_bytes!("../templates/auth-kit/public/fonts/inter-latin-ext.woff2")),
+    ("public/fonts/LICENSE.txt", include_bytes!("../templates/auth-kit/public/fonts/LICENSE.txt")),
 ];
 
 /// The lines added to `.env`.

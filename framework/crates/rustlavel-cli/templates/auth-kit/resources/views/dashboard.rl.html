@@ -29,13 +29,15 @@
     </div>
   @endif
 
-  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  {{-- A glance, not the content: a quiet label above the figure, and the whole
+       row no taller than the card below it. --}}
+  <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
     @foreach(stats as stat)
       <div class="card">
         <div class="card-body">
-          <p class="text-sm font-medium text-ink-500 dark:text-ink-400">{{ stat.label }}</p>
-          <p class="mt-2 text-3xl font-semibold tracking-tight">{{ stat.value }}</p>
-          @if(stat.note)<p class="mt-1 text-xs text-ink-500 dark:text-ink-400">{{ stat.note }}</p>@endif
+          <p class="text-[10px] font-bold uppercase tracking-[0.05em] text-ink-400 dark:text-ink-500">{{ stat.label }}</p>
+          <p class="mt-1 text-lg font-extrabold tracking-tight tabular-nums">{{ stat.value }}</p>
+          @if(stat.note)<p class="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{{ stat.note }}</p>@endif
         </div>
       </div>
     @endforeach

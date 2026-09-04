@@ -113,17 +113,15 @@ impl PasswordController {
         // spent, so a refusal leaves the person their link instead of sending
         // them back to ask for another one.
         let keep = crate::support::passwords::keep(&req).await;
-        if errors.is_empty() && keep > 0 {
-            if let Some(record) = crate::models::user_token::UserToken::first(
+        if errors.is_empty() && keep > 0
+            && let Some(record) = crate::models::user_token::UserToken::first(
                 &db,
                 crate::models::user_token::UserToken::usable(PASSWORD_RESET, &token, &tokens::now()),
             )
             .await?
-            {
-                if crate::support::passwords::was_used_before(&db, record.user_id, &password, keep).await? {
-                    errors.add("password", crate::support::passwords::reuse_message(keep));
-                }
-            }
+            && crate::support::passwords::was_used_before(&db, record.user_id, &password, keep).await?
+        {
+            errors.add("password", crate::support::passwords::reuse_message(keep));
         }
 
         if !errors.is_empty() {

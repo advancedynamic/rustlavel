@@ -16,7 +16,7 @@ use rustlavel::webauthn::{
 };
 use std::sync::Arc;
 
-use crate::support::tokens;
+use crate::support::{format, tokens};
 
 /// Credentials in the `user_passkeys` table.
 pub struct DbPasskeys {
@@ -29,7 +29,11 @@ impl DbPasskeys {
     }
 
     /// The rows a settings page lists, newest first.
-    pub async fn list_for(&self, user_id: i64) -> Result<Vec<Json>> {
+    ///
+    /// The formatter comes from the caller because this store has no request
+    /// to read Settings from, and a passkey's dates should be written the way
+    /// every other date on the page is.
+    pub async fn list_for(&self, user_id: i64, dates: &format::Dates) -> Result<Vec<Json>> {
         let rows = self
             .db
             .table("user_passkeys")
@@ -51,12 +55,12 @@ impl DbPasskeys {
                     ),
                     (
                         "created_at",
-                        Json::from(tokens::humanise(&row.get::<String>("created_at").unwrap_or_default())),
+                        Json::from(dates.moment(&row.get::<String>("created_at").unwrap_or_default())),
                     ),
                     (
                         "last_used_at",
                         Json::from(match row.get::<String>("last_used_at") {
-                            Ok(at) if !at.is_empty() => tokens::humanise(&at),
+                            Ok(at) if !at.is_empty() => dates.moment(&at),
                             _ => "never".to_string(),
                         }),
                     ),

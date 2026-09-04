@@ -2,7 +2,7 @@ use rustlavel::prelude::*;
 
 use crate::models::login_attempt::LoginAttempt;
 use crate::models::user::User;
-use crate::support::{page, tokens};
+use crate::support::{format, page, tokens};
 
 pub struct DashboardController;
 
@@ -15,6 +15,7 @@ impl DashboardController {
         let mut context = page::shell(&req, "dashboard").await;
         context = page::with_user(context, &req, &user).await?;
 
+        let dates = format::Dates::of(&req).await;
         let mfa = crate::controllers::auth::mfa_controller::has_factor(&db, user.id).await?;
         // The one before this one: the newest success is the sign-in that is
         // being read right now, and telling somebody they last signed in a
@@ -27,7 +28,7 @@ impl DashboardController {
             .with(
                 "last_login_at",
                 previous.map_or(Json::Null, |a| {
-                    Json::from(tokens::humanise(a.created_at.as_deref().unwrap_or_default()))
+                    Json::from(dates.moment(a.created_at.as_deref().unwrap_or_default()))
                 }),
             )
             .with(
@@ -35,7 +36,8 @@ impl DashboardController {
                 Json::from(previous.and_then(|a| a.ip.clone()).unwrap_or_else(|| "an unknown address".into())),
             );
 
-        let entries: Vec<Json> = history.iter().take(6).map(attempt_json).collect();
+        let entries: Vec<Json> =
+            history.iter().take(6).map(|attempt| attempt_json(attempt, &dates)).collect();
         context = context
             .with("recent_logins_empty", Json::from(entries.is_empty()))
             .with("recent_logins", Json::Array(entries));
@@ -82,9 +84,9 @@ fn card(label: &str, value: i64, note: Option<String>) -> Json {
     ])
 }
 
-pub fn attempt_json(attempt: &LoginAttempt) -> Json {
+pub fn attempt_json(attempt: &LoginAttempt, dates: &format::Dates) -> Json {
     Json::object([
-        ("at", Json::from(tokens::humanise(attempt.created_at.as_deref().unwrap_or_default()))),
+        ("at", Json::from(dates.moment(attempt.created_at.as_deref().unwrap_or_default()))),
         ("successful", Json::from(attempt.successful)),
         ("ip", Json::from(attempt.ip.clone().unwrap_or_else(|| "unknown".into()))),
         ("agent", Json::from(attempt.user_agent.clone().unwrap_or_default())),

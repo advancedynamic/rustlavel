@@ -3,6 +3,149 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## 0.6.0 — 2026-09-04
+
+### Changed
+
+- **The starter kit looks like the dashboard it was drawn from.** 0.5.3 took
+  the *behaviour* out of that mock-up — a Backup tab, a Language tab, a header
+  search, notifications, toasts — and none of its look, which is why the pages
+  still read as a default Tailwind scaffold. The rest of it is here:
+
+  - **A blue-grey palette rather than a neutral one.** Every surface, border
+    and label sits on a hue of about 250, which is what keeps a screen of
+    tables and forms from reading as photocopier grey. The `ink-*` numbering
+    keeps its meaning, so a template written against the old scale still says
+    what it meant.
+  - **A dark navy sidebar in both schemes**, 240px, with the application's mark
+    and description at the top and the signed-in person at the foot. A pale
+    rail beside a pale page was one border away from not being there.
+  - **A header that says where you are**, breadcrumb over title, with the
+    search box centred and tinted so it reads as a control rather than as a
+    hole in the bar.
+  - **Page titles sit on the page**, not inside a card. A page that opened with
+    two nested boxes before any content now opens with its own name.
+  - **Flatter cards, denser type, pill badges, quieter table headings**, and
+    the primary action in the design's own blue — which is this palette's 700
+    rather than its 600.
+  - **A split sign-in screen**: a flat navy panel on the left, the form on the
+    right on the same pale ground as every other page, and the panel dropped
+    rather than stacked on a narrow screen, because a decorative half-page
+    above a form is something a person scrolls past. A second way in gets a
+    second button under a rule, not a line of small print under the first.
+  - **Inter, self-hosted.** The face the design is set in ships with the kit
+    in `public/fonts/` under its SIL Open Font License, rather than being
+    fetched from a font CDN — which breaks behind a firewall, sends a request
+    per visitor to a third party, and would need the policy this kit is written
+    against opened up. One variable file per subset with `unicode-range`, so a
+    page with no accented characters never asks for the 85K Latin Extended
+    half; the Latin half is 48K.
+  - **A mark inside each address and password field** — an envelope, a
+    padlock — on every sign-in, activation and reset form, positioned rather
+    than laid out beside the box so the field keeps its width, and inert to
+    the pointer so clicking the icon still focuses the field.
+  - **The menu button collapses the rail to its icons** on a wide screen and
+    opens the drawer on a narrow one — one control, in one place, at every
+    width. The choice is remembered, and applied before the first paint so a
+    reload does not flash the wide sidebar. In the rail the group headings
+    become the dividers they were standing in for, because a heading clipped
+    to "ADMIN" is worse than no heading.
+
+  What is *not* here is the fourteen domain screens in that mock-up. They
+  belong to an application, not to a scaffold.
+
+### Added
+
+- **A second file manifest, for what is not text.** Everything the CLI writes
+  went through the placeholder renderer, which is right for a template and
+  fatal for a woff2: braces that happened to line up inside the compressed
+  stream would be rewritten and the file would arrive the right size and
+  unreadable. `BINARY_FILES` carries those byte for byte, and a test compares
+  what is embedded against what is on disk, refuses a binary extension in the
+  text manifest, and fails if a file under `templates/auth-kit/` is in neither
+  — because a template nobody listed reaches no project, silently.
+
+### Fixed
+
+- **The stylesheet the kit shipped was stale, and 58 classes had no rules.**
+  `public/css/app.css` is a Tailwind build committed so a project needs no Node
+  toolchain, and that is the trap: adding a class to a template is free, and the
+  build only learns about it when somebody remembers to rebuild. 0.5.3 added a
+  search box, a notification list, toasts, pagination, tab pills and row
+  avatars, and shipped every one of them unstyled. Rebuilt — and a test now
+  fails if a class the templates write is missing from the stylesheet beside
+  them.
+- **Twelve colours on Settings → Appearance changed nothing.**
+  `theme_controller` has always generated `--sidebar-bg`, `--sidebar-text`,
+  `--sidebar-active-bg`, `--sidebar-active-text`, `--login-from` and
+  `--login-to` into `/css/theme.css`, and no rule anywhere consumed one. The
+  sidebar and the sign-in panel are drawn from them now, which is what makes
+  that tab do what it says.
+- **Three buttons labelled "(Default)" restored something else.** Settings →
+  Appearance offers quick presets, one named for the value the catalogue
+  declares — and it kept handing back the colours of the palette this release
+  replaced. A test now derives each of those presets from the catalogue and
+  fails when the two drift.
+- **Checkboxes and radios rendered as a dark square.** `border-ink-300` and
+  friends half-style a native control: the browser goes on painting its own
+  box and the declared border turns it into something neither styled nor
+  default. The classes are gone and `accent-color` in the base layer does the
+  whole job, which is what the design does too.
+- **The menu button did nothing above `lg`.** It was `lg:hidden`, so the only
+  control for the sidebar disappeared exactly where there was room to want
+  one.
+
+- **Sixteen settings were declared, drawn on a tab, saved to the database and
+  read by nothing.** The Email tab wrote six keys the mailer never consulted —
+  it was built once at boot from `config/mail.json` — so a host, port,
+  encryption, username or password typed there changed nothing at all. The
+  General tab's timezone, date format and description, and the Language tab's
+  locale, were the same. Each is now wired: `support::mail::mailer_for` builds
+  the mailer per send from the store, `support::format::Dates` renders every
+  timestamp on the audit and backup pages through the chosen timezone and
+  formats, and the name, description and locale reach both layouts — the
+  description as a `<meta>` and the locale as `lang` on `<html>`.
+- **`backup.path` now decides where a backup is written, and where one is read
+  back from.** It was a text field beside a destination dropdown, and the
+  writer called a helper that ignored both. Every path in the controller goes
+  through one place now, because wiring only the write half would have left
+  backups that could be made and not downloaded — and a reader falls back to
+  the built-in directory, so pointing the field somewhere new does not strand
+  the backups already on disk. The traversal check that stops a name climbing
+  out of the directory applies to whichever directory is configured.
+- **The backup destination, S3 bucket, fallback locale and first day of week
+  are gone from the tab.** Nothing uploads a backup, this kit does not enable
+  `rustlavel-i18n`, and there is no calendar to start on a Monday. A control
+  that cannot be honoured is worse than no control.
+- **The date formatter matched the dropdown's labels, not the values it
+  saves.** `DD/MM/YYYY` is what the tab shows; `d/m/Y` is what it stores, so
+  three of the four date formats fell through to the fourth — and the test
+  written beside it, against the same labels, agreed with the bug. The
+  formatter now takes its cases from the stored values, and a test takes its
+  inputs from the catalogue and fails if two formats render alike.
+- **Half the timezone list was UTC.** The offset table knew Kuala Lumpur and
+  Bangkok, which the tab does not offer, and not Europe/London or
+  America/New_York, which it does. It also had one fixed offset per zone, which
+  is wrong for those two for part of the year, so it now takes the instant and
+  applies the British and US summer-time rules; a test asserts the exact
+  Sundays the clocks move, and another fails on any zone the tab offers that
+  the formatter answers UTC for all year.
+- **Every date on every page goes through that formatter.** `tokens::humanise`
+  was a second, absolute, UTC formatter that ignored all three settings, and it
+  was still rendering the users list, the dashboard, the profile, search,
+  passkeys and half the audit page. It is gone, and the line under a timestamp
+  now says how long ago — which is what it is for and what it did not do.
+- **The profile page's "Joined" was the literal `—` for everybody.**
+- **The password minimum a form advertised and the one the server enforced were
+  read from different places.** The form asked `Config`, the check asked the
+  settings store, so raising it on the Security tab produced a field that
+  accepted twelve characters and a server that refused them. One function reads
+  that key now.
+- **A test walks the catalogue and fails on a key nothing reads.** This is the
+  bug that kept coming back and never showed up in a review — the code that
+  declares a setting and the code that ignores it are in different files, and
+  both look right. Enumerating the catalogue is what finds it.
+
 ## 0.5.3 — 2026-09-03
 
 One line per crate, and it is the line that makes 0.5.2's headline fix real.
@@ -46,13 +189,13 @@ minimum toolchain that is measured rather than assumed.
   and file together. The schedule is a statement of intent — this application
   has no clock, so something outside it has to act on the answer, and **the
   panel says so, loudly, when a schedule is set and nothing has ever run one**.
-  The destination offers local disk and S3-compatible, not the four a mock-up
-  would draw: nothing here implements Google Cloud Storage or SFTP, and a
-  dropdown offering a destination backups do not reach is how somebody finds
-  out at restore time that there are none.
-- **The Language tab's number format, currency and first day of week are read
-  by something.** Every count on every administration page and the size column
-  on the Backup tab go through one formatter.
+  The destination offered local disk and S3-compatible — **and that was wrong;
+  see Unreleased.** Nothing here uploads a backup anywhere, so the dropdown was
+  the very failure its own note described, and it is gone.
+- **The Language tab's number format and currency are read by something.**
+  Every count on every administration page and the size column on the Backup
+  tab go through one formatter. (The first day of the week was listed here too
+  and read nothing; see Unreleased.)
 - **A search box and a notification list in the header.** Search covers people,
   roles, permissions, menu items and settings, and a group is included only
   when the person may open what it links to. The notifications are the audit

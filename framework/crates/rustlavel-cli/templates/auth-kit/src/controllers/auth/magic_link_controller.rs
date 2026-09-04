@@ -57,10 +57,10 @@ impl MagicLinkController {
         // A link is issued only for an account that could sign in anyway; every
         // other case falls through to the same page, because "we have not heard
         // of that address" is something this form must not say.
-        if let Some(user) = User::first(&db, User::by_email(&email)).await? {
-            if user.can_sign_in(&tokens::now()).is_ok() {
-                send_link(&req, &db, &user).await?;
-            }
+        if let Some(user) = User::first(&db, User::by_email(&email)).await?
+            && user.can_sign_in(&tokens::now()).is_ok()
+        {
+            send_link(&req, &db, &user).await?;
         }
 
         Self::sent(req, &email).await

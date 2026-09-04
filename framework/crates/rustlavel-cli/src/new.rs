@@ -291,10 +291,16 @@ pub fn run(args: &[String]) -> Result<(), String> {
             // variables, which this does not touch.
             write(&root.join(path), &render(contents, &values))?;
         }
+        // The font, byte for byte: not through `render`, which would rewrite
+        // whatever inside a woff2 happened to look like a placeholder.
+        for (path, bytes) in auth_kit::BINARY_FILES {
+            write_bytes(&root.join(path), bytes)?;
+        }
         console::created("src/controllers/auth/ (sign in, register, reset, two-factor)");
         console::created("src/controllers/admin/ (users, roles, permissions)");
         console::created("resources/views/ (every page, Tailwind)");
         console::created("public/css/app.css, public/js/app.js");
+        console::created("public/fonts/ (Inter, self-hosted, OFL)");
         console::created("database/migrations/ (users, tokens, sign-in log, factors)");
 
         // The kit's own main.rs, registry and seeder replace the plain ones
@@ -345,6 +351,14 @@ pub mod migrations;
 #[path = "../database/seeders/mod.rs"]
 pub mod seeders;
 "#;
+
+/// The same, for a file that is not text.
+fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+    }
+    std::fs::write(path, bytes).map_err(|e| format!("cannot write {}: {e}", path.display()))
+}
 
 fn write(path: &Path, contents: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
@@ -724,6 +738,376 @@ mod tests {
                  the settings screen and never the mailer"
             );
         }
+    }
+
+    /// Every file under `directory` whose name ends in one of `suffixes`.
+    fn gather(directory: &std::path::Path, suffixes: &[&str], into: &mut Vec<(String, String)>) {
+        let Ok(entries) = std::fs::read_dir(directory) else { return };
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.is_dir() {
+                gather(&path, suffixes, into);
+            } else if suffixes.iter().any(|s| path.to_string_lossy().ends_with(s))
+                && let Ok(text) = std::fs::read_to_string(&path)
+            {
+                into.push((path.to_string_lossy().into_owned(), text));
+            }
+        }
+    }
+
+    /// A setting nobody reads is a switch that does nothing.
+    ///
+    /// This is the bug that keeps coming back, and it never shows up in a
+    /// review: the catalogue declares the key, the tab renders a control for
+    /// it, saving writes a row — and no code anywhere asks what the row says.
+    /// Six mail settings, a timezone, a date format, a backup destination and
+    /// a first-day-of-week all shipped that way. So enumerate the catalogue
+    /// rather than trust it, and require a reader outside the settings screen
+    /// itself for every key in it.
+    #[test]
+    fn every_setting_in_the_catalogue_is_read_by_something() {
+        let kit = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates/auth-kit");
+        let catalogue = std::fs::read_to_string(kit.join("src/support/settings.rs")).unwrap();
+        let body = catalogue
+            .split_once("pub const CATALOGUE")
+            .and_then(|(_, rest)| rest.split_once("\n];"))
+            .expect("the catalogue is no longer a `pub const CATALOGUE` ending in `];`")
+            .0;
+
+        let mut keys: Vec<&str> = Vec::new();
+        for piece in body.split('"').skip(1).step_by(2) {
+            let looks_like_a_key = piece.contains('.')
+                && !piece.is_empty()
+                && piece
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_')
+                // Every segment starts with a letter, which is what keeps a
+                // default like `127.0.0.1` from reading as a key.
+                && piece.split('.').all(|part| part.starts_with(|c: char| c.is_ascii_lowercase()));
+            if looks_like_a_key && !keys.contains(&piece) {
+                keys.push(piece);
+            }
+        }
+        assert!(keys.len() > 40, "only {} keys parsed out of the catalogue", keys.len());
+
+        // Everything except the settings screen, which renders a control for a
+        // key whether or not anything honours it — the very thing being tested.
+        let mut files = Vec::new();
+        gather(&kit.join("src"), &[".rs"], &mut files);
+        gather(&kit.join("resources"), &[".html"], &mut files);
+        files.retain(|(path, _)| {
+            !path.ends_with("support/settings.rs")
+                && !path.contains("settings_controller")
+                && !path.contains("views/settings")
+        });
+
+        let dead: Vec<&str> = keys
+            .iter()
+            .copied()
+            .filter(|key| {
+                let quoted = format!("\"{key}\"");
+                !files.iter().any(|(_, text)| text.contains(&quoted))
+            })
+            .collect();
+
+        assert!(
+            dead.is_empty(),
+            "these settings are declared, rendered on a tab and saved to the database, and \
+             nothing outside the settings screen ever reads them — wire each one up or take \
+             it off the tab: {dead:?}"
+        );
+    }
+
+    /// A permission the seeder creates and nothing checks, or the other way
+    /// round, is the same bug as a setting nobody reads.
+    ///
+    /// One half locks a page nobody can ever reach — the guard names a
+    /// permission that is in no role, so every request is refused. The other
+    /// half is a row in the permissions table that grants nothing, which an
+    /// administrator will tick and then wonder about.
+    #[test]
+    fn every_permission_is_both_seeded_and_checked() {
+        let kit = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates/auth-kit");
+        // The list lives in the seeder the CLI writes, which is a string
+        // here and Rust only once a project exists — so read it out of the
+        // string rather than referring to a constant that is not ours.
+        let seeder = crate::auth_kit::SEEDER;
+        let table = seeder
+            .split_once("const PERMISSIONS: &[(&str, &str)] = &[")
+            .and_then(|(_, rest)| rest.split_once("\n];"))
+            .expect("the seeder no longer declares PERMISSIONS as a table")
+            .0;
+        let seeded: Vec<&str> = table
+            .split("(\"")
+            .skip(1)
+            .filter_map(|piece| piece.split_once('"').map(|(name, _)| name))
+            .collect();
+        assert!(seeded.len() > 15, "only {} permissions parsed: {seeded:?}", seeded.len());
+
+        let mut files = Vec::new();
+        gather(&kit.join("src"), &[".rs"], &mut files);
+        gather(&kit.join("resources"), &[".html"], &mut files);
+
+        for name in &seeded {
+            let quoted = format!("\"{name}\"");
+            assert!(
+                files.iter().any(|(_, text)| text.contains(&quoted)),
+                "the seeder creates `{name}` and nothing in the generated application asks for \
+                 it, so granting it does nothing"
+            );
+        }
+
+        // And the other direction: anything a guard or a `can` names has to be
+        // a permission the seeder actually creates.
+        for (path, text) in &files {
+            for prefix in ["guard(\"", "can(\"", "@can(\""] {
+                let mut rest = text.as_str();
+                while let Some(at) = rest.find(prefix) {
+                    rest = &rest[at + prefix.len()..];
+                    let Some(end) = rest.find('"') else { break };
+                    let name = &rest[..end];
+                    // Only the `noun.verb` shape is a permission; `can("...")`
+                    // also appears in prose and in other kinds of argument.
+                    if name.split('.').count() == 2
+                        && name.chars().all(|c| c.is_ascii_lowercase() || c == '.' || c == '_')
+                    {
+                        assert!(
+                            seeded.contains(&name),
+                            "{path} checks for `{name}`, which the seeder never creates — the \
+                             page it guards can never be opened by anybody"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// The stylesheet the kit ships has to cover the markup the kit ships.
+    ///
+    /// `public/css/app.css` is a Tailwind build committed so a project needs no
+    /// Node toolchain, and that is the trap: adding a class to a template is
+    /// free, and the stylesheet only learns about it when somebody remembers to
+    /// rebuild. It went stale exactly that way — a release added a search box,
+    /// a notification list, toasts, pagination and tab pills, and shipped all
+    /// of them with 58 of their classes undefined, so the markup was there and
+    /// the styling simply was not.
+    ///
+    /// Rebuild with:
+    ///
+    /// ```text
+    /// npx @tailwindcss/cli -i resources/css/app.css -o public/css/app.css --minify
+    /// ```
+    #[test]
+    fn the_committed_stylesheet_covers_the_classes_the_templates_use() {
+        let kit = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates/auth-kit");
+        let css = std::fs::read_to_string(kit.join("public/css/app.css")).unwrap();
+
+        // The named component classes: every `@utility` in the source has to
+        // have survived into the build, and those are the ones a template
+        // spells out by name rather than composing from utilities.
+        let source = std::fs::read_to_string(kit.join("resources/css/app.css")).unwrap();
+        let named: Vec<&str> = source
+            .match_indices("@utility ")
+            .map(|(at, _)| {
+                let rest = &source[at + "@utility ".len()..];
+                let end = rest
+                    .find(|c: char| !c.is_ascii_alphanumeric() && c != '-')
+                    .unwrap_or(rest.len());
+                &rest[..end]
+            })
+            .collect();
+        assert!(named.len() > 20, "only {} utilities parsed: {named:?}", named.len());
+
+        let mut used = Vec::new();
+        gather(&kit.join("resources/views"), &[".html"], &mut used);
+        gather(&kit.join("src"), &[".rs"], &mut used);
+        gather(&kit.join("public/js"), &[".js"], &mut used);
+
+        let mut undefined: Vec<String> = Vec::new();
+        for name in named {
+            // Only complain about a class something actually writes: a utility
+            // defined and never used is dead weight, not a broken page, and
+            // Tailwind sweeps it out of the build on purpose.
+            let quoted = [format!("\"{name}"), format!(" {name} "), format!(" {name}\"")];
+            let is_used = used
+                .iter()
+                .any(|(_, text)| quoted.iter().any(|form| text.contains(form.as_str())));
+            if is_used && !css.contains(&format!(".{name}")) {
+                undefined.push(name.to_string());
+            }
+        }
+
+        assert!(
+            undefined.is_empty(),
+            "these classes are written into the generated markup and are not in the stylesheet \
+             that ships beside it, so the elements wearing them render unstyled — rebuild \
+             `public/css/app.css` from `resources/css/app.css`: {undefined:?}"
+        );
+    }
+
+    /// A button labelled "(Default)" has to restore the default.
+    ///
+    /// Settings → Appearance offers quick presets, one of them named for the
+    /// value the catalogue declares. Change that value and the button keeps
+    /// handing back the old one — a control that silently disagrees with the
+    /// thing it names, which is how three of them ended up restoring the
+    /// colours of a design two versions old.
+    #[test]
+    fn the_default_appearance_presets_are_the_declared_defaults() {
+        let kit = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates/auth-kit");
+        let catalogue = std::fs::read_to_string(kit.join("src/support/settings.rs")).unwrap();
+        let tab = std::fs::read_to_string(
+            kit.join("resources/views/settings/tabs/appearance.rl.html"),
+        )
+        .unwrap();
+
+        // The declared default for one `s("key", Kind::Colour, "#value")`.
+        let declared = |key: &str| -> String {
+            let at = catalogue
+                .find(&format!("s(\"{key}\", Kind::Colour, \""))
+                .unwrap_or_else(|| panic!("`{key}` is no longer a colour in the catalogue"));
+            let rest = &catalogue[at..];
+            let start = rest.rfind('"').map(|_| rest.find(", \"").unwrap() + 3).unwrap();
+            let end = rest[start..].find('"').unwrap() + start;
+            rest[start..end].to_string()
+        };
+
+        // Each preset in the order the controller writes its keys.
+        for keys in [
+            vec!["theme.brand"],
+            vec![
+                "theme.login.light.from",
+                "theme.login.light.to",
+                "theme.login.dark.from",
+                "theme.login.dark.to",
+            ],
+            vec![
+                "theme.sidebar.light.bg",
+                "theme.sidebar.light.text",
+                "theme.sidebar.light.active_bg",
+                "theme.sidebar.light.active_text",
+                "theme.sidebar.dark.bg",
+                "theme.sidebar.dark.text",
+                "theme.sidebar.dark.active_bg",
+                "theme.sidebar.dark.active_text",
+            ],
+        ] {
+            let wanted: Vec<String> = keys.iter().map(|k| declared(k)).collect();
+            let preset = format!("data-preset=\"{}\"", wanted.join(","));
+            assert!(
+                tab.contains(&preset),
+                "the Appearance tab has no preset restoring the declared defaults for {keys:?}. \
+                 Its \"(Default)\" button hands back something else, so pressing it moves the \
+                 application away from the state it names. Expected {preset}"
+            );
+        }
+    }
+
+    /// The font has to arrive as a font.
+    ///
+    /// Everything in `FILES` goes through the placeholder renderer on the way
+    /// out, which is right for a template and fatal for a woff2: any two
+    /// braces that happened to line up inside the compressed stream would be
+    /// rewritten, and the file would arrive the right size and unreadable.
+    /// `BINARY_FILES` exists to keep them apart, and this is what keeps a font
+    /// from being added to the wrong list.
+    #[test]
+    fn the_binary_files_are_carried_byte_for_byte() {
+        let kit = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates/auth-kit");
+
+        for (path, bytes) in crate::auth_kit::BINARY_FILES {
+            let on_disk = std::fs::read(kit.join(path))
+                .unwrap_or_else(|e| panic!("{path} is in BINARY_FILES and not on disk: {e}"));
+            assert_eq!(
+                *bytes, &on_disk[..],
+                "{path} does not match the file it is embedded from"
+            );
+        }
+
+        // A woff2 begins `wOF2`. If one ever ends up in `FILES` instead, the
+        // renderer will have had a chance at it.
+        for (path, contents) in crate::auth_kit::FILES {
+            assert!(
+                !path.ends_with(".woff2") && !path.ends_with(".woff") && !path.ends_with(".png"),
+                "{path} is binary and is in FILES, where every entry is run through the \
+                 placeholder renderer — move it to BINARY_FILES"
+            );
+            let _ = contents;
+        }
+
+        let fonts: Vec<&str> = crate::auth_kit::BINARY_FILES
+            .iter()
+            .map(|(path, _)| *path)
+            .filter(|path| path.ends_with(".woff2"))
+            .collect();
+        assert!(!fonts.is_empty(), "the kit no longer ships a font of its own");
+
+        // Self-hosted means the stylesheet asks this application for it.
+        let css = std::fs::read_to_string(kit.join("resources/css/app.css")).unwrap();
+        for path in fonts {
+            let url = path.trim_start_matches("public");
+            assert!(
+                css.contains(&format!("url(\"{url}\")")),
+                "{path} ships with the kit and no @font-face asks for it"
+            );
+        }
+        // The comments in that file name the CDNs they explain avoiding, so
+        // ask the CSS rather than the prose around it.
+        let mut rules = String::new();
+        let mut rest = css.as_str();
+        while let Some(at) = rest.find("/*") {
+            rules.push_str(&rest[..at]);
+            rest = match rest[at..].find("*/") {
+                Some(end) => &rest[at + end + 2..],
+                None => "",
+            };
+        }
+        rules.push_str(rest);
+        assert!(
+            !rules.contains("fonts.googleapis.com") && !rules.contains("fonts.gstatic.com"),
+            "the stylesheet reaches out to a font CDN, which is what self-hosting was for"
+        );
+    }
+
+    /// A template file that is not in a manifest never reaches a project.
+    ///
+    /// The kit's files live on disk so they can be read and edited, and reach
+    /// an application only through `FILES` or `BINARY_FILES`. Adding one and
+    /// forgetting the manifest produces a scaffold that is missing it — with
+    /// no error, because nothing looked for it. Listing a file that has since
+    /// been deleted fails the build instead, which is the harmless direction.
+    #[test]
+    fn every_template_file_is_in_a_manifest() {
+        let kit = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates/auth-kit");
+        let listed: Vec<&str> = crate::auth_kit::FILES
+            .iter()
+            .map(|(path, _)| *path)
+            .chain(crate::auth_kit::BINARY_FILES.iter().map(|(path, _)| *path))
+            .collect();
+
+        let mut on_disk = Vec::new();
+        for directory in ["src", "resources", "public", "config", "database", "tests"] {
+            let mut found = Vec::new();
+            gather(&kit.join(directory), &[""], &mut found);
+            for (path, _) in found {
+                let relative = path
+                    .strip_prefix(&format!("{}/", kit.display()))
+                    .unwrap_or(&path)
+                    .to_string();
+                on_disk.push(relative);
+            }
+        }
+        assert!(on_disk.len() > 80, "only {} template files found", on_disk.len());
+
+        let missing: Vec<&String> = on_disk
+            .iter()
+            .filter(|path| !listed.contains(&path.as_str()))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "these files are in `templates/auth-kit/` and in neither manifest, so `rustlavel \
+             new` writes a project without them: {missing:?}"
+        );
     }
 
     /// Whether any file under this directory implements `Plugin`.

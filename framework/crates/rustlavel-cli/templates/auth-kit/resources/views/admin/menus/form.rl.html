@@ -78,12 +78,12 @@
       <div class="flex flex-wrap items-center gap-6 border-t border-ink-200 pt-4 dark:border-ink-800">
         <div class="flex items-center gap-2.5">
           <input id="is_active" name="is_active" type="checkbox" value="1" @if(is_active) checked @endif
-                 class="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800">
+                 class="shrink-0">
           <label for="is_active" class="text-sm text-ink-700 dark:text-ink-300">Show this item</label>
         </div>
         <div class="flex items-center gap-2.5">
           <input id="target" name="target" type="checkbox" value="_blank" @if(new_tab) checked @endif
-                 class="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800">
+                 class="shrink-0">
           <label for="target" class="text-sm text-ink-700 dark:text-ink-300">Open in a new tab</label>
         </div>
       </div>

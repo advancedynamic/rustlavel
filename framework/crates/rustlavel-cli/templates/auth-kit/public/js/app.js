@@ -48,7 +48,39 @@
   syncSidebar();
   wide.addEventListener("change", syncSidebar);
 
-  on("click", "[data-sidebar-toggle]", () => setSidebar(sidebar && sidebar.hidden));
+  /* Above `lg` the same button collapses the rail to its icons instead of
+     opening a drawer, and the choice is remembered. `data-rail` goes on the
+     root element rather than on the sidebar because the labels inside it and
+     the rail's own width are both styled from there — and it is set again on
+     load below, so a reload does not flash the wide sidebar first. */
+  const RAIL = "rustlavel:sidebar-rail";
+  const railed = () => document.documentElement.hasAttribute("data-rail");
+
+  const setRail = (on) => {
+    if (on) document.documentElement.setAttribute("data-rail", "");
+    else document.documentElement.removeAttribute("data-rail");
+    try {
+      localStorage.setItem(RAIL, on ? "1" : "0");
+    } catch {
+      /* A browser with storage switched off still gets the toggle; it just
+         forgets it on the next page. */
+    }
+    document.querySelectorAll("[data-sidebar-toggle]").forEach((b) => {
+      b.setAttribute("aria-expanded", String(!on));
+      b.setAttribute("aria-label", on ? "Expand the menu" : "Collapse the menu");
+    });
+  };
+
+  try {
+    if (localStorage.getItem(RAIL) === "1") setRail(true);
+  } catch {
+    /* As above. */
+  }
+
+  on("click", "[data-sidebar-toggle]", () => {
+    if (wide.matches) setRail(!railed());
+    else setSidebar(sidebar && sidebar.hidden);
+  });
   if (backdrop) backdrop.addEventListener("click", () => setSidebar(false));
 
   /* ---- Dropdown menus ----------------------------------------------- */

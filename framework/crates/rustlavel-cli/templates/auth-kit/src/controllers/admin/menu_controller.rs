@@ -316,10 +316,10 @@ impl MenuController {
         }
         // Its own parent, or its own descendant: either makes a loop that the
         // tree builder would then have to survive rather than never see.
-        if let (Some(parent_id), Some(id)) = (parent, editing) {
-            if parent_id == id || is_descendant(db, parent_id, id).await? {
-                errors.add("parent_id", "An item cannot sit inside itself.");
-            }
+        if let (Some(parent_id), Some(id)) = (parent, editing)
+            && (parent_id == id || is_descendant(db, parent_id, id).await?)
+        {
+            errors.add("parent_id", "An item cannot sit inside itself.");
         }
 
         if !errors.is_empty() {

@@ -59,41 +59,6 @@ pub fn parse_utc(text: &str) -> i64 {
         + second
 }
 
-/// A friendly form for a template: `2 Sep 2026 at 14:05`.
-pub fn humanise(text: &str) -> String {
-    const MONTHS: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-    let unix = parse_utc(text);
-    if unix == 0 {
-        return "—".to_string();
-    }
-    let (year, month, day) = civil_from_days(unix.div_euclid(86_400));
-    let seconds = unix.rem_euclid(86_400);
-    format!(
-        "{day} {} {year} at {:02}:{:02}",
-        MONTHS[(month - 1) as usize],
-        seconds / 3600,
-        (seconds % 3600) / 60
-    )
-}
-
-/// A date on its own: `2 Sep 2026`.
-///
-/// For a column where the time adds nothing — when somebody joined is a day,
-/// not a moment, and the extra five characters cost a column its width.
-pub fn humanise_date(text: &str) -> String {
-    const MONTHS: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-    let unix = parse_utc(text);
-    if unix == 0 {
-        return "—".to_string();
-    }
-    let (year, month, day) = civil_from_days(unix.div_euclid(86_400));
-    format!("{} {day}, {year}", MONTHS[(month - 1) as usize])
-}
-
 /// Issue a link. Returns the plaintext token, which exists only in the email.
 ///
 /// Any earlier token for the same purpose is spent first: a person who clicks
@@ -153,7 +118,7 @@ pub async fn claim(db: &Database, purpose: &str, token: &str) -> Result<Option<U
 }
 
 /// Howard Hinnant's civil calendar, the same pair the HTTP date code uses.
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
+pub fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let day_of_era = z.rem_euclid(146_097);
@@ -166,7 +131,7 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     (year + i64::from(month <= 2), month, day)
 }
 
-fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
+pub fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
     let year = if month <= 2 { year - 1 } else { year };
     let era = year.div_euclid(400);
     let year_of_era = year.rem_euclid(400);

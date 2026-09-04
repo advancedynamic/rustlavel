@@ -12,6 +12,47 @@ use rustlavel::mail::{Mailer, Message};
 
 use crate::support::settings::Settings;
 
+/// The mailer Settings → Email describes, or the one the application booted
+/// with.
+///
+/// **The boot-time mailer is built from `Config`, which reads `.env` and
+/// `config/mail.json` — it has never seen the settings table.** So a host, a
+/// port and a password typed into the Email tab were saved and then ignored:
+/// the tab wrote a row and the mailer kept using the environment. Anything the
+/// environment decides still wins, because `Settings::get` returns the
+/// environment's value for a key with an `env` binding; what changes is that a
+/// key the environment leaves alone now reaches the transport.
+///
+/// Rebuilt per send rather than cached. Building a transport does not connect
+/// — that is the point of `Mailer::build` — so the cost is a struct, and the
+/// alternative is a mailer that goes stale the moment somebody saves the tab.
+async fn mailer_for(req: &Request) -> Option<Mailer> {
+    let settings = req.state::<Settings>()?;
+    let mut config = rustlavel::mail::MailConfig::from_app_config(req.config()).ok()?;
+
+    if let Ok(transport) = rustlavel::mail::TransportKind::parse(&settings.get("mail.driver").await) {
+        config.transport = transport;
+    }
+    let host = settings.get("mail.host").await;
+    if !host.is_empty() {
+        config.host = host;
+    }
+    if let Ok(port) = settings.get("mail.port").await.parse::<u16>()
+        && port > 0
+    {
+        config.port = port;
+    }
+    if let Ok(encryption) = rustlavel::mail::Encryption::parse(&settings.get("mail.encryption").await) {
+        config.encryption = encryption;
+    }
+    config.username = settings.get("mail.username").await;
+    config.password = settings.get("mail.password").await;
+    config.from_address = settings.get("mail.from.address").await;
+    config.from_name = settings.get("mail.from.name").await;
+
+    Mailer::build(&config).ok()
+}
+
 /// Send a message, filling in From from Settings → Email.
 ///
 /// With no mailer registered — the normal case in development — the message is
@@ -19,9 +60,21 @@ use crate::support::settings::Settings;
 /// staring at "check your email" while nothing was ever sent is worse than a
 /// line in the log.
 pub async fn send(req: &Request, message: Message) -> Result<()> {
-    let Some(mailer) = req.state::<Mailer>() else {
-        warn!("no mailer is configured; a message to {} was not sent", message.envelope_recipients().join(", "));
-        return Ok(());
+    // The settings store first, so what the Email tab holds is what sends.
+    // The boot-time mailer is the fallback for an application that registered
+    // one but no settings.
+    let mailer = match mailer_for(req).await {
+        Some(built) => built,
+        None => match req.state::<Mailer>() {
+            Some(booted) => booted.clone(),
+            None => {
+                warn!(
+                    "no mailer is configured; a message to {} was not sent",
+                    message.envelope_recipients().join(", ")
+                );
+                return Ok(());
+            }
+        },
     };
     mailer.send(with_from(req, message).await).await
 }

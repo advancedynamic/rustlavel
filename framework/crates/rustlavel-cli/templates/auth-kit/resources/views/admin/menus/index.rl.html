@@ -2,27 +2,25 @@
 @section("title", "Menu Management")
 
 @section("content")
-  <div class="card mb-5">
-    <div class="card-body flex flex-wrap items-center justify-between gap-4">
-      <div>
-        <h2 class="text-2xl font-semibold tracking-tight">Menu Management</h2>
-        <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">
-          Create, edit, and organize your application navigation menus with drag-and-drop functionality
-        </p>
-      </div>
-      <div class="flex items-center gap-2">
-        <form method="post" action="/admin/menus/{{ location }}/clear-cache">
-          {!! csrf_field !!}
-          <button type="submit" class="btn-ghost">
-            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3.5a6.5 6.5 0 0 1 6.1 4.3.75.75 0 1 1-1.4.5A5 5 0 0 0 6.2 6.9h1.55a.75.75 0 0 1 0 1.5H4.5a.75.75 0 0 1-.75-.75V4.6a.75.75 0 0 1 1.5 0v1.3A6.48 6.48 0 0 1 10 3.5Zm-5.4 7.7a.75.75 0 0 1 .95.45A5 5 0 0 0 13.8 13.1h-1.55a.75.75 0 0 1 0-1.5h3.25a.75.75 0 0 1 .75.75v3.05a.75.75 0 0 1-1.5 0v-1.3A6.5 6.5 0 0 1 3.9 12.15a.75.75 0 0 1 .7-.95Z"/></svg>
-            Clear Cache
-          </button>
-        </form>
-        <a href="/admin/menus/{{ location }}/create" class="btn-primary">
-          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3a.75.75 0 0 1 .75.75v5.5h5.5a.75.75 0 0 1 0 1.5h-5.5v5.5a.75.75 0 0 1-1.5 0v-5.5h-5.5a.75.75 0 0 1 0-1.5h5.5v-5.5A.75.75 0 0 1 10 3Z"/></svg>
-          Add Menu Item
-        </a>
-      </div>
+  <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 class="text-xl font-extrabold tracking-tight">Menu Management</h2>
+      <p class="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
+        Create, edit, and organize your application navigation menus with drag-and-drop functionality
+      </p>
+    </div>
+    <div class="flex items-center gap-2">
+      <form method="post" action="/admin/menus/{{ location }}/clear-cache">
+        {!! csrf_field !!}
+        <button type="submit" class="btn-ghost">
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3.5a6.5 6.5 0 0 1 6.1 4.3.75.75 0 1 1-1.4.5A5 5 0 0 0 6.2 6.9h1.55a.75.75 0 0 1 0 1.5H4.5a.75.75 0 0 1-.75-.75V4.6a.75.75 0 0 1 1.5 0v1.3A6.48 6.48 0 0 1 10 3.5Zm-5.4 7.7a.75.75 0 0 1 .95.45A5 5 0 0 0 13.8 13.1h-1.55a.75.75 0 0 1 0-1.5h3.25a.75.75 0 0 1 .75.75v3.05a.75.75 0 0 1-1.5 0v-1.3A6.5 6.5 0 0 1 3.9 12.15a.75.75 0 0 1 .7-.95Z"/></svg>
+          Clear Cache
+        </button>
+      </form>
+      <a href="/admin/menus/{{ location }}/create" class="btn-primary">
+        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3a.75.75 0 0 1 .75.75v5.5h5.5a.75.75 0 0 1 0 1.5h-5.5v5.5a.75.75 0 0 1-1.5 0v-5.5h-5.5a.75.75 0 0 1 0-1.5h5.5v-5.5A.75.75 0 0 1 10 3Z"/></svg>
+        Add Menu Item
+      </a>
     </div>
   </div>
 

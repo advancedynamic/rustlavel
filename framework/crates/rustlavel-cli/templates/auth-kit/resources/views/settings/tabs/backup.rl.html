@@ -55,21 +55,17 @@
         </div>
 
         <div>
-          <label for="backup_destination" class="field-label">Storage Destination</label>
-          <select id="backup_destination" name="backup.destination" class="field-input">
-            @foreach(s.backup_destination.choices as choice)
-              <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
-            @endforeach
-          </select>
-        </div>
-
-        <div>
-          <label for="backup_path" class="field-label">Path / Bucket</label>
+          <label for="backup_path" class="field-label">Backup Directory</label>
           <input id="backup_path" name="backup.path" type="text" value="{{ s.backup_path.value }}"
                  spellcheck="false" autocomplete="off" class="field-input font-mono"
                  @if(s.backup_path.locked) disabled @endif>
           @if(s.backup_path.locked)
             <p class="field-hint">Set by {{ s.backup_path.env }} in the environment.</p>
+          @else
+            <p class="field-hint">
+              Where a finished backup is written, relative to the application. Backups
+              go to the local disk; nothing here uploads them anywhere else.
+            </p>
           @endif
         </div>
       </div>

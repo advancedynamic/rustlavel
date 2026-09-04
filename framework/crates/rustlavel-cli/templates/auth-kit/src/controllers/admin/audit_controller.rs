@@ -9,7 +9,7 @@ use rustlavel::prelude::*;
 use rustlavel::audit::{Filter, Trail};
 
 use crate::models::user::User;
-use crate::support::{audit, page, pdf, stats, tokens};
+use crate::support::{audit, format, page, pdf, stats, tokens};
 
 use super::users_controller::with_current_user;
 
@@ -31,6 +31,7 @@ impl AuditController {
         let page_number = req.query("page").and_then(|p| p.parse::<i64>().ok()).unwrap_or(1);
 
         let listing = trail.page(&filter, page_number, PER_PAGE).await?;
+        let dates = format::Dates::of(&req).await;
 
         // The four counts along the top. Each is its own query rather than one
         // pass over the page, because they describe the whole trail and the
@@ -44,7 +45,7 @@ impl AuditController {
         ]);
 
         let last = match trail.latest_at().await? {
-            Some(at) => tokens::humanise(&at),
+            Some(at) => dates.moment(&at),
             None => "never".to_string(),
         };
 
@@ -54,8 +55,8 @@ impl AuditController {
             .map(|entry| {
                 Json::object([
                     ("id", Json::from(entry.id)),
-                    ("created_at", Json::from(audit::stamp(&entry.created_at))),
-                    ("ago", Json::from(tokens::humanise(&entry.created_at))),
+                    ("created_at", Json::from(dates.moment(&entry.created_at))),
+                    ("ago", Json::from(dates.ago(&entry.created_at, &tokens::now()))),
                     ("user_name", Json::from(entry.user_name.clone().unwrap_or_else(|| "System".into()))),
                     ("initial", Json::from(initial(entry.user_name.as_deref()))),
                     ("event", Json::from(entry.event.as_str())),
@@ -121,12 +122,13 @@ impl AuditController {
             _ => Vec::new(),
         };
 
+        let dates = format::Dates::of(&req).await;
         let mut context = page::shell(&req, "audit").await;
         context = with_current_user(context, &req, &db).await?;
         context = context
             .with("id", Json::from(entry.id))
-            .with("created_at", Json::from(audit::stamp(&entry.created_at)))
-            .with("ago", Json::from(tokens::humanise(&entry.created_at)))
+            .with("created_at", Json::from(dates.moment(&entry.created_at)))
+            .with("ago", Json::from(dates.ago(&entry.created_at, &tokens::now())))
             .with("user_name", Json::from(entry.user_name.clone().unwrap_or_else(|| "System".into())))
             .with("user_id", entry.user_id.map_or(Json::Null, Json::from))
             .with("event", Json::from(entry.event.as_str()))

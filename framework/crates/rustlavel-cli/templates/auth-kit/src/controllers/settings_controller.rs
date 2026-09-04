@@ -1,7 +1,7 @@
 use rustlavel::prelude::*;
 
 use crate::models::user::User;
-use crate::support::{page, passkeys, tokens};
+use crate::support::{format, page, passkeys};
 
 pub struct SettingsController;
 
@@ -13,6 +13,8 @@ impl SettingsController {
 
         let mut context = page::shell(&req, "security").await;
         context = page::with_user(context, &req, &user).await?;
+
+        let dates = format::Dates::of(&req).await;
 
         // Authenticator app: enrolled and confirmed, enrolled and not, or neither.
         let rows = db.table("user_totp").filter("user_id", user_id).get(&db).await?;
@@ -26,7 +28,7 @@ impl SettingsController {
                 Json::from(
                     confirmed
                         .and_then(|r| r.get::<String>("confirmed_at").ok())
-                        .map(|at| tokens::humanise(&at))
+                        .map(|at| dates.moment(&at))
                         .unwrap_or_default(),
                 ),
             )
@@ -51,7 +53,7 @@ impl SettingsController {
 
         // Passkeys.
         let store = passkeys::DbPasskeys::new(db.clone());
-        let keys = store.list_for(user_id).await?;
+        let keys = store.list_for(user_id, &dates).await?;
         context = context
             .with("passkeys_empty", Json::from(keys.is_empty()))
             .with("passkey_count", Json::from(keys.len() as i64))

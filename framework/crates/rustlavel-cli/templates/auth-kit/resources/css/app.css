@@ -36,34 +36,92 @@
  * forbids. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Inter, self-hosted.
+ *
+ * The face the pages are drawn in, served from this application rather than
+ * from a font CDN: a starter kit that reaches out to fonts.gstatic.com breaks
+ * behind a firewall, leaks a request per visitor to a third party, and needs
+ * the Content-Security-Policy this kit is written against opened up. The files
+ * are in `public/fonts/`, under the SIL Open Font License that sits beside
+ * them.
+ *
+ * One variable file per subset, and `unicode-range` is what makes that worth
+ * doing: a page with no accented characters never asks for the Latin Extended
+ * half. `swap` because text a person cannot read yet is worse than text in the
+ * wrong face for 100ms.
+ */
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @theme {
-  --color-ink-50:  oklch(0.985 0.002 265);
-  --color-ink-100: oklch(0.967 0.003 265);
-  --color-ink-200: oklch(0.925 0.005 265);
-  --color-ink-300: oklch(0.865 0.008 265);
-  --color-ink-400: oklch(0.700 0.012 265);
-  --color-ink-500: oklch(0.560 0.014 265);
-  --color-ink-600: oklch(0.442 0.014 265);
-  --color-ink-700: oklch(0.360 0.013 265);
-  --color-ink-800: oklch(0.267 0.012 265);
-  --color-ink-900: oklch(0.203 0.011 265);
-  --color-ink-950: oklch(0.145 0.010 265);
+  /* The neutrals are a blue-grey, not a pure grey.
+   *
+   * Taken from the operations dashboard this kit's look comes from: every
+   * surface, border and label there sits on a hue of about 250, which is what
+   * keeps a page of tables and forms from reading as photocopier grey. The
+   * numbering keeps its meaning — 200 and 300 are borders, 400 and 500 are
+   * quiet text, 700 is a label, 900 is body copy — so a template written
+   * against the old scale still says what it meant. */
+  --color-ink-50:  oklch(0.971 0.007 248);  /* page ground   #F2F6FA */
+  --color-ink-100: oklch(0.958 0.009 248);  /* raised ground #EDF2F7 */
+  --color-ink-200: oklch(0.934 0.013 251);  /* card border   #E3EAF2 */
+  --color-ink-300: oklch(0.909 0.017 251);  /* input border  #D9E2EC */
+  --color-ink-400: oklch(0.699 0.041 247);  /* placeholder   #8AA1B7 */
+  --color-ink-500: oklch(0.554 0.041 257);  /* muted text    #64748B */
+  --color-ink-600: oklch(0.495 0.059 248);  /*               #476582 */
+  --color-ink-700: oklch(0.414 0.055 248);  /* field label   #334E68 */
+  --color-ink-800: oklch(0.296 0.072 251);  /* sidebar navy  #0B2E4F */
+  --color-ink-900: oklch(0.248 0.065 251);  /* body copy            */
+  --color-ink-950: oklch(0.190 0.055 251);  /* dark ground          */
 
-  --color-brand-50:  oklch(0.970 0.014 254);
-  --color-brand-100: oklch(0.932 0.032 255);
-  --color-brand-200: oklch(0.882 0.059 254);
-  --color-brand-300: oklch(0.809 0.105 252);
-  --color-brand-400: oklch(0.707 0.165 254);
-  --color-brand-500: oklch(0.623 0.214 259);
-  --color-brand-600: oklch(0.546 0.245 262);
-  --color-brand-700: oklch(0.488 0.243 264);
-  --color-brand-800: oklch(0.424 0.199 265);
-  --color-brand-900: oklch(0.379 0.146 265);
+  /* The eleven brand steps for #0E5FA8.
+   *
+   * Not typed by hand: these are exactly what `support::palette` computes for
+   * that colour at runtime, so the stylesheet's default and whatever Settings
+   * → Appearance generates are the same ramp rather than two that drift. Change
+   * the default in `support::settings` and regenerate these from it. */
+  --color-brand-50:  oklch(0.970 0.009 252.0);
+  --color-brand-100: oklch(0.932 0.020 252.0);
+  --color-brand-200: oklch(0.882 0.038 252.0);
+  --color-brand-300: oklch(0.809 0.067 252.0);
+  --color-brand-400: oklch(0.707 0.106 252.0);
+  --color-brand-500: oklch(0.623 0.137 252.0);
+  --color-brand-600: oklch(0.546 0.157 252.0);
+  --color-brand-700: oklch(0.488 0.156 252.0);
+  --color-brand-800: oklch(0.424 0.127 252.0);
+  --color-brand-900: oklch(0.379 0.093 252.0);
+  --color-brand-950: oklch(0.282 0.070 252.0);
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-               "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* Inter where it is installed, and the platform's own face where it is not.
+   * No web font is downloaded: a starter kit that fetches from a font CDN
+   * either breaks behind a firewall or needs the Content-Security-Policy
+   * opened up, and neither is worth a slightly different `g`. */
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system,
+               "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
+  /* Denser than Tailwind's default, which is what a screen of tables wants:
+   * 13px body, 12px for the second line under it. */
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+
+  /* 10px on a control, 12px on a card — the two radii the design uses. */
+  --radius-lg: 0.625rem;
   --radius-card: 0.75rem;
 }
 
@@ -79,18 +137,48 @@
  * compose it, which is a confusing way to find out.
  */
 
+/* Tick boxes in the brand colour rather than the browser's grey square. One
+ * declaration, and it covers every checkbox and radio in the kit. */
+@layer base {
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--color-brand-700);
+    width: 0.9375rem;
+    height: 0.9375rem;
+  }
+}
+
 @utility field-label {
-  @apply block text-sm font-medium text-ink-700 dark:text-ink-300 mb-1.5;
+  @apply mb-1.5 block text-xs font-bold text-ink-700 dark:text-ink-300;
 }
 
 @utility field-input {
-  @apply block w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm
-         text-ink-900 shadow-xs transition
+  @apply block w-full rounded-lg border border-ink-300 bg-white px-3.5 py-2.5 text-sm
+         text-ink-900 transition
          placeholder:text-ink-400
          focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30
          disabled:cursor-not-allowed disabled:bg-ink-100
          dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100 dark:placeholder:text-ink-500
          dark:disabled:bg-ink-800;
+}
+
+/* The one field that sits in the header rather than in a form: tinted at rest
+ * so it reads as a control against the white bar, white once it has focus. */
+@utility search-input {
+  @apply bg-ink-50 dark:bg-ink-950/60;
+
+  &:focus {
+    @apply bg-white dark:bg-ink-900;
+  }
+}
+
+/* A field with a mark in it — the envelope beside an address, the padlock
+ * beside a password. The icon is positioned rather than laid out beside the
+ * box so the box keeps its own width, and it takes no pointer events so the
+ * whole field still focuses when a person clicks the icon. */
+@utility field-icon {
+  @apply pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2
+         text-ink-400 dark:text-ink-500;
 }
 
 @utility field-input-invalid {
@@ -106,25 +194,25 @@
 }
 
 @utility btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm
-         font-medium transition select-none
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm
+         font-semibold transition select-none
          focus:outline-none focus:ring-2 focus:ring-offset-2
          focus:ring-offset-white dark:focus:ring-offset-ink-950
          disabled:cursor-not-allowed disabled:opacity-60;
 }
 
 @utility btn-primary {
-  @apply btn bg-brand-600 text-white shadow-xs hover:bg-brand-700 focus:ring-brand-500;
+  @apply btn bg-brand-700 text-white hover:bg-brand-800 focus:ring-brand-600;
 }
 
 @utility btn-secondary {
-  @apply btn border border-ink-300 bg-white text-ink-700 shadow-xs
+  @apply btn border border-ink-200 bg-white text-ink-700
          hover:bg-ink-50 focus:ring-ink-400
          dark:border-ink-700 dark:bg-ink-900 dark:text-ink-200 dark:hover:bg-ink-800;
 }
 
 @utility btn-success {
-  @apply btn bg-emerald-600 text-white shadow-xs hover:bg-emerald-700 focus:ring-emerald-500;
+  @apply btn bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500;
 }
 
 @utility btn-danger {
@@ -140,21 +228,25 @@
   @apply px-2.5 py-1.5 text-xs;
 }
 
+/* Flat, not lifted. The design spends border on every card and shadow on
+ * nothing that sits in the page — a shadow there is reserved for something
+ * floating above it, which is how a dropdown reads as a dropdown. */
 @utility card {
-  @apply rounded-card border border-ink-200 bg-white shadow-xs
+  @apply rounded-card border border-ink-200 bg-white
          dark:border-ink-800 dark:bg-ink-900;
 }
 
 @utility card-header {
-  @apply border-b border-ink-200 px-5 py-4 dark:border-ink-800;
+  @apply border-b border-ink-200 px-4 py-3.5 dark:border-ink-800;
 }
 
 @utility card-body {
-  @apply px-5 py-5;
+  @apply px-4 py-3.5;
 }
 
 @utility badge {
-  @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset;
+  @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold
+         ring-1 ring-inset;
 }
 
 @utility badge-neutral {
@@ -185,8 +277,8 @@
   @apply w-full text-left text-sm;
 
   & th {
-    @apply whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide
-           text-ink-500 dark:text-ink-400;
+    @apply whitespace-nowrap px-4 py-3 text-[10px] font-bold uppercase tracking-[0.05em]
+           text-ink-400 dark:text-ink-500;
   }
 
   & td {
@@ -253,15 +345,95 @@
   @apply flex h-9 w-9 items-center justify-center rounded-lg;
 }
 
+/* The sidebar, and the two surfaces Settings → Appearance colours.
+ *
+ * **These four variables were written and never read.** `theme_controller`
+ * has always generated `--sidebar-bg`, `--sidebar-text`, `--sidebar-active-bg`
+ * and `--sidebar-active-text` into `/css/theme.css`, and no rule anywhere
+ * consumed one — so the eight colours on that tab wrote a file and changed
+ * nothing on the screen. Every fallback below is the value the settings
+ * catalogue declares, so the page looks right before the stylesheet has
+ * loaded and identical after it. */
+@utility app-sidebar {
+  background-color: var(--sidebar-bg, oklch(0.296 0.072 251));
+  color: var(--sidebar-text, oklch(0.760 0.045 250));
+}
+
 @utility nav-link {
-  @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium
-         text-ink-600 transition
-         hover:bg-ink-100 hover:text-ink-900
-         dark:text-ink-400 dark:hover:bg-ink-800 dark:hover:text-ink-100;
+  @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition;
+
+  color: var(--sidebar-text, oklch(0.760 0.045 250));
+
+  /* In the rail there is no label to sit beside, so the icon takes the middle
+     rather than staying where the text left it. */
+  :root[data-rail] & {
+    @apply justify-center px-0;
+  }
+
+  &:hover {
+    background-color: color-mix(in oklab, var(--sidebar-active-bg, oklch(0.360 0.080 251)) 55%, transparent);
+    color: var(--sidebar-active-text, #fff);
+  }
 }
 
 @utility nav-link-active {
-  @apply bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-400;
+  background-color: var(--sidebar-active-bg, oklch(0.360 0.080 251));
+  color: var(--sidebar-active-text, #fff);
+  font-weight: 600;
+}
+
+/* The heading above a group of sidebar entries. */
+/* The collapsed rail.
+ *
+ * `data-rail` on <html> rather than a class on the sidebar, so one attribute
+ * governs the rail's width and every label inside it — and the state survives
+ * a page load, because the script sets it before the first paint from what it
+ * remembers. */
+@utility nav-label {
+  :root[data-rail] & {
+    @apply hidden;
+  }
+}
+
+@utility nav-heading {
+  @apply mt-5 px-3 pb-1 text-[10px] font-bold uppercase tracking-[0.08em];
+
+  color: color-mix(in oklab, var(--sidebar-text, oklch(0.760 0.045 250)) 70%, transparent);
+
+  /* A group heading clipped to "ADMIN" is worse than no heading. In the rail
+     it becomes the rule the design draws between the two groups instead. */
+  :root[data-rail] & {
+    @apply mx-3 mt-3 h-px overflow-hidden p-0 text-transparent;
+
+    background-color: color-mix(in oklab, var(--sidebar-text, oklch(0.760 0.045 250)) 22%, transparent);
+  }
+}
+
+/* A hairline that reads on the sidebar's own ground rather than the page's. */
+/* Only above `lg`: below it the sidebar is a drawer, and a drawer that opens
+ * to a strip of icons is not a menu. */
+@utility rail-width {
+  @media (width >= 64rem) {
+    :root[data-rail] & {
+      width: calc(var(--spacing) * 16);
+    }
+  }
+}
+
+@utility sidebar-rule {
+  border-color: color-mix(in oklab, var(--sidebar-text, oklch(0.760 0.045 250)) 22%, transparent);
+}
+
+/* The panel beside a sign-in form.
+ *
+ * The other half of the same omission: `--login-from` and `--login-to` were
+ * generated for a gradient no rule drew. This is that gradient. */
+@utility auth-hero {
+  background-image: linear-gradient(
+    160deg,
+    var(--login-from, oklch(0.296 0.072 251)),
+    var(--login-to, oklch(0.424 0.127 252))
+  );
 }
 
 /* A person's initial in a small circle, for a table that lists who did what. */

@@ -70,6 +70,7 @@ impl BackupController {
             .and_then(|row| row.get::<String>("created_at").ok());
 
         let now = tokens::now();
+        let dates = format::Dates::of(req).await;
         let context = context
             .with("schedule", Json::from(schedule.as_str()))
             .with("schedule_on", Json::from(schedule::interval(&schedule).is_some()))
@@ -78,7 +79,7 @@ impl BackupController {
                 "next_due",
                 Json::from(
                     schedule::next_due(&schedule, last_scheduled.as_deref(), &now)
-                        .map(|at| tokens::humanise(&at))
+                        .map(|at| dates.moment(&at))
                         .unwrap_or_default(),
                 ),
             )
@@ -89,6 +90,7 @@ impl BackupController {
                 Json::from(schedule::interval(&schedule).is_some() && last_scheduled.is_none()),
             );
 
+        let dates = format::Dates::of(req).await;
         let search = req.query("q").unwrap_or_default().trim().to_string();
         let mut query = db.table("backups").latest("created_at");
         if !search.is_empty() {
@@ -112,7 +114,7 @@ impl BackupController {
                 ("size", Json::from(format::bytes(bytes))),
                 (
                     "when",
-                    Json::from(tokens::humanise(&row.get::<String>("created_at").unwrap_or_default())),
+                    Json::from(dates.moment(&row.get::<String>("created_at").unwrap_or_default())),
                 ),
                 ("status", Json::from(status.as_str())),
                 (
@@ -160,7 +162,12 @@ impl BackupController {
 
         let at = tokens::now();
         let name = backup::name_for(&at);
-        let destination = backup::path_for(&name)?;
+        let destination = backup::path_under(&Self::directory(&req).await, &name)?;
+        if let Some(parent) = destination.parent() {
+            rustlavel::tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                Error::msg(format!("cannot write backups to {}: {e}", parent.display()))
+            })?;
+        }
         let schema = backup::schema_version(&db).await?;
 
         if db.table("backups").filter("name", name.as_str()).exists(&db).await? {
@@ -248,7 +255,7 @@ impl BackupController {
 
     /// Send the file.
     ///
-    /// The path is rebuilt from the row's `name` with `backup::path_for`, and
+    /// The path is rebuilt from the row's `name` with `backup::existing`, and
     /// never taken from the row's `path` column. The two agree today, but only
     /// one of them is validated, and the day somebody writes to that column by
     /// hand — a fixture, a migration, a support script — is the day the
@@ -266,7 +273,7 @@ impl BackupController {
             return Ok(Response::see_other(BACK));
         }
 
-        let path = backup::path_for(&name)?;
+        let path = backup::existing(&Self::directory(&req).await, &name)?;
         let Ok(body) = rustlavel::tokio::fs::read(&path).await else {
             page::flash(&req, "error", format!("The file for {name} is no longer on disk."));
             return Ok(Response::see_other(BACK));
@@ -306,7 +313,7 @@ impl BackupController {
             return Ok(Response::see_other(BACK));
         }
 
-        let path = backup::path_for(&name)?;
+        let path = backup::existing(&Self::directory(&req).await, &name)?;
         let Ok(source) = rustlavel::tokio::fs::read_to_string(&path).await else {
             page::flash(&req, "error", format!("The file for {name} is no longer on disk."));
             return Ok(Response::see_other(BACK));
@@ -408,7 +415,7 @@ impl BackupController {
         // Same rule as the download: the path is derived from the validated
         // name, so the only file this can ever unlink is one inside
         // `storage/backups`.
-        let path = backup::path_for(&name)?;
+        let path = backup::existing(&Self::directory(&req).await, &name)?;
         let _ = rustlavel::tokio::fs::remove_file(&path).await;
         // The file first, then the row. A row without its file is a visible
         // "no longer on disk"; a file without its row is invisible and stays
@@ -426,6 +433,18 @@ impl BackupController {
     ///
     /// Every action goes through here, so the id is looked up exactly once and
     /// the name that comes back is one this application wrote.
+    /// The directory Settings → Backup names.
+    ///
+    /// Every path in this controller goes through here: the field was on that
+    /// tab and read by nothing, and wiring only the write half would have left
+    /// backups that could be made and not downloaded.
+    async fn directory(req: &Request) -> String {
+        match req.state::<crate::support::settings::Settings>() {
+            Some(settings) => settings.get("backup.path").await,
+            None => String::new(),
+        }
+    }
+
     async fn locate(db: &Database, req: &Request) -> Result<Option<(String, bool)>> {
         let id = req.param_as::<i64>("id").unwrap_or_default();
         let Some(row) = db.table("backups").filter("id", id).first(db).await? else {

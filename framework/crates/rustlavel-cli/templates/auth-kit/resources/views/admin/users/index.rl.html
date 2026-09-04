@@ -5,19 +5,17 @@
   {{-- The page's own header, rather than relying on the one in the bar: this
        page has a subtitle and a primary action, and both belong beside the
        title they describe. --}}
-  <div class="card mb-5">
-    <div class="card-body flex flex-wrap items-center justify-between gap-4">
-      <div>
-        <h2 class="text-2xl font-semibold tracking-tight">Users</h2>
-        <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">Manage user roles and permissions</p>
-      </div>
-      @if(can_create)
-        <a href="/admin/users/create" class="btn-primary">
-          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3a.75.75 0 0 1 .75.75v5.5h5.5a.75.75 0 0 1 0 1.5h-5.5v5.5a.75.75 0 0 1-1.5 0v-5.5h-5.5a.75.75 0 0 1 0-1.5h5.5v-5.5A.75.75 0 0 1 10 3Z"/></svg>
-          Create User
-        </a>
-      @endif
+  <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 class="text-xl font-extrabold tracking-tight">Users</h2>
+      <p class="mt-0.5 text-xs text-ink-500 dark:text-ink-400">Manage user roles and permissions</p>
     </div>
+    @if(can_create)
+      <a href="/admin/users/create" class="btn-primary">
+        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3a.75.75 0 0 1 .75.75v5.5h5.5a.75.75 0 0 1 0 1.5h-5.5v5.5a.75.75 0 0 1-1.5 0v-5.5h-5.5a.75.75 0 0 1 0-1.5h5.5v-5.5A.75.75 0 0 1 10 3Z"/></svg>
+        Create User
+      </a>
+    @endif
   </div>
 
   <div class="card mb-5">

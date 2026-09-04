@@ -59,16 +59,22 @@ const fn choice(
     Setting { key, kind: Kind::Choice, default, env: None, choices }
 }
 
-const DATE_FORMATS: &[(&str, &str)] = &[
+/// The date formats the General tab offers.
+///
+/// `pub(crate)` so `support::format` can prove it renders every one of them:
+/// the first version of that formatter matched on the *labels* in the right
+/// column and the catalogue stores the values in the left, so three of the
+/// four silently fell through to the fourth.
+pub(crate) const DATE_FORMATS: &[(&str, &str)] = &[
     ("d/m/Y", "DD/MM/YYYY"),
     ("m/d/Y", "MM/DD/YYYY"),
     ("Y-m-d", "YYYY-MM-DD"),
     ("d M Y", "DD Mon YYYY"),
 ];
 
-const TIME_FORMATS: &[(&str, &str)] = &[("24", "24 Hour"), ("12", "12 Hour")];
+pub(crate) const TIME_FORMATS: &[(&str, &str)] = &[("24", "24 Hour"), ("12", "12 Hour")];
 
-const TIMEZONES: &[(&str, &str)] = &[
+pub(crate) const TIMEZONES: &[(&str, &str)] = &[
     ("UTC", "UTC"),
     ("Asia/Jakarta", "Asia/Jakarta (WIB)"),
     ("Asia/Makassar", "Asia/Makassar (WITA)"),
@@ -122,16 +128,13 @@ const RETENTIONS: &[(&str, &str)] = &[
     ("30", "Keep the last 30"),
 ];
 
-/// Where a finished backup is written.
-///
-/// **Two entries, not the four a mock-up would show.** The design this came
-/// from offered Google Cloud Storage and SFTP as well; nothing in this
-/// framework implements either, and a dropdown that offers a destination
-/// backups do not reach is how somebody discovers at restore time that there
-/// are no backups. `s3` covers every S3-compatible store, which is what GCS
-/// and MinIO both speak.
-const DESTINATIONS: &[(&str, &str)] =
-    &[("local", "Local disk"), ("s3", "S3-compatible object store")];
+// `backup.destination` and `backup.bucket` used to live here, offering "local"
+// or an S3-compatible store. Nothing in this framework writes a backup anywhere
+// but the local disk, and the argument the comment made against the two
+// destinations a mock-up had offered applies just as well to the one that was
+// left: a dropdown that offers a destination backups do not reach is how
+// somebody discovers at restore time that there are no backups. The directory
+// is `backup.path`, which `backup_controller` now actually reads.
 
 /// How a number is written.
 const NUMBERS: &[(&str, &str)] = &[
@@ -142,8 +145,6 @@ const NUMBERS: &[(&str, &str)] = &[
 
 const CURRENCIES: &[(&str, &str)] =
     &[("Rp ", "Rp 1.234.567"), ("IDR ", "IDR 1.234.567"), ("$", "$1,234,567"), ("", "1.234.567")];
-
-const WEEK_START: &[(&str, &str)] = &[("1", "Monday"), ("0", "Sunday")];
 
 const ATTEMPTS: &[(&str, &str)] =
     &[("3", "3"), ("5", "5"), ("10", "10"), ("0", "No limit (not advised)")];
@@ -197,35 +198,42 @@ pub const CATALOGUE: &[Setting] = &[
     // --- Backup --------------------------------------------------------
     choice("backup.schedule", "disabled", SCHEDULES),
     choice("backup.retention", "0", RETENTIONS),
-    choice("backup.destination", "local", DESTINATIONS),
     env("backup.path", Kind::Text, "storage/backups", "BACKUP_PATH"),
-    env("backup.bucket", Kind::Text, "", "BACKUP_BUCKET"),
 
     // --- Language ------------------------------------------------------
+    // `app.locale` reaches the pages as the `lang` attribute on <html>. The
+    // fallback locale and the first day of the week were beside it and reached
+    // nothing: translation needs `rustlavel-i18n`, which this kit does not
+    // enable, and there is no calendar here to start on a Monday.
     choice("app.locale", "en", LOCALES),
-    s("app.locale.fallback", Kind::Text, "en"),
     choice("app.number_format", "id", NUMBERS),
     choice("app.currency", "Rp ", CURRENCIES),
-    choice("app.week_start", "1", WEEK_START),
 
     // --- Appearance ----------------------------------------------------
     // The one colour that reaches the whole application. Everything else on
     // this tab dresses a single surface; this one is the brand, and
     // `theme_controller` turns it into the eleven shades the pages are drawn
     // from — see `support::palette`.
-    s("theme.brand", Kind::Colour, "#2563eb"),
-    s("theme.login.light.from", Kind::Colour, "#3b82f6"),
-    s("theme.login.light.to", Kind::Colour, "#2563eb"),
-    s("theme.login.dark.from", Kind::Colour, "#1e3a5f"),
-    s("theme.login.dark.to", Kind::Colour, "#111827"),
-    s("theme.sidebar.light.bg", Kind::Colour, "#ffffff"),
-    s("theme.sidebar.light.text", Kind::Colour, "#374151"),
-    s("theme.sidebar.light.active_bg", Kind::Colour, "#eff6ff"),
-    s("theme.sidebar.light.active_text", Kind::Colour, "#2563eb"),
-    s("theme.sidebar.dark.bg", Kind::Colour, "#1f2937"),
-    s("theme.sidebar.dark.text", Kind::Colour, "#9ca3af"),
-    s("theme.sidebar.dark.active_bg", Kind::Colour, "#374151"),
-    s("theme.sidebar.dark.active_text", Kind::Colour, "#60a5fa"),
+    // The defaults are the operations dashboard this kit's look comes from.
+    // The sidebar is deliberately dark in *both* schemes: a navy rail beside a
+    // pale page is what separates the navigation from the work, and inverting
+    // it in light mode is what made the old sidebar disappear into the page.
+    s("theme.brand", Kind::Colour, "#0e5fa8"),
+    // The two login colours default to the same navy, because the panel they
+    // paint is flat in the design this comes from. They are still two colours:
+    // set them apart and the panel becomes the gradient they describe.
+    s("theme.login.light.from", Kind::Colour, "#0b2e4f"),
+    s("theme.login.light.to", Kind::Colour, "#0b2e4f"),
+    s("theme.login.dark.from", Kind::Colour, "#071d33"),
+    s("theme.login.dark.to", Kind::Colour, "#071d33"),
+    s("theme.sidebar.light.bg", Kind::Colour, "#0b2e4f"),
+    s("theme.sidebar.light.text", Kind::Colour, "#9dbad3"),
+    s("theme.sidebar.light.active_bg", Kind::Colour, "#14456f"),
+    s("theme.sidebar.light.active_text", Kind::Colour, "#ffffff"),
+    s("theme.sidebar.dark.bg", Kind::Colour, "#071d33"),
+    s("theme.sidebar.dark.text", Kind::Colour, "#7fa3c0"),
+    s("theme.sidebar.dark.active_bg", Kind::Colour, "#0e3e68"),
+    s("theme.sidebar.dark.active_text", Kind::Colour, "#ffffff"),
     s("theme.logo.light", Kind::Text, ""),
     s("theme.logo.dark", Kind::Text, ""),
 ];

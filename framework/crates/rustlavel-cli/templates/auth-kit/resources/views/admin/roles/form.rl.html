@@ -47,7 +47,7 @@
                                 hover:bg-ink-50 dark:border-ink-800 dark:hover:bg-ink-800/50">
                     <input type="checkbox" name="permissions[]" value="{{ permission.name }}"
                            @if(permission.assigned) checked @endif
-                           class="mt-0.5 h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800">
+                           class="mt-0.5 shrink-0">
                     <span class="min-w-0">
                       <code class="block text-sm font-medium">{{ permission.name }}</code>
                       @if(permission.description)<span class="block text-xs text-ink-500 dark:text-ink-400">{{ permission.description }}</span>@endif

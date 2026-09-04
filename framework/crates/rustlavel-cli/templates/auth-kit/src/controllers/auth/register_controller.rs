@@ -161,17 +161,15 @@ impl ActivationController {
         // Checked before the link is spent: a refusal here must not cost the
         // person the only link they have.
         let keep = crate::support::passwords::keep(&req).await;
-        if errors.is_empty() && keep > 0 {
-            if let Some(record) = crate::models::user_token::UserToken::first(
+        if errors.is_empty() && keep > 0
+            && let Some(record) = crate::models::user_token::UserToken::first(
                 &db,
                 crate::models::user_token::UserToken::usable(ACTIVATION, &token, &tokens::now()),
             )
             .await?
-            {
-                if crate::support::passwords::was_used_before(&db, record.user_id, &password, keep).await? {
-                    errors.add("password", crate::support::passwords::reuse_message(keep));
-                }
-            }
+            && crate::support::passwords::was_used_before(&db, record.user_id, &password, keep).await?
+        {
+            errors.add("password", crate::support::passwords::reuse_message(keep));
         }
 
         if !errors.is_empty() {
@@ -242,8 +240,19 @@ pub async fn verify_email(req: &Request) -> bool {
     }
 }
 
-pub fn min_length(req: &Request) -> i64 {
-    req.config().int("auth.password.min_length", 12).clamp(8, 128)
+/// The shortest password this request will accept.
+///
+/// **Settings first, and that is the whole point of it.** This used to read
+/// only `Config`, while `Policy::current` — the code that actually refuses a
+/// password — read the settings store. Raising the minimum on the Security tab
+/// therefore left every form still advertising the old number, and a person
+/// typing twelve characters into a field that asked for twelve was told no.
+pub async fn min_length(req: &Request) -> i64 {
+    match req.state::<crate::support::settings::Settings>() {
+        Some(settings) => settings.int("auth.password.min_length", 12).await,
+        None => req.config().int("auth.password.min_length", 12),
+    }
+    .clamp(8, 128)
 }
 
 /// The rules a new password has to pass, as Settings → Security has them.
@@ -281,13 +290,14 @@ impl Policy {
     /// What this request should enforce.
     pub async fn current(req: &Request) -> Policy {
         let Some(settings) = req.state::<crate::support::settings::Settings>() else {
-            return Policy::length_only(min_length(req));
+            return Policy::length_only(min_length(req).await);
         };
 
         Policy {
-            // Clamped, because a stored row is not a promise: a `2` here would
-            // make every rule below decoration.
-            minimum: settings.int("auth.password.min_length", 12).await.clamp(8, 128),
+            // Through `min_length`, not a second read of the same key: the
+            // number a form advertises and the number this refuses on has to
+            // be one number, and it was not.
+            minimum: min_length(req).await,
             uppercase: settings.bool("auth.password.uppercase").await,
             lowercase: settings.bool("auth.password.lowercase").await,
             number: settings.bool("auth.password.number").await,

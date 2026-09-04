@@ -38,10 +38,9 @@ pub async fn was_used_before(db: &Database, user_id: i64, password: &str, keep: 
     if let Some(current) = crate::models::user::User::find(db, user_id)
         .await?
         .and_then(|user| user.password_hash)
+        && rustlavel::auth::verify_password(password, &current)
     {
-        if rustlavel::auth::verify_password(password, &current) {
-            return Ok(true);
-        }
+        return Ok(true);
     }
 
     let history = PasswordHistory::get(db, PasswordHistory::for_user(user_id).limit(keep)).await?;

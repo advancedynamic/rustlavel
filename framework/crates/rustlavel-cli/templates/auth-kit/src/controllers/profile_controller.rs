@@ -2,7 +2,7 @@ use rustlavel::prelude::*;
 
 use crate::models::login_attempt::LoginAttempt;
 use crate::models::user::User;
-use crate::support::{page, tokens};
+use crate::support::{format, page, tokens};
 
 pub struct ProfileController;
 
@@ -26,6 +26,7 @@ impl ProfileController {
         };
         let _ = roles;
 
+        let dates = format::Dates::of(req).await;
         let history = LoginAttempt::get(db, LoginAttempt::for_user(user.id).limit(20)).await?;
         let mfa = crate::controllers::auth::mfa_controller::has_factor(db, user.id).await?;
 
@@ -33,15 +34,28 @@ impl ProfileController {
             .with("name", Json::from(user.name.as_str()))
             .with("email", Json::from(user.email.as_str()))
             .with("email_unverified", Json::from(user.email_verified_at.is_none()))
-            .with("created_at", Json::from("—"))
+            .with(
+                "created_at",
+                Json::from(
+                    user.created_at.as_deref().map(|at| dates.day_of(at)).unwrap_or_else(|| "—".into()),
+                ),
+            )
             .with("mfa_enabled", Json::from(mfa))
-            .with("min_length", Json::from(crate::controllers::auth::register_controller::min_length(req)))
+            .with(
+                "min_length",
+                Json::from(crate::controllers::auth::register_controller::min_length(req).await),
+            )
             .with("roles_empty", Json::from(role_names.is_empty()))
             .with("roles", Json::Array(role_names.iter().map(|r| Json::from(r.as_str())).collect()))
             .with(
                 "logins",
                 Json::Array(
-                    history.iter().map(crate::controllers::dashboard_controller::attempt_json).collect(),
+                    history
+                        .iter()
+                        .map(|attempt| {
+                            crate::controllers::dashboard_controller::attempt_json(attempt, &dates)
+                        })
+                        .collect(),
                 ),
             ))
     }

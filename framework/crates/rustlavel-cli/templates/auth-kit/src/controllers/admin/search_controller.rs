@@ -17,7 +17,7 @@ use rustlavel::audit::{Filter, Trail};
 
 use crate::models::menu_item::MenuItem;
 use crate::models::user::User;
-use crate::support::{audit, settings::CATALOGUE, tokens};
+use crate::support::{audit, format, settings::CATALOGUE};
 
 use super::users_controller::rbac;
 
@@ -144,6 +144,7 @@ impl SearchController {
             return Ok(Response::json(Json::object([("items", Json::Array(Vec::new()))])));
         }
 
+        let dates = format::Dates::of(&req).await;
         let entries = trail.all(&Filter::default(), 40).await?;
         let items: Vec<Json> = entries
             .iter()
@@ -153,7 +154,7 @@ impl SearchController {
                 Json::object([
                     ("id", Json::from(entry.id)),
                     ("text", Json::from(entry.summary())),
-                    ("when", Json::from(tokens::humanise(&audit::stamp(&entry.created_at)))),
+                    ("when", Json::from(dates.moment(&audit::stamp(&entry.created_at)))),
                     ("tint", Json::from(tint(&entry.event))),
                     ("href", Json::from(format!("/admin/audit/{}", entry.id))),
                 ])

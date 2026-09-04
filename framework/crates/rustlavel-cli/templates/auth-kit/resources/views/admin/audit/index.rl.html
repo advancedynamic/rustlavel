@@ -2,25 +2,23 @@
 @section("title", "Audit Logs")
 
 @section("content")
-  <div class="card mb-5">
-    <div class="card-body flex flex-wrap items-center justify-between gap-4">
-      <div>
-        <h2 class="text-2xl font-semibold tracking-tight">Audit Logs</h2>
-        <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">Track and monitor all system activities and changes</p>
-      </div>
-      {{-- The exports carry the filter bar with them. Exporting the whole
-           trail when somebody has narrowed it to one day is not what the
-           button appears to promise. --}}
-      <div class="flex items-center gap-2">
-        <a href="/admin/audit/export.csv?e=1{{ query }}" class="btn-success">
-          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 2.5a.75.75 0 0 1 .75.75v7.44l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V3.25A.75.75 0 0 1 10 2.5ZM3.5 14a.75.75 0 0 1 .75.75v1.5h11.5v-1.5a.75.75 0 0 1 1.5 0v2.25a.75.75 0 0 1-.75.75H3.5a.75.75 0 0 1-.75-.75v-2.25A.75.75 0 0 1 3.5 14Z"/></svg>
-          Export CSV
-        </a>
-        <a href="/admin/audit/export.pdf?e=1{{ query }}" class="btn-danger">
-          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4.5 3.5A1.5 1.5 0 0 1 6 2h4.6L15.5 6.9V16.5A1.5 1.5 0 0 1 14 18H6a1.5 1.5 0 0 1-1.5-1.5v-13ZM10.5 3.6V7h3.4l-3.4-3.4Z" clip-rule="evenodd"/></svg>
-          Export PDF
-        </a>
-      </div>
+  <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 class="text-xl font-extrabold tracking-tight">Audit Logs</h2>
+      <p class="mt-0.5 text-xs text-ink-500 dark:text-ink-400">Track and monitor all system activities and changes</p>
+    </div>
+    {{-- The exports carry the filter bar with them. Exporting the whole
+         trail when somebody has narrowed it to one day is not what the
+         button appears to promise. --}}
+    <div class="flex items-center gap-2">
+      <a href="/admin/audit/export.csv?e=1{{ query }}" class="btn-success">
+        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 2.5a.75.75 0 0 1 .75.75v7.44l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V3.25A.75.75 0 0 1 10 2.5ZM3.5 14a.75.75 0 0 1 .75.75v1.5h11.5v-1.5a.75.75 0 0 1 1.5 0v2.25a.75.75 0 0 1-.75.75H3.5a.75.75 0 0 1-.75-.75v-2.25A.75.75 0 0 1 3.5 14Z"/></svg>
+        Export CSV
+      </a>
+      <a href="/admin/audit/export.pdf?e=1{{ query }}" class="btn-danger">
+        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4.5 3.5A1.5 1.5 0 0 1 6 2h4.6L15.5 6.9V16.5A1.5 1.5 0 0 1 14 18H6a1.5 1.5 0 0 1-1.5-1.5v-13ZM10.5 3.6V7h3.4l-3.4-3.4Z" clip-rule="evenodd"/></svg>
+        Export PDF
+      </a>
     </div>
   </div>
 

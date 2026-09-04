@@ -2,79 +2,98 @@
      all: a menu full of links that answer 403 teaches people to ignore the
      menu. The controller decides each `can_*` flag. --}}
 <div class="flex h-full flex-col">
-  <a href="/dashboard" class="mb-6 flex items-center gap-2.5 px-2">
-    <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-base font-bold text-white">{{ app_initial }}</span>
-    <span class="truncate text-base font-semibold tracking-tight">{{ app_name }}</span>
+  {{-- 64px, so the mark lines up with the page title in the header beside it. --}}
+  <a href="/dashboard" class="flex h-16 shrink-0 items-center gap-3 border-b sidebar-rule px-4">
+    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-600 text-base font-bold text-white">{{ app_initial }}</span>
+    <span class="min-w-0 nav-label">
+      <span class="block truncate text-sm font-bold tracking-[0.1em] text-white">{{ app_name }}</span>
+      @if(app_description)
+        <span class="block truncate text-[10px] opacity-80">{{ app_description }}</span>
+      @endif
+    </span>
   </a>
 
-  <nav class="flex flex-1 flex-col gap-0.5" aria-label="Main">
+  <nav class="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2.5" aria-label="Main">
     <a href="/dashboard" class="nav-link @if(nav == "dashboard") nav-link-active @endif">
       <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M3 4.25A1.25 1.25 0 0 1 4.25 3h4.5A1.25 1.25 0 0 1 10 4.25v3.5A1.25 1.25 0 0 1 8.75 9h-4.5A1.25 1.25 0 0 1 3 7.75v-3.5ZM3 12.25A1.25 1.25 0 0 1 4.25 11h4.5A1.25 1.25 0 0 1 10 12.25v3.5A1.25 1.25 0 0 1 8.75 17h-4.5A1.25 1.25 0 0 1 3 15.75v-3.5ZM11.25 3A1.25 1.25 0 0 0 10 4.25v11.5A1.25 1.25 0 0 0 11.25 17h4.5A1.25 1.25 0 0 0 17 15.75V4.25A1.25 1.25 0 0 0 15.75 3h-4.5Z"/></svg>
-      Dashboard
+      <span class="nav-label">Dashboard</span>
     </a>
 
     @if(can_view_users || can_view_roles || can_view_permissions)
-      <p class="mt-5 px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Administration</p>
+      <p class="nav-heading">Administration</p>
     @endif
 
     @if(can_view_users)
       <a href="/admin/users" class="nav-link @if(nav == "users") nav-link-active @endif">
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.465 14.493a1.23 1.23 0 0 0 .41 1.412A9.96 9.96 0 0 0 10 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 0 0-13.074.003Z"/></svg>
-        Users
+        <span class="nav-label">Users</span>
       </a>
     @endif
 
     @if(can_view_roles)
       <a href="/admin/roles" class="nav-link @if(nav == "roles") nav-link-active @endif">
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 1 3 4v5.5c0 3.9 2.7 7.5 7 9.5 4.3-2 7-5.6 7-9.5V4l-7-3Zm0 2.2 5 2.1v4.2c0 3-2 5.8-5 7.4-3-1.6-5-4.4-5-7.4V5.3l5-2.1Z"/></svg>
-        Roles
+        <span class="nav-label">Roles</span>
       </a>
     @endif
 
     @if(can_manage_settings)
       <a href="/admin/settings" class="nav-link @if(nav == "settings") nav-link-active @endif">
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M8.34 1.8a1 1 0 0 1 .98-.8h1.36a1 1 0 0 1 .98.8l.3 1.48c.5.14.97.34 1.41.58l1.25-.84a1 1 0 0 1 1.27.13l.96.96a1 1 0 0 1 .13 1.26l-.84 1.25c.24.45.44.92.58 1.42l1.47.29a1 1 0 0 1 .81.98v1.36a1 1 0 0 1-.81.98l-1.47.3c-.14.49-.34.96-.58 1.41l.84 1.25a1 1 0 0 1-.13 1.26l-.96.96a1 1 0 0 1-1.27.13l-1.25-.84c-.44.24-.91.44-1.41.58l-.3 1.47a1 1 0 0 1-.98.81H9.32a1 1 0 0 1-.98-.81l-.3-1.47a7 7 0 0 1-1.41-.58l-1.25.84a1 1 0 0 1-1.26-.13l-.96-.96a1 1 0 0 1-.13-1.26l.84-1.25a7 7 0 0 1-.58-1.42l-1.48-.29A1 1 0 0 1 1 10.68V9.32a1 1 0 0 1 .81-.98l1.47-.3c.14-.49.34-.96.58-1.41l-.83-1.25a1 1 0 0 1 .13-1.26l.96-.96a1 1 0 0 1 1.26-.13l1.25.84c.45-.24.92-.44 1.42-.58l.29-1.48ZM13 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
-        Settings
+        <span class="nav-label">Settings</span>
       </a>
     @endif
 
     @if(can_view_permissions)
       <a href="/admin/permissions" class="nav-link @if(nav == "permissions") nav-link-active @endif">
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 1a4 4 0 0 0-4 4v2H5.5A1.5 1.5 0 0 0 4 8.5v8A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 14.5 7H14V5a4 4 0 0 0-4-4Zm2.5 6h-5V5a2.5 2.5 0 0 1 5 0v2Z"/></svg>
-        Permissions
+        <span class="nav-label">Permissions</span>
       </a>
     @endif
 
     @if(can_view_menus)
       <a href="/admin/menus" class="nav-link @if(nav == "menus") nav-link-active @endif">
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M3 5.25A.75.75 0 0 1 3.75 4.5h12.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 5.25Zm0 4.75a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 10Zm0 4.75a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H3.75a.75.75 0 0 1-.75-.75Z"/></svg>
-        Menus
+        <span class="nav-label">Menus</span>
       </a>
     @endif
 
     @if(can_view_audit)
       <a href="/admin/audit" class="nav-link @if(nav == "audit") nav-link-active @endif">
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4.5 3.5A1.5 1.5 0 0 1 6 2h4.6L15.5 6.9V16.5A1.5 1.5 0 0 1 14 18H6a1.5 1.5 0 0 1-1.5-1.5v-13Zm2.75 6a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5h-5.5Zm0 3a.75.75 0 0 0 0 1.5h3.5a.75.75 0 0 0 0-1.5h-3.5Z" clip-rule="evenodd"/></svg>
-        Audit Logs
+        <span class="nav-label">Audit Logs</span>
       </a>
     @endif
 
-    <p class="mt-5 px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-ink-400 dark:text-ink-500">Account</p>
+    <p class="nav-heading">Account</p>
     <a href="/profile" class="nav-link @if(nav == "profile") nav-link-active @endif">
       <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 1 1 14 0H3Z"/></svg>
-      Profile
+      <span class="nav-label">Profile</span>
     </a>
     <a href="/settings/security" class="nav-link @if(nav == "security") nav-link-active @endif">
       <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M8.34 1.804A1 1 0 0 1 9.32 1h1.36a1 1 0 0 1 .98.804l.295 1.473c.497.144.97.34 1.416.58l1.25-.834a1 1 0 0 1 1.262.125l.962.962a1 1 0 0 1 .125 1.262l-.834 1.25c.24.446.436.919.58 1.416l1.473.294a1 1 0 0 1 .804.98v1.361a1 1 0 0 1-.804.98l-1.473.295a6.95 6.95 0 0 1-.58 1.416l.834 1.25a1 1 0 0 1-.125 1.262l-.962.962a1 1 0 0 1-1.262.125l-1.25-.834c-.446.24-.919.436-1.416.58l-.294 1.473a1 1 0 0 1-.98.804H9.32a1 1 0 0 1-.98-.804l-.295-1.473a6.95 6.95 0 0 1-1.416-.58l-1.25.834a1 1 0 0 1-1.262-.125l-.962-.962a1 1 0 0 1-.125-1.262l.834-1.25a6.95 6.95 0 0 1-.58-1.416l-1.473-.294A1 1 0 0 1 1 10.68V9.32a1 1 0 0 1 .804-.98l1.473-.295c.144-.497.34-.97.58-1.416l-.834-1.25a1 1 0 0 1 .125-1.262l.962-.962A1 1 0 0 1 5.372 3.03l1.25.834c.446-.24.919-.436 1.416-.58l.294-1.473ZM13 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
-      Security
+      <span class="nav-label">Security</span>
     </a>
   </nav>
 
-  <form method="post" action="/logout" class="mt-4 border-t border-ink-200 pt-3 dark:border-ink-800">
-    {!! csrf_field !!}
-    <button type="submit" class="nav-link w-full text-left hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-500/10 dark:hover:text-red-400">
+  {{-- Who is signed in, then the way out — the foot of the rail, as the design
+       has it, rather than a link lost among the sections above. --}}
+  <div class="shrink-0 border-t sidebar-rule px-3 py-3">
+    @if(user_name)
+      <div class="mb-1 flex items-center gap-3 px-3 py-1">
+        <span class="avatar-sm">{{ user_initials }}</span>
+        <span class="min-w-0 nav-label">
+          <span class="block truncate text-xs font-semibold text-white">{{ user_name }}</span>
+          <span class="block truncate text-[10px] opacity-75">{{ user_email }}</span>
+        </span>
+      </div>
+    @endif
+    <form method="post" action="/logout">
+      {!! csrf_field !!}
+      <button type="submit" class="nav-link w-full text-left">
       <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M3 4.25A2.25 2.25 0 0 1 5.25 2h5.5A2.25 2.25 0 0 1 13 4.25v2a.75.75 0 0 1-1.5 0v-2a.75.75 0 0 0-.75-.75h-5.5a.75.75 0 0 0-.75.75v11.5c0 .414.336.75.75.75h5.5a.75.75 0 0 0 .75-.75v-2a.75.75 0 0 1 1.5 0v2A2.25 2.25 0 0 1 10.75 18h-5.5A2.25 2.25 0 0 1 3 15.75V4.25Z"/><path d="M6 10a.75.75 0 0 1 .75-.75h7.44l-1.72-1.72a.75.75 0 1 1 1.06-1.06l3 3a.75.75 0 0 1 0 1.06l-3 3a.75.75 0 1 1-1.06-1.06l1.72-1.72H6.75A.75.75 0 0 1 6 10Z"/></svg>
-      Sign out
-    </button>
-  </form>
+        <span class="nav-label">Sign out</span>
+      </button>
+    </form>
+  </div>
 </div>

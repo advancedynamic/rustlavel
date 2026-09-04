@@ -20,16 +20,6 @@
         <p class="field-hint">Used for anybody who has not chosen one of their own.</p>
       </div>
 
-      <div>
-        <label for="app_locale_fallback" class="field-label">Fallback Language</label>
-        <input id="app_locale_fallback" name="app.locale.fallback" type="text"
-               value="{{ s.app_locale_fallback.value }}" class="field-input" maxlength="8">
-        <p class="field-hint">
-          Used when a phrase has no translation in the chosen language. A missing
-          phrase falls back rather than rendering its key, which is what a person
-          would otherwise see on the page.
-        </p>
-      </div>
     </div>
 
     {{-- Number, currency and week start. These are read by
@@ -56,14 +46,6 @@
         </select>
       </div>
 
-      <div>
-        <label for="app_week_start" class="field-label">First Day of Week</label>
-        <select id="app_week_start" name="app.week_start" class="field-input">
-          @foreach(s.app_week_start.choices as choice)
-            <option value="{{ choice.value }}" @if(choice.selected) selected @endif>{{ choice.label }}</option>
-          @endforeach
-        </select>
-      </div>
     </div>
 
     <div class="card border-ink-200 bg-ink-50 dark:bg-ink-800/40">

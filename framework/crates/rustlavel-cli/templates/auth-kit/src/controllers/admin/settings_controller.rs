@@ -127,15 +127,15 @@ impl AdminSettingsController {
         // The keys, not the values. A settings tab holds a mail password, and
         // an audit trail that records what it was changed to is a place the
         // password now lives in the clear.
-        if written > 0 {
-            if let Some(audit) = crate::support::audit::of(&req, "settings.updated") {
-                audit
-                    .describe(format!("Updated the {} settings", label.to_lowercase()))
-                    .with("tab", Json::from(slug.as_str()))
-                    .with("changed", Json::from(written as i64))
-                    .record()
-                    .await;
-            }
+        if written > 0
+            && let Some(audit) = crate::support::audit::of(&req, "settings.updated")
+        {
+            audit
+                .describe(format!("Updated the {} settings", label.to_lowercase()))
+                .with("tab", Json::from(slug.as_str()))
+                .with("changed", Json::from(written as i64))
+                .record()
+                .await;
         }
         page::flash(&req, "success", format!("{label} settings saved ({written} changed)."));
         Ok(Response::see_other(format!("/admin/settings/{slug}")))

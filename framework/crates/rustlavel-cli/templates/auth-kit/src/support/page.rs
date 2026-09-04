@@ -13,11 +13,25 @@ use crate::models::user::User;
 /// `nav` is the sidebar entry to mark current. Pass `""` for a page with no
 /// entry of its own.
 pub async fn shell(req: &Request, nav: &str) -> ViewContext {
-    let config = req.config();
-    let name = config.string("app.name", "Rustlavel");
+    // Settings → General, not the configuration file. `Settings::get` prefers
+    // the environment variable when one is set and falls back to the declared
+    // default, so a deployment that pins `APP_NAME` still wins; reading config
+    // directly was how a name typed on that tab reached the database and
+    // nothing else. The description and the locale sit on the same tabs and
+    // had no reader at all.
+    let (name, description, locale) = match req.state::<crate::support::settings::Settings>() {
+        Some(settings) => (
+            settings.get("app.name").await,
+            settings.get("app.description").await,
+            settings.get("app.locale").await,
+        ),
+        None => (req.config().string("app.name", "Rustlavel"), String::new(), "en".into()),
+    };
 
     let mut context = ViewContext::new()
         .with("app_name", Json::from(name.as_str()))
+        .with("app_description", Json::from(description.as_str()))
+        .with("app_locale", Json::from(if locale.is_empty() { "en" } else { locale.as_str() }))
         .with("app_initial", Json::from(name.chars().next().unwrap_or('R').to_string()))
         .with("nav", Json::from(nav))
         .with("csrf_field", Json::from(rustlavel::auth::csrf::field(req)));

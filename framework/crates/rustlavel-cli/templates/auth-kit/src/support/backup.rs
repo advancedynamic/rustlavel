@@ -416,16 +416,53 @@ pub fn valid_name(name: &str) -> bool {
 /// checked to be a direct child of the directory. The second check is what
 /// survives somebody loosening the first.
 pub fn path_for(name: &str) -> Result<PathBuf> {
+    path_under(DIRECTORY, name)
+}
+
+/// Where a backup called `name` actually is.
+///
+/// Settings → Backup can be pointed somewhere else at any time, and the
+/// backups written before that are still on disk where they were. The row does
+/// not record the directory — it holds the name — so a reader looks in the
+/// configured directory and then in the built-in one, which is what keeps a
+/// backup downloadable and restorable after somebody changes the field.
+pub fn existing(directory: &str, name: &str) -> Result<PathBuf> {
+    let configured = path_under(directory, name)?;
+    if configured.exists() {
+        return Ok(configured);
+    }
+    let built_in = path_for(name)?;
+    if built_in.exists() {
+        return Ok(built_in);
+    }
+    // Neither: hand back the configured one so the error a caller raises names
+    // the place a person would look first.
+    Ok(configured)
+}
+
+/// The same, in a directory Settings → Backup chose.
+///
+/// `backup.path` was on that tab and read by nothing: every backup went to the
+/// built-in directory whatever the field said. The traversal check is the same
+/// one — a name still cannot climb out of whichever directory it is given.
+pub fn path_under(directory: &str, name: &str) -> Result<PathBuf> {
+    let directory = match directory.trim() {
+        "" => DIRECTORY,
+        given => given,
+    };
     if !valid_name(name) {
         return Err(Error::msg(format!(
             "`{name}` is not a backup name. A name is letters, digits, hyphens and underscores, \
-             which is what stops one from pointing at a file outside {DIRECTORY}."
+             which is what stops one from pointing at a file outside {directory}."
         )));
     }
-    let directory = Path::new(DIRECTORY);
+    let directory = Path::new(directory);
     let path = directory.join(format!("{name}.ndjson"));
     if path.parent() != Some(directory) {
-        return Err(Error::msg(format!("`{name}` does not resolve inside {DIRECTORY}")));
+        return Err(Error::msg(format!(
+            "`{name}` does not resolve inside {}",
+            directory.display()
+        )));
     }
     Ok(path)
 }

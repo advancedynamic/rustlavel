@@ -2,14 +2,12 @@
 @section("title", "Audit entry")
 
 @section("content")
-  <div class="card mb-5">
-    <div class="card-body flex flex-wrap items-center justify-between gap-4">
-      <div>
-        <h2 class="text-2xl font-semibold tracking-tight">Entry #{{ id }}</h2>
-        <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">{{ description }}</p>
-      </div>
-      <a href="/admin/audit" class="btn-ghost">Back to the trail</a>
+  <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 class="text-xl font-extrabold tracking-tight">Entry #{{ id }}</h2>
+      <p class="mt-0.5 text-xs text-ink-500 dark:text-ink-400">{{ description }}</p>
     </div>
+    <a href="/admin/audit" class="btn-ghost">Back to the trail</a>
   </div>
 
   <div class="card">

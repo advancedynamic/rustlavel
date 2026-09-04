@@ -4,7 +4,7 @@
 
 @section("subheading")
   @if(registration_open)
-    <p class="mt-2 text-center text-sm text-ink-500 dark:text-ink-400">
+    <p class="mt-2 text-sm text-ink-500 dark:text-ink-400">
       or <a href="/register" class="font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400">create an account</a>
     </p>
   @endif
@@ -27,10 +27,13 @@
 
     <div>
       <label for="email" class="field-label">Email</label>
-      <input id="email" name="email" type="email" value="{{ old_email }}" required
-             autocomplete="username" autofocus inputmode="email"
-             class="field-input @if(error_email) field-input-invalid @endif"
-             @if(error_email) aria-invalid="true" aria-describedby="email-error" @endif>
+      <div class="relative">
+        <svg class="field-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M3 6.25A2.25 2.25 0 0 1 5.25 4h9.5A2.25 2.25 0 0 1 17 6.25v.36l-7 3.89-7-3.89v-.36Z"/><path d="M3 8.33v5.42A2.25 2.25 0 0 0 5.25 16h9.5A2.25 2.25 0 0 0 17 13.75V8.33l-6.64 3.69a.75.75 0 0 1-.72 0L3 8.33Z"/></svg>
+        <input id="email" name="email" type="email" value="{{ old_email }}" required
+               autocomplete="username" autofocus inputmode="email"
+               class="field-input pl-9 @if(error_email) field-input-invalid @endif"
+               @if(error_email) aria-invalid="true" aria-describedby="email-error" @endif>
+      </div>
       @if(error_email)<p id="email-error" class="field-error">{{ error_email }}</p>@endif
     </div>
 
@@ -42,8 +45,9 @@
     <div class="grid grid-cols-[1fr_auto] items-baseline gap-x-3">
       <label for="password" class="field-label order-1 mb-1.5">Password</label>
       <div class="relative order-3 col-span-2">
+        <svg class="field-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 1a4 4 0 0 0-4 4v2h-.5A1.5 1.5 0 0 0 4 8.5v8A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 14.5 7H14V5a4 4 0 0 0-4-4Zm2.5 6h-5V5a2.5 2.5 0 0 1 5 0v2Z" clip-rule="evenodd"/></svg>
         <input id="password" name="password" type="password" required autocomplete="current-password"
-               class="field-input pr-11 @if(error_password) field-input-invalid @endif"
+               class="field-input pl-9 pr-11 @if(error_password) field-input-invalid @endif"
                @if(error_password) aria-invalid="true" aria-describedby="password-error" @endif>
         <button type="button" data-toggle-password="password"
                 class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-ink-400 hover:text-ink-600 dark:hover:text-ink-200"
@@ -60,7 +64,7 @@
          announces this control as "1". --}}
     <div class="flex items-center gap-2.5">
       <input id="remember" type="checkbox" name="remember" value="1"
-             class="h-4 w-4 rounded border-ink-300 text-brand-600 focus:ring-brand-500 dark:border-ink-600 dark:bg-ink-800">
+             class="shrink-0">
       <label for="remember" class="text-sm text-ink-700 dark:text-ink-300">Keep me signed in</label>
     </div>
 
@@ -68,8 +72,17 @@
   </form>
 
   @if(magic_link)
-    <div class="mt-6 border-t border-ink-200 pt-5 text-center dark:border-ink-800">
-      <a href="/magic-link" class="text-sm font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400">Email me a sign-in link instead</a>
+    {{-- A second way in deserves a second button, not a line of small print
+         under the first one. The rule either side of the word is what says
+         these are alternatives rather than steps. --}}
+    <div class="mt-5 flex items-center gap-3">
+      <span class="h-px flex-1 bg-ink-200 dark:bg-ink-800"></span>
+      <span class="text-xs font-semibold text-ink-400 dark:text-ink-500">or</span>
+      <span class="h-px flex-1 bg-ink-200 dark:bg-ink-800"></span>
     </div>
+    <a href="/magic-link" class="btn-secondary mt-4 w-full">
+      <svg class="h-4 w-4 text-brand-700 dark:text-brand-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M13.3 2.2a.75.75 0 0 1 1.06 0l3.44 3.44a.75.75 0 0 1 0 1.06l-2.1 2.1-4.5-4.5 2.1-2.1ZM10.14 5.36l4.5 4.5-8.2 8.2a.75.75 0 0 1-.34.2l-4 1.1a.75.75 0 0 1-.92-.93l1.1-4a.75.75 0 0 1 .2-.33l7.66-8.74Z"/></svg>
+      Email me a sign-in link
+    </a>
   @endif
 @endsection

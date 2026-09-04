@@ -1,31 +1,60 @@
 {{-- The shell for pages a signed-out visitor sees: one centred card, no nav. --}}
 <!doctype html>
-<html lang="en" class="{{ theme_class }} h-full">
+<html lang="{{ app_locale }}" class="{{ theme_class }} h-full">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+@if(app_description)
+<meta name="description" content="{{ app_description }}">
+@endif
 <meta name="color-scheme" content="light dark">
 <title>@yield("title", "Sign in") &middot; {{ app_name }}</title>
 <link rel="stylesheet" href="/css/app.css">
 <link rel="stylesheet" href="/css/theme.css">
 </head>
 <body class="h-full bg-ink-50 font-sans text-ink-900 antialiased dark:bg-ink-950 dark:text-ink-100">
-  <div class="flex min-h-full flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
-    <div class="sm:mx-auto sm:w-full sm:max-w-md">
-      <a href="/" class="flex items-center justify-center gap-2.5">
-        <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-base font-bold text-white">{{ app_initial }}</span>
-        <span class="text-lg font-semibold tracking-tight">{{ app_name }}</span>
-      </a>
-      <h1 class="mt-6 text-center text-2xl font-semibold tracking-tight">@yield("heading", "Sign in")</h1>
-      @yield("subheading")
+  <div class="flex min-h-full">
+    {{-- The panel. Its gradient is Settings → Appearance's login colours, which
+         until now were generated into `/css/theme.css` and drawn by nothing.
+         Below `lg` it is dropped rather than stacked: a decorative half-screen
+         above a form is something a person on a phone scrolls past. --}}
+    <div class="auth-hero hidden shrink-0 basis-[46%] flex-col justify-between gap-10 p-12
+                lg:flex lg:max-w-[560px]">
+      <div class="flex items-center gap-3">
+        <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 text-lg font-bold text-white">{{ app_initial }}</span>
+        <span class="min-w-0">
+          <span class="block truncate text-[15px] font-extrabold tracking-[0.12em] text-white">{{ app_name }}</span>
+          @if(app_description)
+            <span class="block truncate text-[11px] text-white/70">{{ app_description }}</span>
+          @endif
+        </span>
+      </div>
+
+      <div>
+        <p class="max-w-md text-[34px] font-extrabold leading-tight tracking-tight text-white">@yield("hero", "One place for the people who use this, and what they may do in it.")</p>
+        <p class="mt-4 max-w-md text-sm leading-relaxed text-white/70">Accounts, roles and permissions, with every sign-in and every change written to an audit trail you can read.</p>
+      </div>
+
+      <p class="text-[11px] text-white/60">Sign-in attempts are recorded.</p>
     </div>
 
-    <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-      <div class="card px-6 py-8 sm:px-8">
-        @include("partials.flash")
-        @yield("content")
+    {{-- The form. --}}
+    <div class="flex min-w-0 flex-1 items-center justify-center overflow-y-auto px-5 py-10">
+      <div class="w-full max-w-[420px] min-w-0">
+        <a href="/" class="mb-8 flex items-center gap-2.5 lg:hidden">
+          <span class="flex h-9 w-9 items-center justify-center rounded-[10px] bg-brand-600 text-base font-bold text-white">{{ app_initial }}</span>
+          <span class="truncate text-base font-semibold tracking-tight">{{ app_name }}</span>
+        </a>
+
+        <h1 class="text-2xl font-extrabold tracking-tight">@yield("heading", "Sign in")</h1>
+        @yield("subheading")
+
+        <div class="mt-6">
+          @include("partials.flash")
+          @yield("content")
+        </div>
+        @yield("below")
       </div>
-      @yield("below")
     </div>
   </div>
   <script src="/js/app.js" defer></script>

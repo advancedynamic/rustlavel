@@ -5,7 +5,7 @@ use rustlavel::rbac::Permissions;
 
 use crate::models::user::User;
 use crate::support::stats;
-use crate::support::{page, tokens};
+use crate::support::{format, page, tokens};
 
 const PER_PAGE: i64 = 20;
 
@@ -17,6 +17,7 @@ impl UsersController {
         let store = rbac(&req)?;
         let me = req.identity().and_then(|id| id.id_as::<i64>()).unwrap_or_default();
 
+        let dates = format::Dates::of(&req).await;
         let search = req.query("q").unwrap_or_default().trim().to_string();
         let role_filter = req.query("role").unwrap_or_default().to_string();
         let page_number = req.query("page").and_then(|p| p.parse::<i64>().ok()).unwrap_or(1).max(1);
@@ -61,7 +62,10 @@ impl UsersController {
                 fields.insert(
                     "last_login_at".into(),
                     Json::from(
-                        user.last_login_at.as_deref().map(tokens::humanise).unwrap_or_else(|| "Never".into()),
+                        user.last_login_at
+                            .as_deref()
+                            .map(|at| dates.moment(at))
+                            .unwrap_or_else(|| "Never".into()),
                     ),
                 );
                 fields.insert("roles_empty".into(), Json::from(roles.is_empty()));
@@ -81,7 +85,7 @@ impl UsersController {
                     Json::from(
                         user.created_at
                             .as_deref()
-                            .map(tokens::humanise_date)
+                            .map(|at| dates.day_of(at))
                             .unwrap_or_else(|| "—".into()),
                     ),
                 );
