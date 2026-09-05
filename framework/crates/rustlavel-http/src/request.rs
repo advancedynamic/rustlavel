@@ -101,9 +101,33 @@ impl Request {
         self.context.config()
     }
 
-    /// A service registered on the application: `req.state::<Database>()`.
+    /// A service for this request: `req.state::<Database>()`.
+    ///
+    /// **This request's own copy first, then the application's.** Middleware
+    /// can put a `T` on the request with [`extend`](Request::extend), and every
+    /// handler that asks for a `T` from then on gets that one instead of the
+    /// application-wide one. Nothing else changes: a request that was given
+    /// nothing gets what `main.rs` registered, which is every request in an
+    /// application that has no such middleware.
+    ///
+    /// The case this exists for is one connection per tenant. An application
+    /// serving a holding company and its subsidiaries resolves the tenant from
+    /// the host or the signed-in user, opens or reuses that tenant's
+    /// `Database`, and calls `req.extend(db)`. Every controller underneath goes
+    /// on saying `req.state::<Database>()` and is talking to the right database
+    /// without knowing that tenants exist. The alternative — threading a
+    /// `tenant::db(&req).await?` through every handler — is the same program
+    /// written five hundred more times, and it only takes one missed call site
+    /// to read another company's data.
+    ///
+    /// **This is a lookup order, not discovery.** The rule against runtime
+    /// magic is about things that happen with no line you can find: reflection,
+    /// auto-registration, a scan of a directory. The middleware that overrides
+    /// a service is an ordinary explicit line in `main.rs`, and the rule here
+    /// is one sentence long. What it must not become is a way for a value to
+    /// appear from nowhere.
     pub fn state<T: Send + Sync + 'static>(&self) -> Option<&T> {
-        self.context.state::<T>()
+        self.extension::<T>().or_else(|| self.context.state::<T>())
     }
 
     pub fn peer_addr(&self) -> Option<SocketAddr> {
@@ -386,6 +410,79 @@ impl std::fmt::Debug for Request {
 
 #[cfg(test)]
 mod tests {
+    use crate::middleware::Next;
+    use crate::response::Response;
+    use crate::router::Router;
+    use crate::testing::TestClient;
+    use crate::BoxFuture;
+    use rustlavel_core::Context;
+
+    /// The whole of database-per-tenant multi-tenancy, from a controller's
+    /// point of view: it asks for the same service and gets this request's one.
+    #[tokio::test]
+    async fn a_service_put_on_the_request_is_what_a_handler_gets() {
+        #[derive(Debug, PartialEq)]
+        struct Db(&'static str);
+
+        let mut router = Router::new();
+        // Stands in for the tenancy middleware: resolve the tenant, open or
+        // reuse its connection, put it on the request.
+        router.middleware(|mut request: Request, next: Next| {
+            Box::pin(async move {
+                if request.header("x-tenant").is_some() {
+                    request.extend(Db("tenant"));
+                }
+                next.run(request).await
+            }) as BoxFuture<Response>
+        });
+        // The handler is written as if tenants did not exist.
+        router.get("/", |req: Request| async move {
+            req.state::<Db>().map(|db| db.0).unwrap_or("none").to_string()
+        });
+
+        let client = TestClient::new(router)
+            .with_context(Context::builder().state(Db("application")).build());
+
+        assert_eq!(client.get("/").await.body(), "application");
+        assert_eq!(
+            client
+                .send(Request::new(Method::Get, "/").with_header("x-tenant", "acme"))
+                .await
+                .body(),
+            "tenant"
+        );
+    }
+
+    /// And the override lasts exactly one request — the next one sees the
+    /// application's service again. A tenant connection leaking into the next
+    /// visitor's request would be the worst possible failure of this feature.
+    #[tokio::test]
+    async fn an_override_does_not_outlive_its_request() {
+        struct Db(&'static str);
+
+        let mut router = Router::new();
+        router.middleware(|mut request: Request, next: Next| {
+            Box::pin(async move {
+                if request.target().starts_with("/tenant") {
+                    request.extend(Db("tenant"));
+                }
+                next.run(request).await
+            }) as BoxFuture<Response>
+        });
+        router.get("/tenant", |req: Request| async move {
+            req.state::<Db>().map(|db| db.0).unwrap_or("none").to_string()
+        });
+        router.get("/plain", |req: Request| async move {
+            req.state::<Db>().map(|db| db.0).unwrap_or("none").to_string()
+        });
+
+        let client = TestClient::new(router)
+            .with_context(Context::builder().state(Db("application")).build());
+
+        assert_eq!(client.get("/tenant").await.body(), "tenant");
+        assert_eq!(client.get("/plain").await.body(), "application");
+        assert_eq!(client.get("/tenant").await.body(), "tenant");
+    }
     #[test]
     fn inputs_collects_every_value_under_one_name() {
         let mut request = Request::new(Method::Post, "/roles?scope=a&scope=b")

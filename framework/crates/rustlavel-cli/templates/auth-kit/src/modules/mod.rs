@@ -59,6 +59,44 @@ pub fn migrations() -> Vec<&'static dyn rustlavel::db::Migration> {
     all().iter().flat_map(|module| module.migrations()).collect()
 }
 
+/// The migrations belonging to the named modules, and no others.
+///
+/// For an application where each tenant enables a different subset: one
+/// company runs accounting and finance and no HR, a subsidiary runs only
+/// sales. Provisioning that tenant means creating its database and running
+/// *these* migrations into it — a tenant that never enabled HR must not be
+/// given HR's tables.
+///
+/// ```no_run
+/// # use rustlavel::db::{Database, Migrator};
+/// # // Named rather than `crate::`: a doctest is its own crate, linking this
+/// # // one by name, and the placeholder becomes that name when the project is
+/// # // scaffolded.
+/// # async fn provision(tenant: &Database, enabled: &[&str]) -> rustlavel::Result<()> {
+/// let migrator = Migrator::new(tenant, {{crate_name}}::modules::migrations_for(enabled));
+/// migrator.prepare().await?;
+/// migrator.run().await?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// A name that matches no module contributes nothing rather than failing: the
+/// list usually comes from a database column, and one stale row should not stop
+/// a tenant being provisioned. Check the names against `all()` where they are
+/// *set*, which is where somebody can still do something about a typo.
+pub fn migrations_for(names: &[&str]) -> Vec<&'static dyn rustlavel::db::Migration> {
+    all()
+        .iter()
+        .filter(|module| names.contains(&module.name()))
+        .flat_map(|module| module.migrations())
+        .collect()
+}
+
+/// Every module's name, for a screen that offers them.
+pub fn names() -> Vec<&'static str> {
+    all().iter().map(|module| module.name()).collect()
+}
+
 /// Every seeder the modules own.
 pub fn seeders() -> Vec<&'static dyn rustlavel::db::Seeder> {
     all().iter().flat_map(|module| module.seeders()).collect()

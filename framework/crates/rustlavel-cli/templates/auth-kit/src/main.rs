@@ -1,5 +1,6 @@
 use rustlavel::prelude::*;
 use {{crate_name}}::support::settings::Settings;
+use {{crate_name}}::support;
 use {{crate_name}}::support::views;
 use {{crate_name}}::modules;
 use {{crate_name}}::{database, routes};
@@ -73,6 +74,9 @@ async fn main() -> Result<()> {
     app
         // Order matters: the session has to exist before anything reads a
         // login out of it, and the CSRF check reads the session.
+        // Outermost, so it reaches every response — including the error pages
+        // and the static files, which are the ones nobody remembers.
+        .middleware(support::headers::SecurityHeaders)
         .middleware(sessions)
         .middleware(Csrf::new())
         .routes(routes::auth::routes)

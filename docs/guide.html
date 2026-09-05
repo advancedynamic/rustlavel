@@ -552,6 +552,28 @@ merge.</p>
 argument cannot express the lifetime it needs, so the guard is what the language actually
 allows.</p>
 
+<h2 id="per-request-services">One service, different per request</h2>
+
+<p><code>req.state::&lt;Database&gt;()</code> reads the request&rsquo;s own copy first and falls back
+to the application&rsquo;s. Middleware can put one there:</p>
+
+<pre><code>router.middleware(|mut request: Request, next: Next| Box::pin(async move {
+    let tenant = resolve_tenant(&amp;request).await?;
+    request.extend(pool_for(tenant).await?);   // this request&rsquo;s Database
+    next.run(request).await
+}));</code></pre>
+
+<p>Every handler underneath goes on writing <code>req.state::&lt;Database&gt;()</code> and is
+talking to the right database without knowing that tenants exist. That is the whole of
+database-per-tenant multi-tenancy from a controller&rsquo;s point of view; the alternative is
+threading a lookup through every handler, where one missed call site reads another
+company&rsquo;s data.</p>
+
+<p>The override lasts exactly one request &mdash; there is a test for that, because a tenant
+connection leaking into the next visitor&rsquo;s request is the worst thing this could do. A
+request that was given nothing gets what <code>main.rs</code> registered, which is every
+request in an application that has no such middleware.</p>
+
 <h2>When the port is taken</h2>
 
 <p><code>Address already in use</code> is the most common way starting an application fails,

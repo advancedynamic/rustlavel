@@ -55,6 +55,66 @@ fn port_attempts(config: &rustlavel_core::Config) -> u16 {
     config.int("server.port_attempts", default).clamp(1, 1000) as u16
 }
 
+/// Refuse a message whose end has more than one answer.
+///
+/// These checks are the difference between a proxy and this server agreeing
+/// about where one request stops and the next begins. When they disagree, the
+/// bytes left in the connection buffer are read as the start of the next
+/// request — so an attacker writes a prefix onto a pooled connection and
+/// captures or rewrites whatever victim's request arrives after it. The session
+/// and CSRF work above this is no defence: the request that reaches the router
+/// was never the one the visitor sent.
+///
+/// RFC 7230 §3.3.3 says refuse, and refusing is cheap.
+fn check_framing(headers: &Headers) -> Result<()> {
+        //
+    // These checks are the difference between a proxy and this server
+    // agreeing about where one request stops and the next begins. When they
+    // disagree, the bytes left in the connection buffer are read as the
+    // start of the next request — so an attacker writes a prefix onto a
+    // pooled connection and captures or rewrites whatever victim's request
+    // arrives after it. The session and CSRF work above this is no defence:
+    // the request that reaches the router was never the one the visitor
+    // sent.
+    //
+    // RFC 7230 §3.3.3 says refuse, and refusing is cheap.
+    let lengths = headers.get_all("content-length");
+    if lengths.len() > 1 && lengths.iter().any(|value| value != &lengths[0]) {
+        return Err(Error::Protocol(
+            "more than one Content-Length, and they disagree".into(),
+        ));
+    }
+    if !lengths.is_empty() && headers.get("transfer-encoding").is_some() {
+        return Err(Error::Protocol(
+            "both Transfer-Encoding and Content-Length: a message may say where it ends \
+             once, not twice"
+                .into(),
+        ));
+    }
+    // Only `chunked`, and only as the last encoding, tells us where the
+    // body ends. Anything else — a second `Transfer-Encoding` line, an
+    // encoding this server does not implement — leaves the length unknown,
+    // and guessing is what a smuggled request relies on.
+    let encodings = headers.get_all("transfer-encoding");
+    if !encodings.is_empty() {
+        let listed: Vec<&str> = encodings
+            .iter()
+            .flat_map(|value| value.split(','))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .collect();
+        if listed.last() != Some(&"chunked")
+            || listed.iter().filter(|value| **value == "chunked").count() != 1
+        {
+            return Err(Error::Protocol(format!(
+                "unsupported Transfer-Encoding: {}",
+                listed.join(", ")
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Bind `addr`, walking up the port number while the one asked for is taken.
 ///
 /// A port left occupied by a process that has not finished dying is the most
@@ -330,8 +390,21 @@ impl Server {
             let (name, value) = line
                 .split_once(':')
                 .ok_or_else(|| Error::Protocol(format!("malformed header line: {line}")))?;
+
+            // `Content-Length : 5` is not a header with the name
+            // `Content-Length`. RFC 7230 §3.2.4 requires it be rejected, and
+            // the reason is this file's problem specifically: a front-end that
+            // trims where we trim, or does not, disagrees with us about the
+            // body's length — which is the whole of request smuggling.
+            if name.ends_with(' ') || name.ends_with('\t') {
+                return Err(Error::Protocol(
+                    "a header name may not be followed by whitespace before the colon".into(),
+                ));
+            }
             headers.append(name.trim(), value.trim());
         }
+
+        check_framing(&headers)?;
 
         // An absolute-form target (`GET http://host/path`) is legal for proxies.
         let target = match target.find("://") {
@@ -365,7 +438,10 @@ impl Server {
         reader: &mut tokio::net::tcp::OwnedReadHalf,
         buffer: &mut Vec<u8>,
     ) -> Result<Vec<u8>> {
-        if headers.get("transfer-encoding").is_some_and(|te| te.contains("chunked")) {
+        // Exact, not `contains`: `xchunked` is not chunked, and the parse
+        // above has already refused anything whose last encoding is not
+        // `chunked`.
+        if headers.get("transfer-encoding").is_some() {
             return self.read_chunked_body(reader, buffer).await;
         }
 
@@ -473,6 +549,76 @@ fn find_crlf(buffer: &[u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+
+
+    /// Parse just the headers of a raw message and run the framing checks over
+    /// them, which is what `parse` does before it reads a body.
+    fn framing_of(raw: &str) -> Result<()> {
+        let mut headers = Headers::new();
+        for line in raw.split("\r\n").skip(1) {
+            if line.is_empty() {
+                break;
+            }
+            let (name, value) = line.split_once(':').expect("a header line");
+            if name.ends_with(' ') || name.ends_with('\t') {
+                return Err(Error::Protocol("whitespace before the colon".into()));
+            }
+            headers.append(name.trim(), value.trim());
+        }
+        check_framing(&headers)
+    }
+
+    /// Request smuggling, in the four shapes this server used to accept.
+    ///
+    /// Each one is a message whose end has two answers. A front-end that picks
+    /// the other answer leaves bytes in this connection's buffer, and the
+    /// keep-alive loop reads them as the next request — so an attacker prefixes
+    /// a request onto a pooled connection and captures or rewrites whatever
+    /// arrives next. None of the session or CSRF work above this helps: the
+    /// request the router sees was never the one the visitor sent.
+    #[test]
+    fn a_message_that_says_where_it_ends_twice_is_refused() {
+        let ambiguous = [
+            (
+                "two lengths that disagree",
+                "POST / HTTP/1.1\r\nhost: x\r\ncontent-length: 6\r\ncontent-length: 0\r\n\r\nsmuggl",
+            ),
+            (
+                "a length and a chunked encoding",
+                "POST / HTTP/1.1\r\nhost: x\r\ncontent-length: 6\r\ntransfer-encoding: chunked\r\n\r\n0\r\n\r\n",
+            ),
+            (
+                "an encoding that is not chunked last",
+                "POST / HTTP/1.1\r\nhost: x\r\ntransfer-encoding: chunked, identity\r\n\r\n0\r\n\r\n",
+            ),
+            (
+                "whitespace before the colon",
+                "POST / HTTP/1.1\r\nhost: x\r\ncontent-length : 6\r\n\r\nsmuggl",
+            ),
+        ];
+
+        for (what, raw) in ambiguous {
+            assert!(
+                framing_of(raw).is_err(),
+                "{what}: accepted a message with two answers for where its body ends"
+            );
+        }
+    }
+
+    /// And the ordinary shapes still parse, or the fix would be a denial of
+    /// service dressed as a security patch.
+    #[test]
+    fn an_unambiguous_message_still_parses() {
+        for raw in [
+            "GET / HTTP/1.1\r\nhost: x\r\n\r\n",
+            "POST / HTTP/1.1\r\nhost: x\r\ncontent-length: 3\r\n\r\nabc",
+            "POST / HTTP/1.1\r\nhost: x\r\ntransfer-encoding: chunked\r\n\r\n0\r\n\r\n",
+            // Repeated but agreeing is legal, and some proxies do it.
+            "POST / HTTP/1.1\r\nhost: x\r\ncontent-length: 3\r\ncontent-length: 3\r\n\r\nabc",
+        ] {
+            assert!(framing_of(raw).is_ok(), "refused an ordinary message: {raw:?}");
+        }
+    }
 
     /// Production must not wander. This is the check that the default is not
     /// quietly the same everywhere — the dangerous outcome is silent.

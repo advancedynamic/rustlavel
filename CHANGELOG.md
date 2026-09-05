@@ -7,6 +7,68 @@ workspace shares one number.
 
 ### Security
 
+- **Request smuggling.** Duplicate `Content-Length` was accepted and the first
+  won; `Content-Length` and `Transfer-Encoding` together were accepted and the
+  length quietly ignored; `Transfer-Encoding` was matched by substring, so
+  `xchunked` passed and `identity, chunked` did not; and `Content-Length : 5`
+  parsed as a header. The connection buffer lives for the whole connection and
+  the body reader drains exactly its length, so whatever a front-end thought was
+  the body and this server did not is read as the start of the next request.
+  Behind any proxy that resolves the ambiguity differently, an attacker prefixes
+  a request onto a pooled connection and captures or rewrites the next victim's
+  — and none of the session or CSRF work above helps, because the request the
+  router sees was never the one the visitor sent. All four shapes are refused
+  now, per RFC 7230 §3.3.3, and a second test holds that ordinary messages still
+  parse: a security fix that refuses real traffic is a denial of service wearing
+  a patch's clothes.
+
+- **The CSRF token survived signing in**, so session fixation was only half
+  defended. `regenerate` rotated the id and left the data, and `token()` returns
+  the value already there — so an attacker who plants a session cookie knows the
+  token the *authenticated* session then answers to, and can drive
+  state-changing requests from a page of his own for its lifetime. Rotating the
+  id stopped him riding the session and not much else. The token goes with the
+  id now, as Laravel's `Store::regenerate` has always done.
+
+- **Nothing throttled the second factor.** The password form checks the address
+  lockout in three places; the two-factor and recovery forms checked it in none.
+  Somebody who already holds a password had an unlimited-rate oracle against six
+  digits — three of which are accepted at any moment, because of the step window
+  either side — and a second factor guessed in minutes is not a second factor.
+  Worse for the recovery form, where a miss runs one argon2 verification per
+  stored code, so an unthrottled attempt is also half a second of this server's
+  CPU that anybody can spend.
+
+  Both forms check it now, and — this is the half the audit did not name —
+  `refuse` counts the failure. Adding the check alone would have read a counter
+  nothing ever incremented: a throttle that reads like a throttle and never
+  fires. A test holds both halves for every form that checks a secret.
+
+- **`javascript:` in a menu link, and the Content-Security-Policy that was never
+  sent.** The menu URL was free text rendered straight into an `href`, so a
+  holder of `menus.manage` could plant a link every signed-in person — super
+  administrators included — sees in the sidebar and runs on click. It has to be
+  a path inside the application now, `//host` refused with the rest, which is
+  the rule the dashboard field always had and this one never did.
+
+  The other half is worth saying plainly: **five places in the kit explain that
+  they avoid an inline `<style>` or an `onclick` because the pages are served
+  under a policy with no `unsafe-inline`, and no policy was ever set.** The
+  discipline was real and held — no `style=` attributes, no `on*` handlers, no
+  inline script, no external origin — and it bought nothing, because a browser
+  enforces the policy it is given. It is given one now, and that discipline is
+  exactly what makes turning it on safe: this is a policy the pages already
+  satisfy. `nosniff`, a referrer policy and `X-Frame-Options` come with it.
+
+- **Response splitting.** Header values were never checked for CR or LF, on
+  insertion or on the way out. A newline ends the header and two end the head,
+  so a value an attacker reaches becomes headers of their choosing and then a
+  body of theirs — a `Set-Cookie` that fixes a session, or a second response a
+  cache in front will serve to somebody else. The shape it arrives in is
+  ordinary: a redirect built from a form field where `%0d%0a` survived being
+  decoded. Control characters are stripped from names and values now; a tab,
+  which is legal, survives.
+
 - **Every secret fell back to a clock-seeded mixer when `/dev/urandom` could not
   be opened.** It was the only entropy source in the framework, and the fallback
   — a xorshift seeded from the nanosecond clock and a heap address — sat behind
@@ -74,6 +136,70 @@ workspace shares one number.
   against LDAP and PAM.
 
 ### Added
+
+- **Named database connections and a budget across them**, for
+  database-per-tenant applications. `rustlavel::Connections` holds a connection
+  per name — central and tenant coexisting, where `state::<Database>()` keyed by
+  type could only ever hold one — and `get_or_open` is the call a tenancy
+  middleware makes per request, reusing the pool the last request opened.
+
+  The budget is the part that is easy to leave out, and the first design of it
+  was wrong in a way worth recording. A shared semaphore across pools is the
+  obvious answer and it fixes nothing: a permit is released the moment a
+  connection is handed back, while the socket stays open in the idle queue. The
+  semaphore counts connections *in use*; the server counts sockets *open*.
+  Fifty resting pools hold five hundred sockets while every semaphore reads
+  zero, and PostgreSQL ships with `max_connections = 100`.
+
+  So the registry asks each pool `open_count()` — idle plus borrowed — and calls
+  `close_idle()`, least recently used first, before opening more. Never a
+  borrowed one: that connection is in the middle of somebody's query, and taking
+  it away turns a capacity problem into a failed request. When everything is
+  borrowed there is nothing to free and the pools' own semaphores make callers
+  wait, which is the right answer to "genuinely busy". The default budget is 80
+  against a default server allowance of 100, because a client that claims the
+  whole allowance leaves nothing for psql, a backup, or the next deploy.
+
+  Worth knowing for anybody who hits this wall: the refusal comes from the
+  server, and it does not land on the tenant that caused it. The busy tenant
+  reuses connections it already holds; the one refused is whichever happened to
+  need a *new* one, very likely a quiet subsidiary. The company that suffers is
+  not the company responsible, and the error points at the database rather than
+  the code.
+
+- **Migrations against any database, from application code** — which turned out
+  to already be true. `Migrator::new(&db, migrations)` takes any database and
+  any list and is public and re-exported; it was looked for in `App::migrations`
+  and the CLI, where it is not. An API nobody can find is an API nobody has, so
+  it now carries a worked example of provisioning a tenant. In the kit,
+  `modules::migrations_for(&["sales", "accounting"])` answers "only the modules
+  this tenant enabled", with `modules::names()` for a screen that offers them.
+
+- **A service can be overridden for one request**, which is what makes
+  database-per-tenant multi-tenancy a middleware rather than a rewrite.
+  `Request::state<T>` reads the request's own extensions first and falls back to
+  the application's, so a tenancy middleware resolves the tenant, opens or
+  reuses its `Database` and calls `req.extend(db)` — and every controller
+  underneath goes on saying `req.state::<Database>()`, talking to the right
+  database without knowing tenants exist.
+
+  Asked for by an application porting a Laravel ERP: a holding company and its
+  subsidiaries with a database each, and about 550 controllers once the port is
+  done. Threading `tenant::db(&req)` through every handler is the same program
+  written five hundred more times, and one missed call site reads another
+  company's data.
+
+  It is a lookup order, not discovery — the rule against runtime magic is about
+  values appearing with no line you can find, and the middleware that overrides
+  a service is an ordinary explicit line in `main.rs`. A request given nothing
+  gets what `main.rs` registered, which is every request in an application with
+  no such middleware. A test holds the property that matters most: an override
+  does not outlive its request, because a tenant connection leaking into the
+  next visitor's would be the worst failure this could have.
+
+  The rest of the tenancy work — a named connection registry, migrations
+  runnable against an arbitrary database from application code, and a cap across
+  tenant connections — is planned in `ROADMAP.md` rather than guessed at here.
 
 - **`@route("name")` in templates, and a home that is a route name.** The kit
   declared thirty named routes and hard-coded fifty-four paths in its templates:

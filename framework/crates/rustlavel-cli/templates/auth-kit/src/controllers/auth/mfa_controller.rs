@@ -10,7 +10,7 @@ use rustlavel::auth::totp::{RecoveryCodes, Totp, consume_recovery_code, step_of}
 
 use crate::models::user::User;
 use crate::models::login_attempt::LoginAttempt;
-use crate::support::{page, passkeys, tokens};
+use crate::support::{lockout, page, passkeys, tokens};
 
 use super::login_controller::{LoginController, PENDING_KEY};
 
@@ -70,7 +70,29 @@ impl MfaController {
     pub async fn verify(mut req: Request) -> Result<Response> {
         let Some(user_id) = pending(&req) else { return Ok(Response::see_other("/login")) };
         let db = req.state::<Database>().expect("the database is registered in main.rs").clone();
+
+        // Before the codes are read, not after: a miss runs one argon2
+        // verification per stored code, so an unthrottled attempt costs this
+        // server real work as well as offering a guess.
+        if lockout::address_is_blocked(&req).await {
+            return Self::refuse(req, &db, user_id, "Too many attempts. Wait a few minutes and try again.").await;
+        }
+
         let code = req.input("code").unwrap_or_default();
+
+        // Throttled like the password form, and for a sharper reason. A second
+        // factor is six digits with a one-step window either side, so three
+        // codes are accepted at any moment — one in about three hundred
+        // thousand. Unlimited guessing turns that into minutes of work for
+        // somebody who already holds the password, which is exactly who is
+        // standing here.
+        //
+        // The recovery form needs it more, not less: a miss there runs one
+        // argon2 verification per stored hash, so an unthrottled attempt is
+        // also half a second of CPU anybody can spend on this server.
+        if lockout::address_is_blocked(&req).await {
+            return Self::refuse(req, &db, user_id, "Too many attempts. Wait a few minutes and try again.").await;
+        }
 
         let Some((totp, row_id, last_step)) = confirmed_totp(&req, &db, user_id).await? else {
             return Ok(Response::see_other("/login"));
@@ -152,6 +174,11 @@ impl MfaController {
     async fn refuse(req: Request, db: &Database, user_id: i64, message: &str) -> Result<Response> {
         let email = User::find(db, user_id).await?.map(|u| u.email).unwrap_or_default();
         LoginAttempt::record(db, &email, Some(user_id), false, Some("mfa_failed"), &req).await?;
+        // Counted, not just written down. The audit row is a record; this is
+        // what makes the next attempt harder. Without it the check added above
+        // would read a counter nothing ever increments — a throttle that reads
+        // like a throttle and never fires.
+        lockout::record_address_failure(&req).await;
 
         let has_totp = confirmed_totp(&req, db, user_id).await?.is_some();
         let has_passkey = passkeys::DbPasskeys::new(db.clone()).count_for(user_id).await? > 0;

@@ -1370,6 +1370,36 @@ mod tests {
         }
     }
 
+
+    /// Every form that checks a secret must be throttled.
+    ///
+    /// The password form was; the second-factor and recovery forms were not,
+    /// which left somebody who already held a password an unlimited-rate
+    /// oracle against six digits — three of which are accepted at any moment,
+    /// because of the step window either side. A second factor guessed in
+    /// minutes is not a second factor.
+    ///
+    /// Checked rather than remembered, because the throttle is three lines in
+    /// a file nobody opens once it works.
+    #[test]
+    fn every_form_that_checks_a_secret_is_throttled() {
+        for path in [
+            "src/controllers/auth/login_controller.rs",
+            "src/controllers/auth/mfa_controller.rs",
+        ] {
+            let source = crate::auth_kit::file(path);
+            assert!(
+                source.contains("address_is_blocked"),
+                "{path} checks a secret and never asks whether this address has been guessing"
+            );
+            assert!(
+                source.contains("record_address_failure"),
+                "{path} refuses a wrong secret without counting it, so the check above it reads \
+                 a counter nothing increments"
+            );
+        }
+    }
+
     /// A generated file must not still hold a `{{placeholder}}`.
     ///
     /// 0.7.0 shipped a seeder containing the literal text `{{crate_name}}`,

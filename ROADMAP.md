@@ -369,6 +369,89 @@ What testing against real servers caught, and fixtures did not:
 - [ ] Livewire-style server-driven components
 
 
+## Phase 1.5 — Multi-tenancy (planned)
+
+Asked for by an application porting a Laravel ERP: a holding company and its
+subsidiaries, **a database each**, a central `tenants` table saying which
+database a person resolves to, and a different subset of modules enabled per
+tenant. Eight modules still to port, 519 controllers. The shape of the answer
+here decides the shape of about 550 controllers, which is why it is written down
+before it is built.
+
+- [x] **A service can be overridden for one request.** `Request::state<T>` reads
+      the request's own extensions first and falls back to the application's.
+      Tenancy is then a middleware: resolve the tenant, open or reuse its
+      `Database`, `req.extend(db)` — and every controller underneath goes on
+      saying `req.state::<Database>()`, talking to the right database without
+      knowing tenants exist.
+
+      This was four lines, and it is the difference between tenancy being a
+      middleware and tenancy being a rewrite. Threading `tenant::db(&req)`
+      through every handler is the same program written five hundred more times,
+      and one missed call site reads another company's data.
+
+      It is a lookup order, not discovery: the rule against runtime magic is
+      about values that appear with no line you can find, and the middleware
+      that overrides a service is an ordinary explicit line in `main.rs`. A test
+      holds the property that matters most — an override does not outlive its
+      request, because a tenant connection leaking into the next visitor's
+      request is the worst failure this feature could have.
+
+- [x] **A named connection registry**, `rustlavel::Connections` — central and
+      tenant connections coexist by name, where `state::<Database>()` keyed by
+      type could only ever hold one. `get_or_open` is the call a tenancy
+      middleware makes per request: the second request for a tenant reuses the
+      first request's pool, because opening a connection per request would add a
+      round trip to every page and exhaust the server besides.
+
+- [x] **Migrations runnable against an arbitrary `Database`, from application
+      code** — which turned out to be true already. `Migrator::new(&db,
+      migrations)` takes any database and any list, and is public and
+      re-exported; it was found by reading `App::migrations` and the CLI, where
+      it is not. An API nobody can find is an API nobody has, so it now carries
+      a worked example of provisioning a tenant. The original ask, for
+      reference: Provisioning a tenant means "create a database, then run this
+      subset of migrations into it" from an admin screen — at runtime, not from
+      the CLI. `App::migrations(...)` is boot-time wiring and `rustlavel
+      migrate` targets `DATABASE_URL`; neither can do this. Wanted:
+      `Migrator::run(&db, &[&dyn Migration])` and `Migrator::status(&db)`, with
+      the list supplied by the caller rather than fixed at boot.
+
+      The subset matters: a tenant that enabled sales and not HR must not get
+      HR's tables. `modules::migrations_for(&["sales", "accounting"])` answers
+      that in the kit, alongside `modules::names()` for a screen that offers
+      them. A name matching no module contributes nothing rather than failing —
+      the list usually comes from a database column, and one stale row should
+      not stop a tenant being provisioned.
+
+- [x] **A cap across tenant connections**, on the registry, because that is the
+      only level where the count can exist — a pool does not know the other
+      forty-nine are there.
+
+      One correction worth recording, because the first design would have looked
+      right and fixed nothing. A shared semaphore across pools was the obvious
+      answer and it is the wrong one: a permit is released the moment a
+      connection is handed back, while the socket stays open in the idle queue.
+      The semaphore counts connections *in use*; the server counts sockets
+      *open*. Fifty resting pools hold five hundred sockets while every
+      semaphore reads zero.
+
+      So the registry asks each pool `open_count()` — idle plus borrowed — and
+      calls `close_idle()`, least recently used first, before opening more.
+      Never a borrowed connection: that one is in the middle of somebody's
+      query, and taking it away turns a capacity problem into a failed request.
+      When everything is borrowed there is nothing to free, and the pools' own
+      semaphores make callers wait, which is the right answer to "genuinely
+      busy". The budget defaults to 80 against PostgreSQL's default 100,
+      because a client that claims its server's whole allowance leaves nothing
+      for psql, a backup, or the next deploy.
+
+**One decision deliberately not taken yet.** Whether the framework should own
+tenant *resolution* — host, subdomain, a column on the user — or only the
+plumbing above. Resolution is where applications differ most, and a framework
+that guesses wrong there is one every application works around. The plumbing is
+what they all need.
+
 ## Known gaps, stated plainly
 
 - **JSON serialisation is behind serde, and the writer is not the reason.** The

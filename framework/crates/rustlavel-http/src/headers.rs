@@ -10,6 +10,28 @@ pub struct Headers {
     entries: BTreeMap<String, Vec<String>>,
 }
 
+/// Take the line terminators out of a header name or value.
+///
+/// A carriage return or newline in a header value ends the header — and, if
+/// there are two, the whole head. So a value an attacker reaches turns into
+/// headers of their choosing and then a body of their choosing: a `Set-Cookie`
+/// that fixes a session, or a second response the cache in front will serve to
+/// somebody else. Response splitting, and the shape it usually arrives in is
+/// ordinary: `Response::see_other(req.input("next")...)`, where `next` came
+/// from a form and `%0d%0a` survived being decoded.
+///
+/// Removed rather than refused, because `set` has no way to report a refusal
+/// and an API change here would reach every call site in the framework. A
+/// header value with a newline in it is a bug or an attack in every case, so
+/// there is nothing worth preserving in the part that is dropped.
+///
+/// The other C0 controls go too: they have no meaning in a header, and a NUL
+/// is read differently by different proxies, which is the same class of
+/// disagreement that makes request smuggling work.
+fn sanitise(text: &str) -> String {
+    text.chars().filter(|c| *c == '\t' || !c.is_control()).collect()
+}
+
 impl Headers {
     pub fn new() -> Self {
         Self::default()
@@ -17,13 +39,16 @@ impl Headers {
 
     /// Replace any existing values for this name.
     pub fn set(&mut self, name: &str, value: impl Into<String>) {
-        self.entries.insert(name.to_ascii_lowercase(), vec![value.into()]);
+        self.entries.insert(sanitise(name).to_ascii_lowercase(), vec![sanitise(&value.into())]);
     }
 
     /// Add a value, keeping the ones already present. Used for `Set-Cookie`,
     /// which is the one header that legitimately repeats.
     pub fn append(&mut self, name: &str, value: impl Into<String>) {
-        self.entries.entry(name.to_ascii_lowercase()).or_default().push(value.into());
+        self.entries
+            .entry(sanitise(name).to_ascii_lowercase())
+            .or_default()
+            .push(sanitise(&value.into()));
     }
 
     pub fn get(&self, name: &str) -> Option<&str> {
@@ -67,6 +92,41 @@ impl Headers {
 
 #[cfg(test)]
 mod tests {
+
+    /// Response splitting: a newline in a header value ends the header, and two
+    /// end the whole head — so a value an attacker reaches becomes headers of
+    /// their choosing and then a body of their choosing. The shape it arrives
+    /// in is ordinary: a redirect built from a form field where `%0d%0a`
+    /// survived being decoded.
+    #[test]
+    fn a_newline_cannot_be_smuggled_into_a_header() {
+        let mut headers = Headers::new();
+        headers.set("location", "/next\r\nset-cookie: session=attacker\r\n\r\n<html>");
+
+        let value = headers.get("location").expect("the header is still set");
+        assert!(!value.contains('\r') && !value.contains('\n'), "{value:?}");
+        assert!(!value.contains("\r\nset-cookie"), "a second header was smuggled: {value:?}");
+        assert_eq!(value, "/nextset-cookie: session=attacker<html>");
+    }
+
+    #[test]
+    fn append_is_guarded_too_and_so_is_the_name() {
+        let mut headers = Headers::new();
+        headers.append("set-cookie", "a=1\nx-evil: yes");
+        headers.set("x-name\r\ninjected", "fine");
+
+        assert!(!headers.get("set-cookie").unwrap().contains('\n'));
+        assert!(headers.get("x-nameinjected").is_some(), "the name was not cleaned");
+    }
+
+    /// A tab is legal inside a header value, and folding used to rely on it.
+    /// Stripping it would corrupt values nobody was attacking.
+    #[test]
+    fn a_tab_survives() {
+        let mut headers = Headers::new();
+        headers.set("x-thing", "a\tb");
+        assert_eq!(headers.get("x-thing"), Some("a\tb"));
+    }
     use super::*;
 
     #[test]

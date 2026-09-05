@@ -400,6 +400,24 @@ impl MenuController {
         let label = req.input("label").unwrap_or_default().trim().to_string();
         let route = req.input("route").unwrap_or_default().trim().to_string();
         let url = req.input("url").unwrap_or_default().trim().to_string();
+        // A path inside this application, and nothing else.
+        //
+        // The field was free text rendered straight into an `href`, so
+        // `javascript:` was a link every signed-in person — super
+        // administrators included — sees in the sidebar and runs on click. The
+        // Content-Security-Policy now shipped refuses it, but a menu entry
+        // should not have needed a browser policy to be harmless, and a policy
+        // is one header away from being relaxed by somebody who does not know
+        // it is load-bearing.
+        //
+        // `//host` is refused with the rest: a browser reads it as another
+        // site, so it is an off-site link wearing a path's clothes. This is the
+        // same rule `MenuController::dashboard` has always applied — it was
+        // simply never applied here.
+        if !url.is_empty() && (!url.starts_with('/') || url.starts_with("//")) {
+            page::flash(req, "error", "A menu link has to be a path inside this application, like `/reports`.");
+            return Ok(Some(Response::see_other("/admin/menus")));
+        }
         let icon_name = req.input("icon").unwrap_or_default();
         let permission = req.input("permission").unwrap_or_default().trim().to_string();
         let parent = req.input("parent_id").and_then(|p| p.parse::<i64>().ok());

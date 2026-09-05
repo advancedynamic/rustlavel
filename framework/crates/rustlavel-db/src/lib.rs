@@ -8,6 +8,7 @@
 pub mod base64;
 pub mod builder;
 pub mod config;
+pub mod connections;
 pub mod credentials;
 pub mod dialect;
 pub mod driver;
@@ -28,6 +29,7 @@ pub use builder::{Direction, QueryBuilder};
 pub use config::DatabaseConfig;
 pub use dialect::{ColumnType, Dialect, ReturningStyle};
 pub use driver::{Driver, DriverConnection, QueryResult};
+pub use connections::{Connections, DEFAULT_BUDGET};
 pub use migration::{Faker, Migration, Migrator, Seeder};
 pub use model::{Model, ModelExt, belongs_to, has_many};
 pub use mysql::{MySqlConnection, MySqlDriver};

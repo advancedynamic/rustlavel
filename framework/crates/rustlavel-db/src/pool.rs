@@ -99,6 +99,42 @@ impl Pool {
         self.inner.idle.lock().await.len()
     }
 
+    /// How many sockets this pool is holding open: idle plus borrowed.
+    ///
+    /// The number that matters to the *server*, which is a different number
+    /// from the one the semaphore governs. A permit is held only while a
+    /// connection is borrowed, so the semaphore caps concurrent use; a
+    /// connection handed back sits in `idle` holding no permit and a very much
+    /// open socket. An application with one pool never has to care. One with a
+    /// pool per tenant does: fifty idle pools are five hundred sockets against
+    /// a server whose default limit is a hundred, while every semaphore reads
+    /// zero.
+    pub async fn open_count(&self) -> usize {
+        let borrowed = self
+            .inner
+            .driver
+            .max_connections()
+            .max(1)
+            .saturating_sub(self.inner.permits.available_permits());
+        self.inner.idle.lock().await.len() + borrowed
+    }
+
+    /// Close up to `limit` idle connections, returning how many went.
+    ///
+    /// Only idle ones: a borrowed connection is in the middle of somebody's
+    /// query, and taking it away would turn a capacity problem into a failed
+    /// request. Freeing what is idle is enough — that is where a pool nobody
+    /// is using keeps its sockets.
+    pub async fn close_idle(&self, limit: usize) -> usize {
+        let mut closed = 0;
+        while closed < limit {
+            let Some((_, connection)) = self.inner.idle.lock().await.pop_front() else { break };
+            connection.close().await;
+            closed += 1;
+        }
+        closed
+    }
+
     /// Close every idle connection.
     pub async fn close(&self) {
         let mut idle = self.inner.idle.lock().await;

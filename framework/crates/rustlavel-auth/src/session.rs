@@ -187,6 +187,20 @@ impl Session {
     /// [`crate::Guard::login`] calls this for exactly that reason.
     pub fn regenerate(&mut self) -> &str {
         self.id = Session::new_id();
+        // The CSRF token goes with the id, which it did not use to.
+        //
+        // Rotating the id stops an attacker who planted a session cookie from
+        // riding the session afterwards — but the token he planted with it was
+        // left in place, and it is the token the *authenticated* session then
+        // answers to. He could drive state-changing requests from a page of his
+        // own for the life of that session, which is most of what rotating the
+        // id was meant to prevent. Laravel's `Store::regenerate` calls
+        // `regenerateToken` for this reason.
+        //
+        // Forgotten rather than replaced: a session that never needed a token
+        // should not be given one, and `token()` mints one when something
+        // actually asks.
+        self.forget(Session::TOKEN_KEY);
         self.dirty = true;
         &self.id
     }
@@ -262,6 +276,39 @@ impl Default for Session {
 
 #[cfg(test)]
 mod tests {
+
+    /// Session fixation, the half that was missing.
+    ///
+    /// An attacker who can plant a cookie — a subdomain, an HTTP hop, a shared
+    /// machine — seeds the victim with a session he made, and therefore with a
+    /// `_token` he knows. Rotating the id on sign-in stopped him riding the
+    /// session. It did not stop the token he knows from being the token the
+    /// authenticated session answers to, which let him drive state-changing
+    /// requests from a page of his own for the life of that session.
+    #[test]
+    fn rotating_the_id_rotates_the_csrf_token() {
+        let mut session = Session::new();
+        let planted = session.token();
+        let before = session.id().to_string();
+
+        session.regenerate();
+
+        assert_ne!(session.id(), before, "the id did not rotate");
+        assert_ne!(
+            session.token(),
+            planted,
+            "the token survived the rotation, so a planted one still works after sign-in"
+        );
+    }
+
+    /// And a session nobody asked a token of does not acquire one just by
+    /// rotating: a token is minted when something needs it, not before.
+    #[test]
+    fn rotating_does_not_mint_a_token_nobody_asked_for() {
+        let mut session = Session::new();
+        session.regenerate();
+        assert!(session.get_string(Session::TOKEN_KEY).is_none());
+    }
     use super::*;
 
     #[test]

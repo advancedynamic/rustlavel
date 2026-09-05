@@ -108,6 +108,29 @@ pub struct Migrator<'a> {
 }
 
 impl<'a> Migrator<'a> {
+    /// A migrator over any database, with any list of migrations.
+    ///
+    /// Both halves are deliberate, and together they are how an application
+    /// provisions a tenant from its own admin screen rather than from the CLI:
+    /// create the database, then run into it only the migrations belonging to
+    /// the modules that tenant enabled.
+    ///
+    /// ```no_run
+    /// # use rustlavel_db::{Database, Migration, Migrator};
+    /// # async fn provision(url: &str, wanted: Vec<&'static dyn Migration>) -> rustlavel_db::Result<()> {
+    /// let tenant = Database::connect(url).await?;
+    ///
+    /// let migrator = Migrator::new(&tenant, wanted);
+    /// migrator.prepare().await?;
+    /// let report = migrator.run().await?;
+    /// println!("{} migrations applied", report.applied.len());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// `App::migrations(...)` is boot-time wiring and `rustlavel migrate`
+    /// targets `DATABASE_URL`; neither can do this, which is why it is worth
+    /// saying that this can.
     pub fn new(db: &'a Database, migrations: Vec<&'a dyn Migration>) -> Self {
         Migrator { db, migrations, table: DEFAULT_TABLE.to_string() }
     }

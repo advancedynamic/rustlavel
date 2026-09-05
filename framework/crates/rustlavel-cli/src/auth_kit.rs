@@ -130,6 +130,7 @@ pub const FILES: &[(&str, &str)] = &[
     ("src/routes/web.rs", include_str!("../templates/auth-kit/src/routes/web.rs")),
     ("src/support/audit.rs", include_str!("../templates/auth-kit/src/support/audit.rs")),
     ("src/support/format.rs", include_str!("../templates/auth-kit/src/support/format.rs")),
+    ("src/support/headers.rs", include_str!("../templates/auth-kit/src/support/headers.rs")),
     ("src/support/home.rs", include_str!("../templates/auth-kit/src/support/home.rs")),
     ("src/support/idle.rs", include_str!("../templates/auth-kit/src/support/idle.rs")),
     ("src/support/lockout.rs", include_str!("../templates/auth-kit/src/support/lockout.rs")),
