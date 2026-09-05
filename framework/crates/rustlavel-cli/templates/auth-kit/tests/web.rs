@@ -16,7 +16,16 @@ use rustlavel::test_prelude::*;
 /// Enough to prove the guard and the CSRF check are wired; a handler that
 /// needs a row is left to a test that has one.
 fn app() -> App {
-    App::bare()
+    let app = App::bare();
+    // The same engine `main.rs` builds, so a page rendered here reads the way
+    // a visitor reads it. Without the translator `@lang` renders the key, and
+    // an assertion about what the page says would be an assertion about
+    // `auth.sign_in` instead of "Sign in".
+    let translator = {{crate_name}}::support::views::translator(app.config())
+        .expect("lang/ should load; run the tests from the project root");
+    let views = {{crate_name}}::support::views::engine(app.config(), app.root(), &translator);
+    app.views(views)
+        .state(translator)
         .middleware(SessionManager::new(
             &rustlavel::auth::AppKey::from_bytes([7u8; 32]),
             rustlavel::auth::MemoryStore::new(),

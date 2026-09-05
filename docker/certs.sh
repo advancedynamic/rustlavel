@@ -64,11 +64,20 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
   -addext "extendedKeyUsage=serverAuth" 2>/dev/null
 cp "$certs/ldap/server.crt" "$certs/ldap/ca.crt"
 
-# The Bitnami image runs OpenLDAP as an unprivileged user, so it has to be able
-# to read the key it was handed. PostgreSQL is the opposite — it refuses a key
-# anyone else can read — which is why its copy is installed with mode 600 by
-# docker/init/postgres-tls.sh from inside the container rather than mounted
-# straight into the data directory.
-chmod 644 "$certs/ldap"/*
+# Both servers run as an unprivileged user inside their container, so both have
+# to be able to *read* the key they were handed. On macOS that happens by
+# accident — Docker Desktop presents a bind mount as owned by the container
+# user, so even mode 600 is readable. On Linux the ownership is real: the file
+# belongs to whoever ran this script, and a 600 key is unreadable to postgres
+# (uid 999) or to OpenLDAP. That is a CI-only failure, which is the worst kind
+# to leave to chance, so the mode is set explicitly rather than inherited.
+#
+# 644 on a private key is safe here and nowhere else: these are throwaway
+# certificates for a disposable test container, regenerated on every run into a
+# git-ignored directory, and never used to protect anything. PostgreSQL still
+# refuses a key anyone else can read — which is why docker/init/postgres-tls.sh
+# copies it into $PGDATA with mode 600 and postgres as its owner. The mounted
+# file is how the key gets in; the installed one is what the server loads.
+chmod 644 "$certs"/*.crt "$certs"/*.key "$certs/ldap"/*
 
 echo "certificates written to $certs"

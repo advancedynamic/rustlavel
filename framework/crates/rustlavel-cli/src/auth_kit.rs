@@ -123,6 +123,7 @@ pub const FILES: &[(&str, &str)] = &[
     ("src/support/settings.rs", include_str!("../templates/auth-kit/src/support/settings.rs")),
     ("src/support/stats.rs", include_str!("../templates/auth-kit/src/support/stats.rs")),
     ("src/support/tokens.rs", include_str!("../templates/auth-kit/src/support/tokens.rs")),
+    ("src/support/views.rs", include_str!("../templates/auth-kit/src/support/views.rs")),
     ("tests/web.rs", include_str!("../templates/auth-kit/tests/web.rs")),
 ];
 
@@ -190,6 +191,7 @@ pub const CONFIG_WEBAUTHN: &str = r#"{
 /// `src/main.rs` for a project scaffolded with the kit.
 pub const MAIN_RS: &str = r#"use rustlavel::prelude::*;
 use {{crate_name}}::support::settings::Settings;
+use {{crate_name}}::support::views;
 use {{crate_name}}::modules;
 use {{crate_name}}::{database, routes};
 
@@ -212,21 +214,11 @@ async fn main() -> Result<()> {
     let mailer = rustlavel::mail::Mail::from_config(app.config())?;
     let rbac = Rbac::from_config(db.clone(), app.config())?;
 
-    // The words on the page. `lang/en.json` is the source; a language with a
-    // file of its own is used for anybody whose locale is set to it, and
-    // anything untranslated falls back to English rather than going blank.
-    //
-    // The translator goes onto the view engine rather than only into state:
-    // `@lang` in a template asks the engine, and the engine is built here
-    // rather than by `App` so it has something to ask. The *locale* is not
-    // here — it is per page, and `page::shell` puts it in the context.
-    let translator = Translator::new();
-    translator.load_dir(app.config().string("app.lang_path", "lang"))?;
-    translator.set_fallback("en");
-    // The same engine `App` would have built, with somewhere for `@lang` to
-    // look. Built here because `App` builds its own only when nobody has.
-    let views = rustlavel::engine_from_config(app.config(), app.root())
-        .with_translator(std::sync::Arc::new(translator.clone()));
+    // The words on the page. `lang/en.json` is the source; anything
+    // untranslated falls back to English rather than going blank. Built in
+    // `support::views` so the tests build the same one — see the note there.
+    let translator = views::translator(app.config())?;
+    let views = views::engine(app.config(), app.root(), &translator);
     // The audit trail: who did what, to which record, from where. Registered
     // as a plugin so `req.audit(...)` can find it from any handler.
     let audit = rustlavel::audit::Audit::new(db.clone());
