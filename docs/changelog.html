@@ -31,7 +31,7 @@
 <a href="guide.html#upgrading">a separate step</a> from bumping the dependency &mdash;
 <code>rustlavel upgrade</code> merges them rather than overwriting what you wrote.</p>
 
-<h2 id="unreleased">Unreleased</h2>
+<h2 id="0-7-4">0.7.4 — 2026-09-05</h2>
 <h3>Security</h3>
 <ul>
 <li><strong>Request smuggling.</strong> Duplicate <code>Content-Length</code> was accepted and the first won; <code>Content-Length</code> and <code>Transfer-Encoding</code> together were accepted and the length quietly ignored; <code>Transfer-Encoding</code> was matched by substring, so <code>xchunked</code> passed and <code>identity, chunked</code> did not; and <code>Content-Length : 5</code> parsed as a header. The connection buffer lives for the whole connection and the body reader drains exactly its length, so whatever a front-end thought was the body and this server did not is read as the start of the next request. Behind any proxy that resolves the ambiguity differently, an attacker prefixes a request onto a pooled connection and captures or rewrites the next victim&#x27;s — and none of the session or CSRF work above helps, because the request the router sees was never the one the visitor sent. All four shapes are refused now, per RFC 7230 §3.3.3, and a second test holds that ordinary messages still parse: a security fix that refuses real traffic is a denial of service wearing a patch&#x27;s clothes.

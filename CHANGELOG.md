@@ -3,7 +3,7 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
-## Unreleased
+## 0.7.4 — 2026-09-05
 
 ### Security
 
