@@ -268,7 +268,7 @@ impl UsersController {
 
         if id == me && changing_grants {
             page::flash(&req, "error", "You cannot change your own roles or permissions.");
-            return Ok(Response::see_other(&format!("/admin/users/{id}/edit")));
+            return Ok(Response::see_other(format!("/admin/users/{id}/edit")));
         }
 
         // And a super role holder is not editable by somebody who is not one.

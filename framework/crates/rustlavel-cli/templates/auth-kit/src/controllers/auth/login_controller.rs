@@ -112,7 +112,7 @@ impl LoginController {
             return Ok(Response::see_other(enrol));
         }
 
-        Ok(Response::see_other(&intended(&req).await))
+        Ok(Response::see_other(intended(&req).await))
     }
 
     /// Where a newly signed-in person has to go before anywhere else, if
