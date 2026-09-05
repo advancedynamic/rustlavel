@@ -426,6 +426,46 @@ output protects nothing. The light and dark theme is a cookie the server reads, 
 JavaScript adds after the page has painted &mdash; the usual fix for that flash is a small
 inline script in the head, which is precisely what the policy forbids.</p>
 
+<h3 id="upgrading">Keeping the kit up to date</h3>
+
+<p>The kit is a hundred files copied into your project, and from the moment they land they
+are yours. That is what makes them worth having &mdash; and it used to be a dead end, because
+a release that fixed one of them could reach nobody. Every project created with 0.5.0 was
+still running 0.5.0&rsquo;s kit.</p>
+
+<pre><code>rustlavel upgrade --dry-run   # say what would change, write nothing
+rustlavel upgrade</code></pre>
+
+<p>It reconciles three versions of every file rather than two: what the version in
+<code>.rustlavel/manifest.json</code> wrote, what is in your project now, and what the CLI
+you are running would write today. Where one side moved, that side wins and you are asked
+nothing. Where both moved to the same place, so does the merge. Where both moved differently,
+the file is written with <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code> markers and the project
+stops compiling until you decide &mdash; an upgrade that could not decide must not be able to
+pass unnoticed.</p>
+
+<p>The base comes from crates.io. Every release carries its templates inside the published
+<code>.crate</code>, so whichever version your project was created with is a download away,
+and downloads are cached. Files the kit no longer ships are reported, never deleted: it
+cannot know what came to depend on them. New environment variables are appended; existing
+ones are never rewritten, because a value in your <code>.env</code> is a deployment&rsquo;s
+own.</p>
+
+<table>
+<tr><th>Flag</th><th>What it does</th></tr>
+<tr><td><code>--dry-run</code></td><td>Report without writing anything</td></tr>
+<tr><td><code>--from &lt;version&gt;</code></td><td>The base version, for a project created before 0.7.2 &mdash; those have no manifest</td></tr>
+<tr><td><code>--allow-dirty</code></td><td>Do not require a clean git tree first</td></tr>
+</table>
+
+<p>A dirty tree is refused by default because <code>git checkout</code> is the way back, and
+a clean tree is what makes it available. Run your tests before committing the result: a merge
+that applied cleanly is still a merge.</p>
+
+<p>What this does <em>not</em> touch is as important. A file the kit never wrote is not in
+scope at all, so your own controllers, views, models and migrations are never read, never
+merged and never reported.</p>
+
 <h2>What is different from Laravel</h2>
 
 <table>

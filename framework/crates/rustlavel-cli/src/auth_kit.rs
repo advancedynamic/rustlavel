@@ -21,6 +21,14 @@
 /// entries here are run through the placeholder renderer on the way out, and a
 /// woff2 put through a text renderer is a corrupt woff2.
 pub const FILES: &[(&str, &str)] = &[
+    ("src/lib.rs", include_str!("../templates/auth-kit/src/lib.rs")),
+    ("src/main.rs", include_str!("../templates/auth-kit/src/main.rs")),
+    ("database/migrations/mod.rs", include_str!("../templates/auth-kit/database/migrations/mod.rs")),
+    ("database/seeders/mod.rs", include_str!("../templates/auth-kit/database/seeders/mod.rs")),
+    ("database/seeders/auth_kit_seeder.rs", include_str!("../templates/auth-kit/database/seeders/auth_kit_seeder.rs")),
+    ("config/auth.json", include_str!("../templates/auth-kit/config/auth.json")),
+    ("config/rbac.json", include_str!("../templates/auth-kit/config/rbac.json")),
+    ("config/webauthn.json", include_str!("../templates/auth-kit/config/webauthn.json")),
     ("src/modules/mod.rs", include_str!("../templates/auth-kit/src/modules/mod.rs")),
     ("src/modules/backup/mod.rs", include_str!("../templates/auth-kit/src/modules/backup/mod.rs")),
     ("src/modules/backup/archive.rs", include_str!("../templates/auth-kit/src/modules/backup/archive.rs")),
@@ -134,6 +142,20 @@ pub const FILES: &[(&str, &str)] = &[
 /// somebody has to go and look up. Two files rather than one: `unicode-range`
 /// in the stylesheet means a page that never shows an accented character never
 /// asks for the 85K half.
+/// The template `FILES` holds for a path, for a test that wants to read one.
+///
+/// Reaching for the manifest rather than a named constant is the point: a file
+/// the manifest does not carry is a file `new` does not write, so a test that
+/// can find it here is testing something a project actually receives.
+#[cfg(test)]
+pub fn file(path: &str) -> &'static str {
+    FILES
+        .iter()
+        .find(|(p, _)| *p == path)
+        .map(|(_, contents)| *contents)
+        .unwrap_or_else(|| panic!("`{path}` is not in the kit's manifest"))
+}
+
 pub const BINARY_FILES: &[(&str, &[u8])] = &[
     ("public/fonts/inter-latin.woff2", include_bytes!("../templates/auth-kit/public/fonts/inter-latin.woff2")),
     ("public/fonts/inter-latin-ext.woff2", include_bytes!("../templates/auth-kit/public/fonts/inter-latin-ext.woff2")),
@@ -161,310 +183,3 @@ WEBAUTHN_ID=
 WEBAUTHN_ORIGINS=
 "#;
 
-/// `config/auth.json`.
-pub const CONFIG_AUTH: &str = r#"{
-  "registration": {
-    "open": "${AUTH_REGISTRATION_OPEN:true}"
-  },
-  "password": {
-    "min_length": "${AUTH_PASSWORD_MIN_LENGTH:12}"
-  }
-}
-"#;
-
-/// `config/rbac.json`.
-pub const CONFIG_RBAC: &str = r#"{
-  "super_role": "${RBAC_SUPER_ROLE:super-admin}",
-  "cache_ttl_ms": 30000
-}
-"#;
-
-/// `config/webauthn.json`.
-pub const CONFIG_WEBAUTHN: &str = r#"{
-  "id": "${WEBAUTHN_ID:}",
-  "origins": "${WEBAUTHN_ORIGINS:}",
-  "user_verification": "preferred",
-  "resident_key": "preferred"
-}
-"#;
-
-/// `src/main.rs` for a project scaffolded with the kit.
-pub const MAIN_RS: &str = r#"use rustlavel::prelude::*;
-use {{crate_name}}::support::settings::Settings;
-use {{crate_name}}::support::views;
-use {{crate_name}}::modules;
-use {{crate_name}}::{database, routes};
-
-#[rustlavel::main]
-async fn main() -> Result<()> {
-    let app = App::new()?;
-
-    // The database is resolved once and shared: the pool, the roles store and
-    // the passkey store are all handles onto it. Read before the builder is
-    // consumed, since `config()` borrows it.
-    let url = rustlavel::env::env_or("DATABASE_URL", "");
-    if url.is_empty() {
-        return Err(Error::msg(
-            "DATABASE_URL is not set. The starter kit keeps users, roles and sign-in history \
-             in a database, so it needs one before it can start.",
-        ));
-    }
-    let db = Database::connect(&url).await?;
-    let cache = CacheStore::from_config(app.config())?;
-    let mailer = rustlavel::mail::Mail::from_config(app.config())?;
-    let rbac = Rbac::from_config(db.clone(), app.config())?;
-
-    // The words on the page. `lang/en.json` is the source; anything
-    // untranslated falls back to English rather than going blank. Built in
-    // `support::views` so the tests build the same one — see the note there.
-    let translator = views::translator(app.config())?;
-    let views = views::engine(app.config(), app.root(), &translator);
-    // The audit trail: who did what, to which record, from where. Registered
-    // as a plugin so `req.audit(...)` can find it from any handler.
-    let audit = rustlavel::audit::Audit::new(db.clone());
-    // What the Settings page writes and everything else reads. Shares one cache
-    // across the process, invalidated whenever a setting is saved.
-    let settings = Settings::from_config(db.clone(), app.config())?;
-
-    // Sessions on disk rather than in memory, so a restart does not sign
-    // everybody out. Swap the store for Redis when there is more than one
-    // process, since a session written by one is invisible to the others.
-    let sessions = SessionManager::from_config(
-        app.config(),
-        FileStore::new("storage/sessions"),
-    )?;
-
-    // The chain breaks here rather than running to `.run()`, because the
-    // modules are a list and a list needs a loop. Everything above the loop is
-    // what this application is; everything below it is how it is served.
-    let mut app = app
-        .state(db.clone())
-        // The cache backs the per-address half of the sign-in lockout.
-        .state(cache)
-        .state(mailer)
-        .state(settings)
-        // Handlers that translate outside a template — a flash message, a
-        // validation error — resolve it from here.
-        .state(translator)
-        .views(views)
-        // Roles and permissions. `req.can(...)` and the `Can` guard both
-        // resolve the store from here, and fail closed if it is missing.
-        .plugin(rbac)
-        .plugin(audit)
-{{plugins}}        ;
-
-    // Each feature registers its own routes, middleware and state. `all()` is a
-    // hand-written list in `src/modules/mod.rs` — a module that registered
-    // itself by existing would be a module nobody can find the registration
-    // for.
-    for module in modules::all() {
-        app = app.plugin_boxed(module);
-    }
-
-    app
-        // Order matters: the session has to exist before anything reads a
-        // login out of it, and the CSRF check reads the session.
-        .middleware(sessions)
-        .middleware(Csrf::new())
-        .routes(routes::auth::routes)
-        .routes(routes::web::routes)
-        // The built-in migrations, then whatever the modules own.
-        .migrations(
-            database::migrations::all()
-                .into_iter()
-                .chain(modules::migrations())
-                .collect(),
-        )
-        .seeders(
-            database::seeders::all().into_iter().chain(modules::seeders()).collect(),
-        )
-        .run()
-        .await
-}
-"#;
-
-/// The migration registry, holding the kit's own tables and the ones
-/// `rustlavel-rbac` brings.
-pub const MIGRATIONS_REGISTRY: &str = r#"//! Generated by the rustlavel CLI. Do not edit.
-//!
-//! A compiled program cannot discover migrations by scanning a directory, so
-//! the CLI keeps this list in step with the files beside it.
-
-#[path = "2026_09_02_000100_create_users_table.rs"]
-mod create_users_table;
-#[path = "2026_09_02_000200_create_user_tokens_table.rs"]
-mod create_user_tokens_table;
-#[path = "2026_09_02_000300_create_login_attempts_table.rs"]
-mod create_login_attempts_table;
-#[path = "2026_09_02_000400_create_user_mfa_tables.rs"]
-mod create_user_mfa_tables;
-#[path = "2026_09_03_000100_create_settings_table.rs"]
-mod create_settings_table;
-#[path = "2026_09_03_000200_create_password_history_table.rs"]
-mod create_password_history_table;
-#[path = "2026_09_03_000300_create_menu_items_table.rs"]
-mod create_menu_items_table;
-#[path = "2026_09_04_000100_create_notifications_table.rs"]
-mod create_notifications_table;
-
-use rustlavel::db::Migration;
-
-/// Every migration, in the order they must run.
-///
-/// The roles and permissions tables come from `rustlavel-rbac` rather than
-/// from a file here, so a fix to them arrives with `cargo update` instead of
-/// having to be copied into every project that was ever scaffolded.
-pub fn all() -> Vec<&'static dyn Migration> {
-    let mut migrations: Vec<&'static dyn Migration> = vec![
-        &create_users_table::CreateUsersTable,
-        &create_user_tokens_table::CreateUserTokensTable,
-        &create_login_attempts_table::CreateLoginAttemptsTable,
-        &create_user_mfa_tables::CreateUserMfaTables,
-        &create_settings_table::CreateSettingsTable,
-        &create_password_history_table::CreatePasswordHistoryTable,
-        &create_menu_items_table::CreateMenuItemsTable,
-        &create_notifications_table::CreateNotificationsTable,
-    ];
-    migrations.extend(rustlavel::rbac::migrations());
-    migrations.extend(rustlavel::audit::migrations());
-    migrations
-}
-"#;
-
-/// The seeder that makes the application usable: the roles, the permissions,
-/// and the first administrator.
-pub const SEEDER: &str = r#"use rustlavel::prelude::*;
-
-/// Everything an empty database needs before anybody can sign in.
-///
-/// Run it with `rustlavel db:seed`. It is written to be safe to run twice:
-/// each role and permission is created only if it is missing, so re-running
-/// after adding a permission to this list fills in the gap rather than
-/// failing half-way.
-pub struct AuthKitSeeder;
-
-/// The permissions the generated administration area checks for.
-///
-/// One per verb rather than a single `users.manage`, so a support role can be
-/// given the read half without the delete half.
-const PERMISSIONS: &[(&str, &str)] = &[
-    ("users.view", "See the list of people and their details"),
-    ("users.create", "Invite a new person"),
-    ("users.update", "Change somebody's details, roles and permissions"),
-    ("users.delete", "Delete an account"),
-    ("users.impersonate", "View the site as somebody else"),
-    ("roles.view", "See the roles that exist"),
-    ("roles.create", "Create a role"),
-    ("roles.update", "Change what a role grants"),
-    ("roles.delete", "Delete a role"),
-    ("permissions.view", "See the permissions that exist"),
-    ("permissions.create", "Create a permission"),
-    ("permissions.update", "Rename or describe a permission"),
-    ("permissions.delete", "Delete a permission"),
-    ("settings.manage", "Change the application's settings"),
-    // `backups.*` moved with the feature: see `modules::backup`, and the
-    // seeder below reads `modules::permissions()` alongside this list.
-    ("menus.view", "See the navigation menus"),
-    ("menus.manage", "Add, edit and reorder navigation items"),
-    // No `audit.delete`. An audit log with a delete button is an audit log
-    // that whoever matters can edit, which is not an audit log. Pruning it is
-    // a scheduled job's decision, not a screen's.
-    ("notifications.send", "Send a notification, or announce one to everybody"),
-    ("audit.view", "Read the audit trail"),
-];
-
-impl Seeder for AuthKitSeeder {
-    fn name(&self) -> &'static str {
-        "AuthKitSeeder"
-    }
-
-    fn run<'a>(
-        &'a self,
-        db: &'a Database,
-    ) -> std::pin::Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
-        Box::pin(async move {
-            // The tables come from the migration list, not from here: a
-            // seeder that also creates schema is a second, quieter migration
-            // path, and the two drift.
-            let store = Permissions::from_config(db.clone(), &Config::with_defaults())?;
-
-            let existing = store.permissions().await?;
-            // The built-in list, then whatever the modules declare. A feature
-            // that owns a permission declares it beside the code that checks
-            // it, and this is where the two lists meet.
-            let owned = crate::modules::permissions();
-            let declared = PERMISSIONS.iter().copied().chain(owned.iter().copied());
-            for (name, description) in declared {
-                if !existing.iter().any(|p| p.name == name) {
-                    store.create_permission_with(name, description).await?;
-                }
-            }
-
-            let roles = store.roles().await?;
-            if !roles.iter().any(|r| r.name == "super-admin") {
-                store
-                    .create_role_with("super-admin", "Passes every check, without holding every permission")
-                    .await?;
-            }
-            if !roles.iter().any(|r| r.name == "support") {
-                store.create_role_with("support", "Can look, and can view the site as somebody else").await?;
-                store
-                    .set_role_permissions("support", &["users.view", "users.impersonate", "roles.view"])
-                    .await?;
-            }
-
-            // The first administrator. Created without a password on purpose:
-            // a seeded default password is a published default password, and
-            // it survives into production more often than anybody admits. The
-            // activation link is printed instead.
-            let email = std::env::var("ADMIN_EMAIL").unwrap_or_else(|_| "admin@example.com".into());
-            if crate::models::user::User::first(db, crate::models::user::User::by_email(&email))
-                .await?
-                .is_none()
-            {
-                let mut admin = crate::models::user::User {
-                    name: std::env::var("ADMIN_NAME").unwrap_or_else(|_| "Administrator".into()),
-                    email: email.clone(),
-                    is_active: true,
-                    ..Default::default()
-                };
-                admin.insert(db).await?;
-                store.assign_role(admin.id, "super-admin").await?;
-
-                let token = crate::support::tokens::issue(
-                    db,
-                    admin.id,
-                    crate::models::user_token::ACTIVATION,
-                    None,
-                )
-                .await?;
-                let url = std::env::var("APP_URL").unwrap_or_else(|_| "http://localhost:8000".into());
-                // Printed, not logged. This is the output of the command
-                // rather than a note about it, and it is the only way into a
-                // brand new application — a person running with LOG_LEVEL=warn
-                // would otherwise seed an administrator they cannot sign in as.
-                println!();
-                println!("  The first administrator is {email}.");
-                println!("  Set their password here: {}/activate/{token}", url.trim_end_matches('/'));
-                println!("  The link is good for one hour, and works once.");
-                println!();
-            }
-
-            Ok(())
-        })
-    }
-}
-"#;
-
-/// The seeder registry.
-pub const SEEDERS_REGISTRY: &str = r#"//! Generated by the rustlavel CLI. Do not edit.
-
-#[path = "auth_kit_seeder.rs"]
-mod auth_kit_seeder;
-
-use rustlavel::db::Seeder;
-
-pub fn all() -> Vec<&'static dyn Seeder> {
-    vec![&auth_kit_seeder::AuthKitSeeder]
-}
-"#;

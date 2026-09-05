@@ -308,6 +308,22 @@ application calls `credentials.rotate(user, password)`; nothing here reaches for
       than the kit ships with
 - [x] COSE key serialisation, without which a passkey could be verified and
       never stored
+- [x] `rustlavel upgrade`: a three-way merge that brings a project's copy of the
+      kit forward. Copying a hundred files into somebody's application is what
+      makes a starter kit useful and it is also a one-way door — a release that
+      improves one of those files reaches nobody, and every project stays on the
+      version that created it. The base is the published `.crate` of that
+      version, so nothing has to be stored in the project but the version
+      number; a change on one side applies silently, a change on both is written
+      with conflict markers so the build fails rather than an upgrade
+      half-applying unnoticed.
+
+      This forced a structural fix worth recording. Eight kit files were Rust
+      constants written straight into a project rather than templates, which is
+      what let 0.7.0 ship a seeder still holding `{{crate_name}}` — and it also
+      meant those files had no base to merge against. Every file the kit writes
+      is a file in one manifest now, and the guard renders all of them instead of
+      the eight somebody remembered to list.
 
 ## Phase 1.3 — Directories, search, telemetry and passkeys ✅ done
 

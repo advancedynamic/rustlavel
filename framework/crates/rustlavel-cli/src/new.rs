@@ -306,18 +306,11 @@ pub fn run(args: &[String]) -> Result<(), String> {
         console::created("public/fonts/ (Inter, self-hosted, OFL)");
         console::created("database/migrations/ (users, tokens, sign-in log, factors)");
 
-        // The kit's own main.rs, registry and seeder replace the plain ones
-        // the scaffold has just written.
-        write(&root.join("src/main.rs"), &render(auth_kit::MAIN_RS, &values))?;
-        write(&root.join("src/lib.rs"), &format!("{LIB_RS}pub mod database;\npub mod models;\npub mod modules;\npub mod support;\n"))?;
-        write(&root.join("database/migrations/mod.rs"), auth_kit::MIGRATIONS_REGISTRY)?;
-        write(&root.join("database/seeders/auth_kit_seeder.rs"), auth_kit::SEEDER)?;
-        write(&root.join("database/seeders/mod.rs"), auth_kit::SEEDERS_REGISTRY)?;
+        // The kit's own main.rs, lib.rs, registries, seeder and config are in
+        // `FILES` with everything else, so the loop above has already written
+        // them over the plain ones the scaffold produced. They are named here
+        // only because they are worth seeing go by.
         console::created("src/main.rs, database/seeders/auth_kit_seeder.rs");
-
-        write(&root.join("config/auth.json"), auth_kit::CONFIG_AUTH)?;
-        write(&root.join("config/rbac.json"), auth_kit::CONFIG_RBAC)?;
-        write(&root.join("config/webauthn.json"), auth_kit::CONFIG_WEBAUTHN)?;
         console::created("config/auth.json, config/rbac.json, config/webauthn.json");
 
         for file in [".env", ".env.example"] {
@@ -326,6 +319,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
             contents.push_str(auth_kit::ENV_ADDITIONS);
             write(&path, &contents)?;
         }
+
+        // Which version wrote these files. `rustlavel upgrade` reads it to
+        // know which published kit to reconcile against, and without it there
+        // is no base and so no merge — which is why it is written here rather
+        // than left for somebody to remember later.
+        crate::upgrade::write_manifest(&root, "auth-kit", env!("CARGO_PKG_VERSION"))?;
+        console::created(".rustlavel/manifest.json");
     }
 
     let enabled = if packages.is_empty() {
@@ -567,6 +567,28 @@ fn database_url_line() -> &'static str {
 
 #[cfg(test)]
 mod tests {
+
+    /// The first `{{placeholder}}` left in rendered text, if any.
+    ///
+    /// A brace pair followed by a letter is a scaffold placeholder nobody filled
+    /// in. `{{ spaced }}` belongs to the view engine and `{{` before a newline is
+    /// a `format!` escape, so neither counts.
+    fn unrendered_placeholder(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while let Some(at) = text[i..].find("{{") {
+        let start = i + at;
+        let next = bytes.get(start + 2).copied().unwrap_or(b' ');
+        if (next.is_ascii_alphabetic() || next == b'_')
+            && let Some(end) = text[start..].find("}}")
+        {
+            return Some(text[start..start + end + 2].to_string());
+        }
+        i = start + 2;
+    }
+    None
+    }
+
     /// **Every package that ships a plugin has to be accounted for — in the
     /// file that is actually written.**
     ///
@@ -596,7 +618,7 @@ mod tests {
             for (template, already) in [
                 (stubs::MAIN_RS, &[] as &[&str]),
                 (stubs::MAIN_RS_DB, &[]),
-                (crate::auth_kit::MAIN_RS, &["rbac", "audit", "i18n"][..]),
+                (crate::auth_kit::file("src/main.rs"), &["rbac", "audit", "i18n"][..]),
             ] {
                 let mut values = BTreeMap::new();
                 values.insert("plugins", plugin_lines(&[(*package).to_string()], already));
@@ -853,7 +875,7 @@ mod tests {
         // The list lives in the seeder the CLI writes, which is a string
         // here and Rust only once a project exists — so read it out of the
         // string rather than referring to a constant that is not ours.
-        let seeder = crate::auth_kit::SEEDER;
+        let seeder = crate::auth_kit::file("database/seeders/auth_kit_seeder.rs");
         let table = seeder
             .split_once("const PERMISSIONS: &[(&str, &str)] = &[")
             .and_then(|(_, rest)| rest.split_once("\n];"))
@@ -1327,34 +1349,31 @@ mod tests {
             ("database", String::new()),
         ]);
 
-        // Every constant the scaffold writes without rendering it first. If a
-        // placeholder appears in one of these, it reaches the project verbatim.
-        let written_raw: &[(&str, &str)] = &[
-            ("auth_kit::SEEDER", crate::auth_kit::SEEDER),
-            ("auth_kit::MIGRATIONS_REGISTRY", crate::auth_kit::MIGRATIONS_REGISTRY),
-            ("auth_kit::SEEDERS_REGISTRY", crate::auth_kit::SEEDERS_REGISTRY),
-            ("auth_kit::CONFIG_AUTH", crate::auth_kit::CONFIG_AUTH),
-            ("auth_kit::CONFIG_RBAC", crate::auth_kit::CONFIG_RBAC),
-        ];
-
-        for (name, source) in written_raw {
-            assert!(
-                !source.contains("{{"),
-                "{name} is written to a project without going through `render`, and still \
-                 contains a `{{{{placeholder}}}}` — either render it where it is written, or \
-                 take the placeholder out"
-            );
+        // Every file the kit writes, rendered the way `new` renders it. This
+        // reads the manifest rather than a list kept by hand, so a template
+        // added tomorrow is covered the day it is added.
+        //
+        // `{{ spaced }}` is the *view* engine's syntax and is left alone on
+        // purpose; only `{{unspaced}}` is a scaffold placeholder, which is why
+        // the check looks at the character after the braces.
+        for (path, template) in crate::auth_kit::FILES {
+            let rendered = render(template, &values);
+            if let Some(found) = unrendered_placeholder(&rendered) {
+                panic!(
+                    "the kit writes `{path}` into a project still holding `{found}` — either \
+                     the value it wants is not among the ones `new` passes, or the placeholder \
+                     should not be there"
+                );
+            }
         }
 
-        // And the ones that are rendered must have nothing left afterwards.
         for (name, source) in [
-            ("auth_kit::MAIN_RS", crate::auth_kit::MAIN_RS),
             ("stubs::MAIN_RS", stubs::MAIN_RS),
             ("stubs::MAIN_RS_DB", stubs::MAIN_RS_DB),
         ] {
             let rendered = render(source, &values);
             assert!(
-                !rendered.contains("{{"),
+                unrendered_placeholder(&rendered).is_none(),
                 "{name} still holds a placeholder after rendering: the value it wants is not \
                  among the ones `new` passes"
             );

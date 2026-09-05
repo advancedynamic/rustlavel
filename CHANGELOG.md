@@ -3,6 +3,71 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## 0.7.2 — 2026-09-05
+
+### Added
+
+- **`rustlavel upgrade`.** A starter kit is a hundred files copied into an
+  application, and from the moment they land they are the application's. That
+  is what makes them useful and it was also a dead end: a release that fixed
+  one of them could reach nobody, because reaching them meant overwriting
+  whatever had been written on top. Every project created with 0.5.0 was still
+  running 0.5.0's kit, with no way forward but a manual diff.
+
+  `upgrade` reconciles three versions of each file instead of two — what the
+  version in `.rustlavel/manifest.json` wrote, what is in the project now, and
+  what this CLI would write today. Where one side moved, that side wins and
+  nobody is asked. Where both moved to the same place, so does the merge. Where
+  both moved differently, the file is written with `<<<<<<<` markers and the
+  project stops compiling until a person decides — an upgrade that could not
+  decide must not be able to pass unnoticed.
+
+  The base comes from crates.io: every release carries `templates/` inside its
+  `.crate`, so any version a project was created with is a download away, and
+  downloads are cached. Fetching and unpacking is `curl` and `tar` rather than
+  an HTTP client, a TLS stack and a gzip decoder added to a CLI that otherwise
+  depends on nothing; `doctor` now says so if either is missing.
+
+  `--dry-run` reports without writing. `--from <version>` supplies the base for
+  a project older than manifests. A dirty git tree is refused, because `git
+  checkout` is the way back and a clean tree is what makes it available.
+
+  Measured rather than assumed: a project scaffolded by the *published* 0.5.0
+  CLI, edited in three places, upgrades with 60 files merged, 16 added, 36
+  already current, and one conflict — in the one file that both the editor and
+  the release had changed.
+
+### Changed
+
+- **Every file the kit writes is now a file.** Eight of them — `main.rs`,
+  `lib.rs`, the two registries, the seeder and the three config files — were
+  Rust constants written to a project without ever existing as templates. That
+  split is what let 0.7.0 ship a seeder with `{{crate_name}}` still in it, and
+  it also meant `upgrade` had nothing to use as a base for them. They are
+  template files like the other ninety-nine now, in one manifest, written by one
+  loop. The guard that used to check eight hand-listed constants now renders
+  every file in the manifest, so a template added tomorrow is covered the day it
+  is added.
+
+  `upgrade` can still read those old constants out of a published crate's
+  source, so a project created before this change gets a proper merge rather
+  than a conflict over a file nobody touched.
+
+### Fixed
+
+- **The starter kit's own tests failed in a scaffolded project.** Translating
+  the auth pages replaced the literal "Sign in" with `@lang(…)`, and `@lang`
+  asks the *engine* for its translator — but the test built its application with
+  `App::bare()` and no translator, so the page rendered the key. The wiring lives
+  in `support::views` now, which `main.rs` and `tests/web.rs` both call: a test
+  that renders a page stands in for a visitor, and a visitor never sees a key.
+
+- **The TLS test containers could not read their own key on Linux.**
+  `docker/certs.sh` left the PostgreSQL key at mode 600 owned by whoever ran it.
+  On macOS that works by accident; on a CI runner the ownership is real, so
+  postgres got `Permission denied` and the container exited before a single test
+  ran.
+
 ## 0.7.1 — 2026-09-05
 
 ### Fixed

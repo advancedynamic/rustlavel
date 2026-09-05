@@ -14,14 +14,17 @@ mod database;
 mod doctor;
 mod fields;
 mod make;
+mod merge;
 mod naming;
 mod new;
 mod package;
 mod project;
+mod registry;
 mod serve;
 mod storage;
 mod stubs;
 mod tinker;
+mod upgrade;
 
 use project::Project;
 
@@ -41,6 +44,7 @@ fn main() {
         "doctor" => doctor::run(),
         "tinker" => tinker::run(rest),
         "build" => build::run(rest),
+        "upgrade" => upgrade::run(rest),
         "make:docker" => Project::discover().and_then(|p| build::make_docker(&p)),
         "storage:link" => Project::discover().and_then(|p| storage::link(&p, rest)),
         "key:generate" => key_generate(),
@@ -113,6 +117,10 @@ fn help() {
     row("  -e <code>", "Run one snippet instead of the loop");
     row("doctor", "Diagnose why the app will not start");
     row("build", "Build the single deployable binary");
+    row("upgrade", "Merge this version's starter-kit files into the project");
+    row("  --dry-run", "Say what would change, write nothing");
+    row("  --from <version>", "Base version, for a project older than manifests");
+    row("  --allow-dirty", "Do not require a clean git tree first");
     row("key:generate", "Generate APP_KEY into .env");
     row("storage:link", "Link public/storage to storage/app/public");
     println!();

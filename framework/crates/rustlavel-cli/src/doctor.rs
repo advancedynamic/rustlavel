@@ -55,6 +55,7 @@ pub fn run() -> Result<(), String> {
     let env = read_env(&project.root);
     let checks = vec![
         check_toolchain(),
+        check_upgrade_tools(),
         check_env_file(&project.root),
         check_app_key(&env),
         check_port(&env),
@@ -97,6 +98,35 @@ fn check_toolchain() -> Check {
             "Toolchain",
             "cargo was not found",
             "Install Rust from https://rustup.rs, then reopen your terminal.",
+        ),
+    }
+}
+
+/// `rustlavel upgrade` fetches the version a project was created with from
+/// crates.io, and does it with `curl` and `tar` rather than by carrying an
+/// HTTP client, a TLS stack and a gzip decoder in a CLI that otherwise depends
+/// on nothing. Both ship with macOS, every Linux distribution, and Windows
+/// since 2018 — but a container image trimmed to `cargo` alone will not have
+/// them, and finding that out mid-upgrade is the wrong time.
+fn check_upgrade_tools() -> Check {
+    let missing: Vec<&str> = ["curl", "tar"]
+        .into_iter()
+        .filter(|tool| {
+            !Command::new(tool)
+                .arg("--version")
+                .output()
+                .map(|out| out.status.success())
+                .unwrap_or(false)
+        })
+        .collect();
+
+    match missing.as_slice() {
+        [] => Check::pass("Upgrade tools", "curl and tar are available"),
+        missing => Check::warn(
+            "Upgrade tools",
+            format!("{} not found", missing.join(" and ")),
+            "`rustlavel upgrade` needs them to fetch the kit version this project was created \
+             with. Everything else works without them.",
         ),
     }
 }

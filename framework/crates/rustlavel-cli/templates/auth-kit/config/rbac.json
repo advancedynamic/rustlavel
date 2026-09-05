@@ -1,0 +1,4 @@
+{
+  "super_role": "${RBAC_SUPER_ROLE:super-admin}",
+  "cache_ttl_ms": 30000
+}

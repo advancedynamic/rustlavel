@@ -23,6 +23,17 @@ settings screen, menus and notifications, in about a hundred files you own:
 rustlavel new app --with auth-kit
 ```
 
+Files you own do not move when the framework does, so a later release brings them
+forward by merging rather than overwriting:
+
+```sh
+rustlavel upgrade --dry-run
+rustlavel upgrade
+```
+
+Where only one side changed a file, that side wins. Where both did, it is written with
+conflict markers and the build stops until somebody decides.
+
 ## What a handler looks like
 
 ```rust

@@ -76,6 +76,18 @@ backups and a brand colour that repaints the application, and an audit trail of
 every consequential action. The controllers and views are written into your
 project — the login page is a file you edit, not a template you override.
 
+Which raises the obvious question: what happens when a release improves one of those
+files? `rustlavel upgrade` merges the new version into yours, three ways — what the
+version you started from wrote, what you have now, and what this release would write.
+One-sided changes apply silently; changes on both sides are written with conflict
+markers, so the build stops until somebody decides rather than an upgrade half-applying
+in the dark. Files the kit never wrote are not in scope at all.
+
+```bash
+rustlavel upgrade --dry-run   # say what would change
+rustlavel upgrade
+```
+
 ## Packages, not a monolith
 
 Like `composer require`, every feature beyond the core is opt-in — and what you

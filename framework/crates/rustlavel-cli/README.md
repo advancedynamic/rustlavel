@@ -57,6 +57,26 @@ there is no cargo and no source, so you run that binary directly:**
 That is why `rustlavel build` produces one file: it is the administration tool as well
 as the server.
 
+## Upgrading a project
+
+The starter kit is copied into your application, so it does not move when the framework
+does. This brings it forward:
+
+```sh
+rustlavel upgrade --dry-run        # say what would change, write nothing
+rustlavel upgrade
+rustlavel upgrade --from 0.5.0     # a project created before 0.7.2 has no manifest
+```
+
+It merges three versions of every file the kit owns: what the version in
+`.rustlavel/manifest.json` wrote, what is in your project now, and what this CLI would
+write. Where one side changed, that side wins. Where both changed, the file gets
+`<<<<<<<` markers and the project stops compiling until you resolve it — deliberately,
+because a half-applied upgrade found later is worse than a build that fails now.
+
+The base is fetched from crates.io (with `curl` and `tar`, which is why `doctor` checks
+for them) and cached. Your own files are never touched.
+
 ## Documentation
 
 - [The repository](https://github.com/advancedynamic/rustlavel)

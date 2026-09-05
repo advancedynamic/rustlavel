@@ -1,0 +1,6 @@
+{
+  "id": "${WEBAUTHN_ID:}",
+  "origins": "${WEBAUTHN_ORIGINS:}",
+  "user_verification": "preferred",
+  "resident_key": "preferred"
+}

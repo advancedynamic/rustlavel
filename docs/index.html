@@ -66,6 +66,12 @@ administration area, all written into your project where you can change them:</p
 
 <pre><code>rustlavel new app --with auth-kit</code></pre>
 
+<p>Those files are yours, so they do not move when the framework does. A later release
+brings them forward by merging into what you wrote, never over it &mdash; and stops the
+build rather than guessing when you and the release changed the same thing:</p>
+
+<pre><code>rustlavel upgrade</code></pre>
+
 <p>Or add it to a project you already have:</p>
 
 <pre><code>cargo add rustlavel --features db,view</code></pre>

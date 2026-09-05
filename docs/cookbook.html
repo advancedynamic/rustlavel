@@ -265,6 +265,17 @@ assert!(fake.sent_to("ada@example.com"));</code></pre>
 
 <pre><code>FLAGS_OFF=new-checkout</code></pre>
 
+<h3>Take a new release of the starter kit</h3>
+
+<pre><code>rustlavel upgrade --dry-run
+rustlavel upgrade</code></pre>
+
+<p>Three-way, not two: the version you started from, what you have now, and what the
+release ships. Changes only one side made apply on their own; changes both sides made are
+written with conflict markers so the build fails rather than an upgrade half-applying.
+Files the kit never wrote are never touched. See
+<a href="guide.html#upgrading">the guide</a> for the flags.</p>
+
 <h3>Answer a load balancer</h3>
 
 <pre><code>App::new()?.plugin(
