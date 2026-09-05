@@ -73,6 +73,7 @@ impl<'a> Parser<'a> {
                         "extends" => self.extends(span, offset)?,
                         "yield" => nodes.push(self.yield_section(span)?),
                         "lang" => nodes.push(self.lang(span)?),
+                        "route" => nodes.push(self.route(span)?),
                         "include" => {
                             let name = self.template_name(&span, "include")?;
                             nodes.push(Node::Include(self.reference(name, offset)));
@@ -224,6 +225,37 @@ impl<'a> Parser<'a> {
         }
 
         Ok(Node::Lang { key, replacements })
+    }
+
+    fn route(&mut self, span: Span<'_>) -> Result<Node> {
+        let arguments = expr::parse_arguments(span)?;
+        let name = self.literal(arguments.first(), &span, "route")?;
+
+        let rest = &arguments[1.min(arguments.len())..];
+        if rest.len() % 2 != 0 {
+            return Err(span.error(
+                0,
+                "`@route` takes a route name and then pairs of parameter and value, like \
+                 `@route(\"users.show\", \"id\", user.id)` — one parameter here has no value",
+            ));
+        }
+
+        let mut params = Vec::with_capacity(rest.len() / 2);
+        for pair in rest.chunks(2) {
+            let name = match &pair[0] {
+                Expr::Str(name) => name.clone(),
+                _ => {
+                    return Err(span.error(
+                        0,
+                        "a `@lang` placeholder name has to be quoted, like \
+                         `@lang(\"mail.greeting\", \"name\", user.name)`",
+                    ))
+                }
+            };
+            params.push((name, pair[1].clone()));
+        }
+
+        Ok(Node::Route { name, params })
     }
 
     /// Read the single quoted view name a directive expects.

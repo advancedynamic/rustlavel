@@ -109,7 +109,8 @@ pub use rustlavel_macros::{main, test};
 
 pub use rustlavel_core::{Config, Context, Error, Event, Json, Result, config, env, events, json, log};
 pub use rustlavel_http::{
-    BoxFuture, Cookie, Files, Handler, Headers, Method, Middleware, Next, Plugin, Request, Resource,
+    BoxFuture, Cookie, Files, Handler, Headers, Method, Middleware, NamedRoutes, Next, Plugin,
+    Request, Resource,
     Response, Router, SameSite, Setup, Status, TestClient, TestResponse, cookie, error_page,
     middleware, request, response, router, server, status, testing, url,
 };

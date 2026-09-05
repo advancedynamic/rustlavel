@@ -112,7 +112,7 @@ impl LoginController {
             return Ok(Response::see_other(enrol));
         }
 
-        Ok(Response::see_other(intended(&req)))
+        Ok(Response::see_other(&intended(&req).await))
     }
 
     /// Where a newly signed-in person has to go before anywhere else, if
@@ -149,6 +149,14 @@ impl LoginController {
     /// Finish a login that has cleared every check.
     pub async fn complete(req: &Request, db: &Database, user: &mut User, now: &str) -> Result<()> {
         Guard::new(req.session().clone()).login(user);
+        // The epoch this session was opened under. `support::epoch` compares it
+        // on every later request, which is what makes "other devices have been
+        // signed out" true — a reset rotates the account's epoch, and every
+        // session still carrying the old one is ended on its next request.
+        req.session().put(
+            crate::support::epoch::EPOCH_KEY,
+            Json::from(user.session_epoch.clone().unwrap_or_default()),
+        );
         lockout::record_success(db, user, req, now).await?;
         LoginAttempt::record(db, &user.email.clone(), Some(user.id), true, None, req).await?;
 
@@ -227,12 +235,20 @@ async fn mfa_required(req: &Request) -> bool {
 }
 
 /// Where to go after signing in: back where they were headed, if anywhere.
-fn intended(req: &Request) -> String {
-    req.session()
+async fn intended(req: &Request) -> String {
+    let saved = req
+        .session()
         .forget("_intended")
         .and_then(|value| value.as_str().map(str::to_string))
         // Only a path on this site. A full URL here would be an open redirect,
         // which is how a phishing link borrows a real domain.
-        .filter(|path| path.starts_with('/') && !path.starts_with("//"))
-        .unwrap_or_else(|| "/dashboard".to_string())
+        .filter(|path| path.starts_with('/') && !path.starts_with("//"));
+
+    match saved {
+        Some(path) => path,
+        // Not `/dashboard` any more: where the application opens is a setting,
+        // and signing in used to ignore it — so an administrator could point
+        // home at `/reports` and still land on the dashboard every morning.
+        None => crate::support::home::path(req).await,
+    }
 }

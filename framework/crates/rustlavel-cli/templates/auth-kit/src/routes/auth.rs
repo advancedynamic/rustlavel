@@ -75,6 +75,7 @@ pub fn routes(r: &mut Router) {
     // --- Signed in --------------------------------------------------------
     r.group("", |auth| {
         auth.middleware(Authenticate::default().login_path("/login"));
+        auth.middleware(crate::support::epoch::SessionEpoch);
         auth.middleware(IdleTimeout);
 
         auth.get("/dashboard", DashboardController::index).name("dashboard");
@@ -120,6 +121,7 @@ pub fn routes(r: &mut Router) {
     // so a support role can be given the read half without the delete half.
     r.group("/admin", |admin| {
         admin.middleware(Authenticate::default().login_path("/login"));
+        admin.middleware(crate::support::epoch::SessionEpoch);
         admin.middleware(IdleTimeout);
 
         admin.get("/users", UsersController::index).name("admin.users").middleware(guard("users.view"));
@@ -201,6 +203,7 @@ pub fn routes(r: &mut Router) {
 
     r.group("/impersonate", |group| {
         group.middleware(Authenticate::default().login_path("/login"));
+        group.middleware(crate::support::epoch::SessionEpoch);
         group.middleware(IdleTimeout);
         group.middleware(guard("users.impersonate"));
         group.post("/{id}", ImpersonationController::start).name("impersonate.start");

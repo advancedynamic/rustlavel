@@ -37,6 +37,8 @@ pub mod key;
 pub mod middleware;
 pub mod qr;
 pub mod random;
+#[cfg(feature = "redis")]
+pub mod redis_session;
 pub mod session;
 pub mod signed_url;
 pub mod store;

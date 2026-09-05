@@ -99,6 +99,37 @@ impl<'a> Renderer<'a> {
                 }
                 self.nodes(&template.nodes, scope, out, depth + 1)?;
             }
+            Node::Route { name, params } => {
+                let filled: Vec<(&str, String)> = params
+                    .iter()
+                    .map(|(parameter, expr)| (parameter.as_str(), to_text(&expr.eval(scope))))
+                    .collect();
+
+                // A name nobody registered, or a parameter the pattern needs
+                // and did not get, is an error rather than an empty string.
+                // `href=""` reloads the page it is on: a link that looks like a
+                // link, goes nowhere, and is found by a person rather than by a
+                // build. The template says which name it asked for, because by
+                // the time this is read the template is what somebody is
+                // looking at.
+                let path = match self.engine.routes() {
+                    Some(table) => table.url(name, &filled).ok_or_else(|| {
+                        rustlavel_core::Error::msg(format!(
+                            "`@route(\"{name}\")` names no route this application registered, or \
+                             was not given every parameter the route's path needs. `rustlavel \
+                             route:list` shows the names."
+                        ))
+                    })?,
+                    None => {
+                        return Err(rustlavel_core::Error::msg(format!(
+                            "`@route(\"{name}\")` was rendered by an engine with no route table. \
+                             `App` fills it in when it finishes the router; an engine built by \
+                             hand and used outside one has to be given it."
+                        )));
+                    }
+                };
+                out.push_str(&escape(&path));
+            }
             Node::Lang { key, replacements } => {
                 // The locale comes from the page, not from the engine: one
                 // engine serves every request, and two people reading at once
@@ -273,6 +304,63 @@ mod tests {
             render("{{ item }}@foreach(items as item){{ item }}@endforeach{{ item }}", &context),
             "outerinnerouter"
         );
+    }
+}
+
+#[cfg(test)]
+mod route_tests {
+    use super::*;
+    use crate::context::Context;
+    use std::sync::Arc;
+
+    /// The whole point: a template names a route and gets its path.
+    #[test]
+    fn a_named_route_renders_its_path() {
+        struct Table;
+        impl crate::routes::Routes for Table {
+            fn url(&self, name: &str, params: &[(&str, String)]) -> Option<String> {
+                match (name, params.first()) {
+                    ("dashboard", _) => Some("/dashboard".into()),
+                    ("users.show", Some((_, id))) => Some(format!("/users/{id}")),
+                    _ => None,
+                }
+            }
+        }
+
+        let engine = Engine::new(std::env::temp_dir());
+        let _ = engine.routes_cell().set(Arc::new(Table));
+
+        let context = Context::new().with("who", 7.0);
+        assert_eq!(
+            engine.render_source("t", r#"<a href="@route("dashboard")">go</a>"#, &context).unwrap(),
+            r#"<a href="/dashboard">go</a>"#
+        );
+        assert_eq!(
+            engine.render_source("t", r#"@route("users.show", "id", who)"#, &context).unwrap(),
+            "/users/7"
+        );
+    }
+
+    /// A name nobody registered must stop the page, not render `href=""` — a
+    /// link that looks like a link and reloads the page it is on.
+    #[test]
+    fn an_unknown_route_name_is_an_error_not_an_empty_string() {
+        struct Nothing;
+        impl crate::routes::Routes for Nothing {
+            fn url(&self, _: &str, _: &[(&str, String)]) -> Option<String> {
+                None
+            }
+        }
+
+        let engine = Engine::new(std::env::temp_dir());
+        let _ = engine.routes_cell().set(Arc::new(Nothing));
+
+        let error = engine
+            .render_source("t", r#"@route("typo.here")"#, &Context::new())
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("typo.here"), "{error}");
+        assert!(error.contains("route:list"), "the message has to say how to find the names: {error}");
     }
 }
 

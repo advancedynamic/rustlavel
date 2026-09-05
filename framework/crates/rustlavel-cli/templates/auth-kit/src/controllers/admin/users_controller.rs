@@ -254,6 +254,33 @@ impl UsersController {
         let id = req.param_as::<i64>("id").unwrap_or_default();
         let Some(mut user) = User::find(&db, id).await? else { return Ok(Response::not_found()) };
 
+        // `destroy` has refused to act on your own account since it was
+        // written; this did not, and the difference mattered. The form offers
+        // every role, `super-admin` included, so a person holding nothing but
+        // `users.update` could post it at their own id and hold the super role
+        // a cache expiry later. Editing your own name is fine; editing your own
+        // grants is the escalation.
+        let me = req.identity().and_then(|id| id.id_as::<i64>()).unwrap_or_default();
+        let changing_grants = !req.inputs("roles[]").is_empty()
+            || store.permissions().await?.iter().any(|permission| {
+                req.input(&format!("permission[{}]", permission.name)).is_some()
+            });
+
+        if id == me && changing_grants {
+            page::flash(&req, "error", "You cannot change your own roles or permissions.");
+            return Ok(Response::see_other(&format!("/admin/users/{id}/edit")));
+        }
+
+        // And a super role holder is not editable by somebody who is not one.
+        // Otherwise `users.update` is a way to demote the owner of the
+        // application, which is the same escalation approached from the side.
+        let supers = store.super_role_names().clone();
+        let holds_super = |roles: &[String]| roles.iter().any(|role| supers.contains(role));
+        if holds_super(&store.roles_for(id).await?) && !holds_super(&store.roles_for(me).await?) {
+            page::flash(&req, "error", "Only a super administrator can edit another one.");
+            return Ok(Response::see_other("/admin/users"));
+        }
+
         let name = req.input("name").unwrap_or_default();
         let email = req.input("email").unwrap_or_default().trim().to_lowercase();
         let roles = req.inputs("roles[]");

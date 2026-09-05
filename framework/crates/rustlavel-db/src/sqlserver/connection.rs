@@ -10,6 +10,7 @@ use crate::dialect::Dialect;
 use crate::driver::{BoxFuture, Driver, DriverConnection, QueryResult};
 use crate::postgres::connection::log_bindings;
 use crate::row::{Columns, Row};
+use crate::tls::TlsMode;
 use crate::value::Value;
 use rustlavel_core::events::Event;
 use rustlavel_core::{Error, Result};
@@ -23,6 +24,36 @@ use tokio::net::TcpStream;
 pub struct SqlServerOptions {
     pub encryption: Encryption,
     pub tls: TlsOptions,
+}
+
+impl SqlServerOptions {
+    /// What the connection string asked for.
+    ///
+    /// `sslmode` was parsed and validated for `sqlserver://` URLs and then read
+    /// by nobody: every connection used `Default`, which is "encrypt, and trust
+    /// whatever certificate turns up". Somebody who wrote `sslmode=verify-full`
+    /// got no verification at all, and `sslrootcert=` was discarded — a silent
+    /// downgrade of exactly the kind the other two drivers are careful to avoid.
+    ///
+    /// `prefer`, the default, keeps the documented compromise: SQL Server
+    /// generates a version 1 self-signed certificate at startup that rustls will
+    /// not even parse, so verifying by default would refuse every stock
+    /// installation. Asking for verification, however, now gets it.
+    ///
+    /// One honest imprecision: `verify-ca` is served by the same verifier as
+    /// `verify-full`, so it checks the hostname too. That is stricter than the
+    /// mode promises rather than weaker, and it is said here rather than left
+    /// to be discovered.
+    pub fn from_config(config: &DatabaseConfig) -> SqlServerOptions {
+        let trust = !matches!(config.tls_mode, TlsMode::VerifyCa | TlsMode::VerifyFull);
+        SqlServerOptions {
+            encryption: match config.tls_mode {
+                TlsMode::Disable => Encryption::Disabled,
+                _ => Encryption::Required,
+            },
+            tls: TlsOptions { trust_server_certificate: trust },
+        }
+    }
 }
 
 pub struct SqlServerConnection {
@@ -42,7 +73,7 @@ pub struct SqlServerConnection {
 impl SqlServerConnection {
     /// Open a connection: pre-login, encryption, then login.
     pub async fn connect(config: &DatabaseConfig) -> Result<SqlServerConnection> {
-        SqlServerConnection::connect_with(config, SqlServerOptions::default()).await
+        SqlServerConnection::connect_with(config, SqlServerOptions::from_config(config)).await
     }
 
     pub async fn connect_with(
@@ -373,7 +404,8 @@ pub struct SqlServerDriver {
 
 impl SqlServerDriver {
     pub fn new(config: DatabaseConfig) -> Self {
-        SqlServerDriver::with_options(config, SqlServerOptions::default())
+        let options = SqlServerOptions::from_config(&config);
+        SqlServerDriver::with_options(config, options)
     }
 
     pub fn with_options(config: DatabaseConfig, options: SqlServerOptions) -> Self {

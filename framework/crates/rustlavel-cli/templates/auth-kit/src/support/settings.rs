@@ -185,7 +185,7 @@ const BUILT_IN: &[Setting] = &[
     // Where the sidebar's Dashboard entry goes. It has no Settings tab on
     // purpose — `TABS` has no `menus.` prefix — because the screen that edits
     // the rest of the navigation is the one place to look for it.
-    s("menus.dashboard_url", Kind::Text, "/dashboard"),
+    s("menus.home", Kind::Text, "dashboard"),
 
     // --- Language ------------------------------------------------------
     // `app.locale` reaches the pages as the `lang` attribute on <html>. The

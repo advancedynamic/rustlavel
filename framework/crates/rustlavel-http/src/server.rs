@@ -40,6 +40,79 @@ impl Default for Limits {
     }
 }
 
+/// How many ports to try before giving up.
+///
+/// Ten outside production, because a port held by a process that has not
+/// finished dying is a daily nuisance there and nothing depends on the number.
+/// **One inside it**, because in production something *does* depend on the
+/// number: a load balancer, a health check, a firewall rule. A server that
+/// moved itself to 8301 while the traffic still went to 8300 would look like an
+/// outage with no cause in the logs. Refusing to start says what happened.
+///
+/// `server.port_attempts` overrides both, in either direction.
+fn port_attempts(config: &rustlavel_core::Config) -> u16 {
+    let default = if config.is_production() { 1 } else { 10 };
+    config.int("server.port_attempts", default).clamp(1, 1000) as u16
+}
+
+/// Bind `addr`, walking up the port number while the one asked for is taken.
+///
+/// A port left occupied by a process that has not finished dying is the most
+/// common way a run fails, and the operating system's answer to it — `Os {
+/// code: 48, kind: AddrInUse }` — tells somebody nothing they can act on. So
+/// the next few ports are tried, and the one actually used is said out loud.
+///
+/// **Saying it out loud is the whole safety argument.** A server that quietly
+/// moves is worse than one that refuses to start: the load balancer still
+/// points at the old port, the health check fails, and nothing in the logs
+/// explains why. That is why production defaults to a single attempt — see
+/// [`Server::listen`] — and why moving is a warning rather than a debug line.
+///
+/// Only `AddrInUse` moves on. A refused bind for any other reason — a
+/// privileged port, an address that is not on this machine — is that reason,
+/// and walking away from it would only make it harder to see.
+async fn bind_walking(addr: &str, attempts: u16) -> Result<TcpListener> {
+    // Port zero means "any free port"; the operating system is already doing
+    // this job, and incrementing from zero would undo it.
+    let Some((host, first)) = addr
+        .rsplit_once(':')
+        .and_then(|(host, port)| port.parse::<u16>().ok().map(|port| (host, port)))
+        .filter(|(_, port)| *port != 0)
+    else {
+        return TcpListener::bind(addr).await.map_err(Error::Io);
+    };
+
+    let mut tried = first;
+    for offset in 0..attempts {
+        let Some(port) = first.checked_add(offset) else { break };
+        tried = port;
+        match TcpListener::bind(format!("{host}:{port}")).await {
+            Ok(listener) => {
+                if offset > 0 {
+                    rustlavel_core::warn!(
+                        "port {first} is in use, so this is serving on {port} instead"
+                    );
+                }
+                return Ok(listener);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => continue,
+            Err(e) => return Err(Error::Io(e)),
+        }
+    }
+
+    Err(Error::msg(if first == tried {
+        format!(
+            "port {first} is already in use. Something else is listening on it — `lsof -i :{first}` \
+             says what — so stop that, or set SERVER_PORT to a free port."
+        )
+    } else {
+        format!(
+            "every port from {first} to {tried} is already in use. Stop whatever is holding them \
+             — `lsof -i :{first}` names the first — or set SERVER_PORT to a free one."
+        )
+    }))
+}
+
 pub struct Server {
     router: Arc<Router>,
     context: Context,
@@ -62,9 +135,13 @@ impl Server {
     }
 
     /// Bind and serve until Ctrl-C, then drain in-flight requests.
+    ///
+    /// When the port is taken, the next ones are tried — see [`bind_walking`].
+    /// How many is `server.port_attempts`, which defaults to ten outside
+    /// production and to one inside it.
     pub async fn listen(self, addr: impl Into<String>) -> Result<()> {
         let addr = addr.into();
-        let listener = TcpListener::bind(&addr).await.map_err(Error::Io)?;
+        let listener = bind_walking(&addr, port_attempts(self.context.config())).await?;
         let local = listener.local_addr().map_err(Error::Io)?;
 
         panic::install_hook();
@@ -396,6 +473,94 @@ fn find_crlf(buffer: &[u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+
+    /// Production must not wander. This is the check that the default is not
+    /// quietly the same everywhere — the dangerous outcome is silent.
+    #[test]
+    fn production_gets_one_attempt_and_development_gets_more() {
+        use rustlavel_core::Config;
+
+        let production = Config::with_defaults();
+        production.set("app.env", "production");
+        assert_eq!(port_attempts(&production), 1);
+
+        let local = Config::with_defaults();
+        local.set("app.env", "local");
+        assert!(port_attempts(&local) > 1);
+    }
+
+    /// And somebody who wants the other behaviour can say so.
+    #[test]
+    fn the_setting_overrides_the_environment_both_ways() {
+        use rustlavel_core::Config;
+
+        let production = Config::with_defaults();
+        production.set("app.env", "production");
+        production.set("server.port_attempts", "5");
+        assert_eq!(port_attempts(&production), 5);
+
+        let local = Config::with_defaults();
+        local.set("app.env", "local");
+        local.set("server.port_attempts", "1");
+        assert_eq!(port_attempts(&local), 1);
+    }
+
+    /// The reason this exists: a port left occupied should cost a warning, not
+    /// a failed run.
+    #[tokio::test]
+    async fn a_taken_port_moves_to_the_next_one() {
+        let held = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let taken = held.local_addr().unwrap().port();
+
+        let listener = bind_walking(&format!("127.0.0.1:{taken}"), 10).await.unwrap();
+        assert_ne!(listener.local_addr().unwrap().port(), taken);
+        assert!(listener.local_addr().unwrap().port() > taken);
+    }
+
+    /// One attempt is what production asks for, and it must actually mean one:
+    /// a server that moves without being allowed to is the failure this whole
+    /// feature has to avoid.
+    #[tokio::test]
+    async fn a_single_attempt_does_not_move() {
+        let held = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let taken = held.local_addr().unwrap().port();
+
+        let error = bind_walking(&format!("127.0.0.1:{taken}"), 1).await.unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains(&taken.to_string()), "{message}");
+        assert!(message.contains("lsof"), "the message has to say what to do: {message}");
+    }
+
+    /// Port zero already means "any free port". Walking up from it would turn
+    /// a working request into a scan of the low ports.
+    #[tokio::test]
+    async fn port_zero_is_left_to_the_operating_system() {
+        let listener = bind_walking("127.0.0.1:0", 10).await.unwrap();
+        assert_ne!(listener.local_addr().unwrap().port(), 0);
+    }
+
+    /// Running out of ports has to name the range actually tried, or the
+    /// message sends somebody looking at the wrong port.
+    #[tokio::test]
+    async fn exhausting_the_range_says_what_it_tried() {
+        // Hold three consecutive ports, then allow exactly those three.
+        let first = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let start = first.local_addr().unwrap().port();
+        let mut held = vec![first];
+        for offset in 1..3u16 {
+            // Another test may hold it; the assertion below still holds.
+            if let Ok(listener) = TcpListener::bind(format!("127.0.0.1:{}", start + offset)).await {
+                held.push(listener);
+            }
+        }
+
+        let error = bind_walking(&format!("127.0.0.1:{start}"), 3).await;
+        if let Err(error) = error {
+            let message = error.to_string();
+            assert!(message.contains(&start.to_string()), "{message}");
+            assert!(message.contains(&(start + 2).to_string()), "{message}");
+        }
+    }
     use super::*;
 
     #[test]

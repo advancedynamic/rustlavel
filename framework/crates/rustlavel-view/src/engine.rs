@@ -35,6 +35,11 @@ pub struct Engine {
     /// Where `@lang` gets its words. Application-wide, like the engine itself;
     /// the *locale* is per page and travels in the context instead.
     translator: Option<Arc<dyn Translate>>,
+    /// Filled in after the router is finished, which is later than the engine
+    /// is built — an application may hand `.views(...)` an engine of its own
+    /// long before a single route exists. A shared cell rather than a field, so
+    /// filling it reaches every clone.
+    routes: Arc<std::sync::OnceLock<Arc<dyn crate::routes::Routes>>>,
 }
 
 impl Engine {
@@ -44,6 +49,7 @@ impl Engine {
             reload: false,
             cache: RwLock::new(HashMap::new()),
             translator: None,
+            routes: Arc::new(std::sync::OnceLock::new()),
         }
     }
 
@@ -66,6 +72,17 @@ impl Engine {
     pub fn with_translator(mut self, translator: Arc<dyn Translate>) -> Self {
         self.translator = Some(translator);
         self
+    }
+
+    /// The cell the finished router is put into. `App` fills this; nothing
+    /// else should.
+    pub fn routes_cell(&self) -> Arc<std::sync::OnceLock<Arc<dyn crate::routes::Routes>>> {
+        Arc::clone(&self.routes)
+    }
+
+    /// The route table, for the renderer.
+    pub(crate) fn routes(&self) -> Option<&dyn crate::routes::Routes> {
+        self.routes.get().map(|table| table.as_ref())
     }
 
     /// The translator, for the renderer.
@@ -212,8 +229,16 @@ mod tests {
 
     /// Each test writes its own directory: tests run concurrently, and a shared
     /// fixture would be rewritten underneath a test that is reading it.
+    ///
+    /// The process id is part of the name because the test name alone is not
+    /// enough. Two `cargo test` runs at once — two terminals, or two CI jobs on
+    /// one machine — would otherwise share `/tmp/rustlavel-view-cache`, and one
+    /// would delete it while the other was reading it. That failure looks like
+    /// a bug in the cache rather than a bug in the fixture, which is what makes
+    /// it worth spending a few characters to prevent.
     fn fixture(test: &str, views: &[(&str, &str)]) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("rustlavel-view-{test}"));
+        let root = std::env::temp_dir()
+            .join(format!("rustlavel-view-{}-{test}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         for (name, source) in views {
             let path = root.join(format!("{}.{EXTENSION}", name.replace('.', "/")));

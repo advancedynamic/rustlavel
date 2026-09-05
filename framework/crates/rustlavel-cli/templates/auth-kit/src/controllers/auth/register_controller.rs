@@ -197,8 +197,23 @@ impl ActivationController {
         user.update(&db).await?;
 
         // Signed in straight away: they have just proved they hold the address
-        // and chosen a password, which is everything the login form asks for.
+        // and chosen a password, which is everything the login form asks for —
+        // *except* the question of whether the account is allowed in at all.
+        // Checked after the password is set, so `can_sign_in` is really the
+        // `is_active` test: an account an administrator switched off must not
+        // activate its way back on.
         use crate::controllers::auth::login_controller::LoginController;
+        if let Err(reason) = user.can_sign_in(&now) {
+            crate::models::login_attempt::LoginAttempt::record(
+                &db, &user.email.clone(), Some(user.id), false, Some(reason), &req,
+            ).await?;
+            return crate::controllers::auth::register_controller::expired(
+                req,
+                "That account cannot sign in at the moment. Ask an administrator to enable it.",
+                "/login",
+                "Back to sign in",
+            ).await;
+        }
         LoginController::complete(&req, &db, &mut user, &now).await?;
         if let Some(enrol) = LoginController::enrolment_owed(&req, &db, user.id).await? {
             return Ok(Response::see_other(enrol));

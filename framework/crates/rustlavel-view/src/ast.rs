@@ -28,6 +28,8 @@ pub enum Node {
     /// baking one language's words into it would serve those words to
     /// everybody — see `Engine::translator`.
     Lang { key: String, replacements: Vec<(String, Expr)> },
+    /// `@route("users.show", "id", user.id)` — the path of a named route.
+    Route { name: String, params: Vec<(String, Expr)> },
 }
 
 /// One arm of an `@if` chain.

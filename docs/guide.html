@@ -16,6 +16,7 @@
     <a href="guide.html" aria-current="page">Guide</a>
     <a href="cookbook.html">Cookbook</a>
     <a href="packages.html">Packages</a>
+    <a href="changelog.html">Changelog</a>
     <a href="https://docs.rs/rustlavel">API</a>
     <a href="https://github.com/advancedynamic/rustlavel">GitHub</a>
   </nav>
@@ -444,6 +445,10 @@ the file is written with <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code> markers and t
 stops compiling until you decide &mdash; an upgrade that could not decide must not be able to
 pass unnoticed.</p>
 
+<p><code>Cargo.toml</code> is kept in step too: the rustlavel dependency is bumped, and any
+feature flag the kit has come to need is added to whatever your project already enables.
+Nothing you enabled yourself is removed, and a <code>path</code> dependency is left alone.</p>
+
 <p>The base comes from crates.io. Every release carries its templates inside the published
 <code>.crate</code>, so whichever version your project was created with is a download away,
 and downloads are cached. Files the kit no longer ships are reported, never deleted: it
@@ -466,6 +471,73 @@ that applied cleanly is still a merge.</p>
 scope at all, so your own controllers, views, models and migrations are never read, never
 merged and never reported.</p>
 
+<h3 id="upgrading-to-0-7-2">Upgrading to 0.7.2</h3>
+
+<p>Concrete, because the general shape above does not tell you what a real jump costs. Every
+step here was run against a project scaffolded by the published 0.5.0 CLI.</p>
+
+<pre><code>cargo install rustlavel-cli --version 0.7.2 --force
+cd your-project
+git status                          # must be clean
+git checkout -b upgrade-0.7.2</code></pre>
+
+<p><strong>1. Look first.</strong> <code>--from</code> is required, because a project created
+before 0.7.2 has no <code>.rustlavel/manifest.json</code> to read the base version out of.</p>
+
+<pre><code>rustlavel upgrade --from 0.5.0 --dry-run</code></pre>
+
+<p><strong>2. Apply.</strong> On an unedited 0.5.0 project this reports <em>61 merged, 17
+added, 36 already current</em>.</p>
+
+<pre><code>rustlavel upgrade --from 0.5.0</code></pre>
+
+<p><strong>3. Check <code>Cargo.toml</code>.</strong> From 0.7.3 this is done for you. On
+0.7.2 exactly, edit the line yourself:</p>
+
+<pre><code>rustlavel = { version = "0.7.2", features = ["audit", "auth", "cache", "db", "i18n", "mail", "rbac", "validation", "view", "webauthn"] }</code></pre>
+
+<p>The one that matters is <code>i18n</code>: 0.5.0 never enabled it, and the
+<code>@lang</code> directive the kit now uses does not compile without it. Keep any feature
+your project enabled on its own &mdash; this list is added to, not substituted for.</p>
+
+<p><strong>4. Resolve what conflicted.</strong> The report separates two things that are not
+the same. <em>&ldquo;Both you and the new version changed these&rdquo;</em> are real
+conflicts: read both sides. <em>&ldquo;Both versions are in these, because there was nothing
+to compare against&rdquo;</em> are files 0.5.0 did not have, so neither side can be preferred
+&mdash; usually take the new one. On an unedited project that is only <code>src/lib.rs</code>,
+six <code>pub mod</code> lines.</p>
+
+<pre><code>grep -rl '^&lt;&lt;&lt;&lt;&lt;&lt;&lt; ' src resources database config</code></pre>
+
+<p><strong>5. Build.</strong> An unedited 0.5.0 project compiles in about twenty seconds once
+step 4 is done.</p>
+
+<pre><code>cargo build</code></pre>
+
+<p><strong>6. Migrate.</strong> Additive and safe: the migrator skips what has already run,
+keyed by filename, and the registry merges correctly.</p>
+
+<pre><code>cargo run -- migrate:status     # see what is new before running it
+cargo run -- migrate</code></pre>
+
+<p><strong>7. Seeders &mdash; do not run <code>db:seed</code> plain.</strong> This is the one
+part still unsolved, and it is worth saying so rather than letting somebody find out. New
+settings, permissions and menu entries live in the seeder, not in a migration, and the kit&rsquo;s
+seeder will overwrite rows that have been edited since. An idempotent seeder that inserts only
+what is missing does not exist yet. Until it does: read
+<code>database/seeders/auth_kit_seeder.rs</code>, compare its permissions and settings against
+the live tables, and insert the missing rows by hand.</p>
+
+<p><strong>8. Rebuild the stylesheet</strong>, but only if you had edited
+<code>resources/css/app.css</code>.</p>
+
+<pre><code>npx @tailwindcss/cli -i resources/css/app.css -o public/css/app.css --minify</code></pre>
+
+<p>Two things not to worry about: <code>.env</code> gains new keys and is never rewritten, so
+production credentials are untouched; and files outside the kit are never read at all. Run
+your own tests before merging the branch &mdash; a merge that applied cleanly is still a
+merge.</p>
+
 <h2>What is different from Laravel</h2>
 
 <table>
@@ -479,6 +551,26 @@ merged and never reported.</p>
 <p>The transaction difference is not taste. A closure returning a future that borrows its
 argument cannot express the lifetime it needs, so the guard is what the language actually
 allows.</p>
+
+<h2>When the port is taken</h2>
+
+<p><code>Address already in use</code> is the most common way starting an application fails,
+usually because the last run has not finished dying. Outside production the server walks up
+from the port it was asked for and tells you where it went:</p>
+
+<pre><code>WARN  port 8399 is in use, so this is serving on 8400 instead
+INFO  Rustlavel serving on http://127.0.0.1:8400</code></pre>
+
+<p><strong>In production it does not move.</strong> There, something depends on the number
+&mdash; a load balancer, a health check, a firewall rule &mdash; and a server that quietly
+went to 8301 while the traffic still went to 8300 would look like an outage with no cause in
+the logs. It refuses to start and says what is holding the port instead. Set
+<code>server.port_attempts</code> to change either default: <code>1</code> to make a busy port
+an error during development, a larger number to let production wander.</p>
+
+<p>Only <code>AddrInUse</code> walks on. A privileged port, or an address that is not on this
+machine, is still that error &mdash; walking away from those would only make them harder to
+see.</p>
 
 <h2>Diagnosing a problem</h2>
 

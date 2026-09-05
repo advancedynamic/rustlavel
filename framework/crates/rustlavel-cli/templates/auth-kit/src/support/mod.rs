@@ -1,5 +1,7 @@
 pub mod audit;
+pub mod epoch;
 pub mod format;
+pub mod home;
 pub mod idle;
 pub mod lockout;
 pub mod mail;

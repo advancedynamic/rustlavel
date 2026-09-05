@@ -97,15 +97,22 @@ impl MenuController {
         let store = settings.clone();
 
         let url = req.input("dashboard_url").unwrap_or_default().trim().to_string();
-        // A path within this application, or nothing. Not an arbitrary URL: the
-        // logo and the first entry in the rail both point here, and sending
-        // everybody's home button to another site is not a menu edit.
-        if !url.is_empty() && !url.starts_with('/') {
-            page::flash(&req, "error", "That has to be a path inside this application, like `/reports`.");
+        // The name of a route this application registered, or a path inside it.
+        // Checked here rather than trusted, because `url_for` can say whether a
+        // name exists — so a typo is refused now instead of becoming a 404 on
+        // everybody's logo. Not an arbitrary URL either: sending everybody's
+        // home button to another site is not a menu edit.
+        if !crate::support::home::is_valid(&req, &url) {
+            page::flash(
+                &req,
+                "error",
+                "That has to be the name of a route this application has — `rustlavel route:list` \
+                 shows them — or a path inside it, like `/reports`.",
+            );
             return Ok(Response::see_other("/admin/menus"));
         }
 
-        store.put("menus.dashboard_url", &url).await?;
+        store.put("menus.home", &url).await?;
 
         if let Some(audit) = crate::support::audit::of(&req, "menus.updated") {
             audit
@@ -197,7 +204,7 @@ impl MenuController {
             .with(
                 "dashboard_setting",
                 Json::from(match req.state::<crate::support::settings::Settings>() {
-                    Some(settings) => settings.get("menus.dashboard_url").await,
+                    Some(settings) => settings.get("menus.home").await,
                     None => String::new(),
                 }),
             );

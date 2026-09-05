@@ -104,11 +104,28 @@ impl Transport for LogTransport {
 
     fn send<'a>(&'a self, message: &'a Message) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
-            let mime = message.to_mime()?;
+            // Built even though the body is logged separately: it is the only
+            // thing that proves the message would actually encode, and finding
+            // that out in development is the point of this transport.
+            let _ = message.to_mime()?;
+
             if self.write {
+                // The body as written, not as encoded. `to_mime` produces
+                // quoted-printable, which breaks every line over 76 columns
+                // with a soft `=` — correct on the wire, and ruinous on a
+                // terminal, because the break lands inside a long link and the
+                // URL somebody copies is not the URL that was sent. A sign-in
+                // or reset link is the main thing this transport exists to
+                // deliver, so it has to survive being read.
+                let body = message
+                    .text_body()
+                    .or_else(|| message.html_body())
+                    .unwrap_or("(no body)");
+
                 rustlavel_core::info!(
-                    "mail to {}\n{mime}",
-                    message.envelope_recipients().join(", ")
+                    "mail to {}\nSubject: {}\n\n{body}",
+                    message.envelope_recipients().join(", "),
+                    message.subject_text()
                 );
             }
             Ok(())
@@ -305,6 +322,30 @@ impl Mailer {
 
 #[cfg(test)]
 mod tests {
+
+    /// The bug this exists to stop: a reset link logged as quoted-printable
+    /// carries a soft `=` line break inside the token, so the URL somebody
+    /// copies out of the terminal is not the URL that was issued — and the
+    /// application, seeing a token that matches nothing, reports it as expired.
+    #[tokio::test]
+    async fn a_long_link_survives_being_logged() {
+        let token = "436c02b608c95a2f59e2476756b44c7a9da324a72fbeb0785ee7bca3d8429b26";
+        let url = format!("http://localhost:9001/reset-password/{token}");
+        let message = Message::new()
+            .from("a@example.com")
+            .to("b@example.com")
+            .subject("Reset your password")
+            .text(format!("Use this link:\n\n{url}\n"));
+
+        // What the wire carries: correct, and broken across lines.
+        let mime = message.to_mime().unwrap();
+        assert!(!mime.contains(&url), "the encoder no longer wraps; this test is moot");
+
+        // What a person reads: the link, whole.
+        let body = message.text_body().unwrap();
+        assert!(body.contains(&url), "the logged body must carry the link unbroken");
+        assert!(!body.contains("=\r\n"), "a soft break reached the readable body: {body}");
+    }
     use super::*;
     use rustlavel_core::events;
 

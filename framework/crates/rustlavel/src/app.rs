@@ -273,7 +273,27 @@ impl App {
             self.context = Some(self.context.take().expect("context builder").state(engine));
         }
 
+        // The named routes, for `@route` in a template and for a handler that
+        // wants to send somebody to a route by name rather than by path.
+        //
+        // Registered here because this is the first moment both exist: the
+        // router is complete, and the context has not been sealed. The engine
+        // is handed the same table through a cell rather than a field, because
+        // an application may have built its own engine with `.views(...)` long
+        // before a single route was declared.
+        let named = self.router.named_routes();
+        self.context =
+            Some(self.context.take().expect("context builder").state(named.clone()));
+
         let context = self.context.take().expect("context builder").build();
+
+        #[cfg(feature = "view")]
+        if let Some(engine) = context.state::<rustlavel_view::Engine>() {
+            let _ = engine
+                .routes_cell()
+                .set(std::sync::Arc::new(crate::view::RouteTable::new(named)));
+        }
+
         (self.router, context)
     }
 

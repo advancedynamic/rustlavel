@@ -77,6 +77,10 @@ because a half-applied upgrade found later is worse than a build that fails now.
 The base is fetched from crates.io (with `curl` and `tar`, which is why `doctor` checks
 for them) and cached. Your own files are never touched.
 
+Going from 0.5.0 to 0.7.2 is a large jump and has a step-by-step runbook:
+[Upgrading to 0.7.2](https://advancedynamic.github.io/rustlavel/guide.html#upgrading-to-0-7-2).
+Read step 7 before you run `db:seed`.
+
 ## Documentation
 
 - [The repository](https://github.com/advancedynamic/rustlavel)

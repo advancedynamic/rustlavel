@@ -122,17 +122,7 @@ pub async fn with_user(mut context: ViewContext, req: &Request, user: &User) -> 
     // Where the Dashboard entry points. An application that has a better first
     // page than the built-in one should be able to say so without editing a
     // template — that is what the Menus screen is for.
-    let dashboard = match req.state::<crate::support::settings::Settings>() {
-        Some(settings) => settings.get("menus.dashboard_url").await,
-        None => String::new(),
-    };
-    context = context.with(
-        "dashboard_url",
-        Json::from(match dashboard.trim().is_empty() {
-            true => "/dashboard",
-            false => dashboard.trim(),
-        }),
-    );
+    context = context.with("dashboard_url", Json::from(crate::support::home::path(req).await));
 
     for (flag, permission) in [
         ("can_view_users", "users.view"),

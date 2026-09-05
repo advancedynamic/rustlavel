@@ -167,11 +167,24 @@ fn check_port(env: &std::collections::BTreeMap<String, String>) -> Check {
             drop(listener);
             Check::pass("Server port", format!("{address} is free"))
         }
-        Err(e) => Check::fail(
-            "Server port",
-            format!("{address} is unavailable ({e})"),
-            format!("Something else is listening. Stop it, or run `rustlavel serve --port {}`.", port.parse::<u16>().unwrap_or(8000) + 1),
-        ),
+        // A warning rather than a failure: outside production the server walks
+        // up to the next free port and starts anyway. Calling that a failure
+        // would send somebody hunting a problem the framework already handled
+        // — and saying which port it will land on is the part that matters,
+        // since a server that moves without saying so is the thing to avoid.
+        Err(e) => {
+            let next = port.parse::<u16>().unwrap_or(8000).saturating_add(1);
+            Check::warn(
+                "Server port",
+                format!("{address} is in use ({e})"),
+                format!(
+                    "Outside production the server walks up from here, so it will most likely \
+                     serve on {next} and say so on startup. To keep the port you asked for, stop \
+                     whatever holds it — `lsof -i :{port}` names it — or set \
+                     `server.port_attempts` to 1 to make this an error instead."
+                ),
+            )
+        }
     }
 }
 

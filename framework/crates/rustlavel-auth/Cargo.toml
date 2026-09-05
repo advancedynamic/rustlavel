@@ -12,6 +12,10 @@ repository.workspace = true
 [dependencies]
 rustlavel-core.workspace = true
 rustlavel-http.workspace = true
+# Only for the Redis session store, and only when it is asked for. The client
+# lives in the cache package because that is where RESP and the connection pool
+# already are; a second Redis implementation here would drift from it.
+rustlavel-cache = { workspace = true, optional = true }
 tokio.workspace = true
 # Cryptography only. Everything non-cryptographic in this crate — base64, the
 # session stores, the middleware, the URL canonicalisation — is written from
@@ -29,3 +33,9 @@ sha2 = "0.10"
 sha1 = "0.10"
 hmac = "0.12"
 subtle = "2"
+
+[features]
+# The Redis session store. Off by default: an application on one machine wants
+# the file store, and pulling a Redis client into every project that signs
+# somebody in would be the wrong default.
+redis = ["dep:rustlavel-cache"]

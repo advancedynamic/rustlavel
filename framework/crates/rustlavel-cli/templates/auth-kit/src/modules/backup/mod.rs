@@ -74,6 +74,7 @@ impl Plugin for Backup {
         // means owning what guards them.
         setup.router.group("/admin/settings/backup", |backup| {
             backup.middleware(Authenticate::default().login_path("/login"));
+            backup.middleware(crate::support::epoch::SessionEpoch);
             backup.middleware(crate::support::idle::IdleTimeout);
 
             // One permission per verb, so a role can be given the read half

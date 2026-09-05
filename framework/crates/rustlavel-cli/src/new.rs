@@ -37,6 +37,10 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("otel", &[]),
     ("queue", &["database/migrations"]),
     ("rbac", &["database/migrations"]),
+    // Not a crate of its own: it turns on `rustlavel-auth`'s Redis session
+    // store and the cache package the client lives in. Wiring it is a line in
+    // `main.rs`, which is why it is in `NEEDS_WIRING` too.
+    ("redis-sessions", &[]),
     ("search", &[]),
     ("storage", &["storage/app"]),
     ("telescope", &[]),
@@ -124,13 +128,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
     // from the list passed to Cargo.
     let auth_kit = packages.iter().any(|p| p == "auth-kit");
     if auth_kit {
-        for required in
-            [
-                "audit", "auth", "db", "view", "validation", "rbac", "webauthn", "cache",
-                "mail", "i18n",
-            ]
-        {
-            packages.push(required.to_string());
+        for required in auth_kit::REQUIRED_PACKAGES {
+            packages.push((*required).to_string());
         }
         packages.retain(|p| p != "auth-kit");
     }
@@ -382,6 +381,14 @@ const NEEDS_WIRING: &[(&str, &str)] = &[
     ("audit", "rustlavel::audit::Audit::new(db.clone())"),
     ("flags", "FeatureFlags::new(flags)"),
     ("vault", "Vault::from_config(app.config())?"),
+    // Not a plugin but a session store, so the note names the store rather
+    // than a `.plugin(...)` line. Without it, `--with redis-sessions` would
+    // compile the store in and leave the application on the file store — a
+    // feature that looks enabled and does nothing.
+    (
+        "redis-sessions",
+        "SessionManager::from_config(app.config(), RedisSessions::connect(&env_or(\"REDIS_URL\", \"redis://127.0.0.1:6379\"))?)?",
+    ),
     // `QueueDashboard::new` takes an `Arc<dyn Queue>`, not a database —
     // the comment used to say otherwise, and anybody pasting it got a
     // type error.
@@ -1330,6 +1337,37 @@ mod tests {
             }
         }
         out
+    }
+
+
+    /// A group that authenticates but does not check the session epoch is a way
+    /// back in for a session a password reset was meant to end.
+    ///
+    /// This has gone wrong twice already in a different form — routes moved
+    /// into a module lost their group's `Authenticate` and permission guards —
+    /// so the rule is checked rather than remembered.
+    #[test]
+    fn every_authenticated_group_also_checks_the_session_epoch() {
+        for (path, source) in crate::auth_kit::FILES {
+            let mut missing = Vec::new();
+            let lines: Vec<&str> = source.lines().collect();
+            for (at, line) in lines.iter().enumerate() {
+                if !line.contains("middleware(Authenticate::default()") {
+                    continue;
+                }
+                // The epoch check goes next to it, so a short window is enough
+                // and a group that puts it three lines down still passes.
+                let window = lines[at..(at + 4).min(lines.len())].join("\n");
+                if !window.contains("SessionEpoch") {
+                    missing.push(format!("{path}:{}", at + 1));
+                }
+            }
+            assert!(
+                missing.is_empty(),
+                "these groups authenticate but never check `users.session_epoch`, so a password \
+                 reset would not end the other sessions it promises to end: {missing:?}"
+            );
+        }
     }
 
     /// A generated file must not still hold a `{{placeholder}}`.

@@ -384,9 +384,29 @@ impl Middleware for SessionManager {
                 (session.clone(), session.is_dirty())
             };
 
-            // A visitor who never touched the session gets no cookie and no
-            // stored file — a crawler should not leave one behind per page.
-            if !dirty && !existed {
+            // A request that changed nothing writes nothing and sets no cookie.
+            //
+            // `!existed` alone was not enough, and the gap was a real one: for a
+            // signed-in visitor `existed` is always true, so *every* response
+            // rewrote the session and re-sent the cookie — including the CSS,
+            // JavaScript and font requests, which reach here because static
+            // files are the router's fallback and the fallback still runs the
+            // global middleware.
+            //
+            // That made signing in a race. `Guard::login` rotates the id and
+            // destroys the old record; the asset requests the browser fired
+            // alongside the form post are still holding the *old* id, and on
+            // the way out each one wrote that old session back — resurrecting
+            // the record the rotation had just deleted — and handed the browser
+            // a cookie pointing at it. Whichever response landed last decided
+            // which session the visitor kept. When an asset won, the visitor
+            // was returned to a pre-login session and the next protected
+            // request answered 401: signed out seconds after signing in, and
+            // only sometimes, which is the worst way for a bug to behave.
+            //
+            // A crawler still leaves nothing behind, which is what the original
+            // condition was for.
+            if !dirty && session.id() == loaded_id {
                 return response;
             }
 
@@ -430,6 +450,58 @@ mod tests {
 
     fn manager() -> SessionManager {
         SessionManager::new(&key(), MemoryStore::new())
+    }
+
+
+    /// A response that changed nothing must not hand back a session cookie.
+    ///
+    /// This is the whole of the sign-in race. Static files are the router's
+    /// fallback and the fallback runs the global middleware, so the CSS and
+    /// JavaScript requests a browser fires alongside a sign-in reach here
+    /// holding the *old* id. While every such response re-sent a cookie, one of
+    /// them could land after the redirect and put the visitor back on the
+    /// session the sign-in had just replaced — signed out seconds later, and
+    /// only sometimes.
+    #[tokio::test]
+    async fn a_request_that_changes_nothing_sets_no_cookie() {
+        let mut router = Router::new();
+        router.middleware(manager());
+        router.get("/touches", |req: Request| async move {
+            req.session().put("something", Json::from("changed"));
+            "wrote"
+        });
+        router.get("/reads-nothing", |_req: Request| async { "untouched" });
+
+        let client = TestClient::new(router);
+
+        // A first request that does write, to get a session at all.
+        let first = client.get("/touches").await;
+        let cookie = cookie_of(&first);
+
+        // And now one that touches nothing, carrying that session.
+        let second = client
+            .send(Request::new(Method::Get, "/reads-nothing").with_header("cookie", cookie))
+            .await;
+        assert!(
+            second.header("set-cookie").is_none(),
+            "a response that changed nothing re-sent the session cookie, which is what let an \
+             asset request hand back an id a concurrent sign-in had already replaced"
+        );
+    }
+
+    /// And a session that did change still writes, or nothing would persist.
+    #[tokio::test]
+    async fn a_request_that_changes_the_session_still_sets_a_cookie() {
+        let mut router = Router::new();
+        router.middleware(manager());
+        router.get("/touches", |req: Request| async move {
+            req.session().put("n", Json::from(1.0));
+            "wrote"
+        });
+
+        let client = TestClient::new(router);
+        let response = client.get("/touches").await;
+        assert!(response.header("set-cookie").is_some(), "a changed session was not persisted");
     }
 
     /// Pull the session cookie out of a response, ready to send back.

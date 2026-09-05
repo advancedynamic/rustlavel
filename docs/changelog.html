@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Changelog — Rustlavel</title>
+<meta name="description" content="What changed in each release of Rustlavel, newest first.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site"><div class="wrap">
+  <strong>Rustlavel</strong>
+  <nav>
+    <a href="index.html">Home</a>
+    <a href="guide.html">Guide</a>
+    <a href="cookbook.html">Cookbook</a>
+    <a href="packages.html">Packages</a>
+    <a href="changelog.html" aria-current="page">Changelog</a>
+    <a href="https://docs.rs/rustlavel">API</a>
+    <a href="https://github.com/advancedynamic/rustlavel">GitHub</a>
+  </nav>
+</div></header>
+
+<main class="wrap">
+
+<h1>Changelog</h1>
+<p class="tagline">Newest first. Every crate in the workspace shares one version number.</p>
+
+<p>Upgrading an existing project&rsquo;s starter-kit files is
+<a href="guide.html#upgrading">a separate step</a> from bumping the dependency &mdash;
+<code>rustlavel upgrade</code> merges them rather than overwriting what you wrote.</p>
+
+<h2 id="unreleased">Unreleased</h2>
+<h3>Security</h3>
+<ul>
+<li><strong>Every secret fell back to a clock-seeded mixer when <code>/dev/urandom</code> could not be opened.</strong> It was the only entropy source in the framework, and the fallback — a xorshift seeded from the nanosecond clock and a heap address — sat behind a log line. It fed session ids, CSRF tokens, API token secrets, argon2 salts, AES-GCM nonces, WebAuthn challenges and <code>APP_KEY</code>. A session id drawn from 64 bits of clock is one that somebody who knows roughly when you signed in can enumerate; an <code>APP_KEY</code> drawn from it makes every signed cookie forgeable. The trigger was not hypothetical — file-descriptor exhaustion is something an attacker can induce. There is no fallback now: a process that cannot obtain randomness stops rather than issue a secret that can be guessed.
+</li>
+<li><strong>A response that changed nothing rewrote the session and re-sent its cookie, which made signing in a race.</strong> Static files are the router&#x27;s fallback and the fallback runs the global middleware, so every CSS, JavaScript and font request reached the session layer — and for a signed-in visitor the guard <code>!dirty &amp;&amp; !existed</code> was always false. <code>Guard::login</code> rotates the session id and destroys the old record; the asset requests a browser fires alongside the sign-in are still holding the *old* id, and each one wrote that record back and handed the browser a cookie pointing at it. Whichever response landed last decided which session the visitor kept. When an asset won, they were returned to a pre-login session and the next protected request answered 401 — signed out seconds after signing in, intermittently. The resurrected record was also a live credential after the rotation meant to destroy it.
+</li>
+<li><strong>&quot;Other devices have been signed out&quot; was not true.</strong> Three controllers wrote <code>users.session_epoch</code> and two also wrote the matching session key, and nothing anywhere read either. Every other session stayed exactly as valid as it had been — after a password reset, which is what somebody does when they believe their account has been taken. <code>support::epoch::SessionEpoch</code> now compares it, in all four authenticated groups, and a test refuses any group that installs <code>Authenticate</code> without it.
+</li>
+<li><strong>A password reset signed somebody in without checking whether they may sign in, or asking for their second factor.</strong> The password form and the magic link both check; this did not. So an account an administrator had deactivated signed itself back in through &quot;forgot password&quot;, and anybody holding the victim&#x27;s mailbox walked past the victim&#x27;s enrolled authenticator. Activation had the same gap. Clearing a lockout on reset stays — owning the mailbox is a legitimate way out of one.
+</li>
+<li><strong><code>users.update</code> alone was enough to become a super administrator.</strong> The form offers every role, <code>super-admin</code> included, and nothing stopped somebody posting it at their own id; <code>destroy</code> had refused to act on your own account since it was written. Editing your own name is still fine — editing your own grants is not, and a super role holder is no longer editable by somebody who is not one. <code>roles.update</code> had the matching hole: <code>destroy</code> refused a super role, <code>update</code> did not, so the role could be renamed to <code>super-admin</code> or the real one renamed out of existence.
+</li>
+<li><strong>The SQL Server driver ignored <code>sslmode</code> entirely.</strong> It was parsed and validated for <code>sqlserver://</code> URLs and then read by nobody: every connection used the default, &quot;encrypt and trust whatever certificate turns up&quot;, so <code>verify-full</code> got no verification at all and <code>sslrootcert=</code> was discarded. Anyone on the path could present a self-signed certificate and read the session, including the LOGIN7 packet whose password is only obfuscated. <code>prefer</code> keeps the documented compromise, because SQL Server&#x27;s own startup certificate cannot be verified; asking for verification now gets it.
+</li>
+<li><strong>The PostgreSQL driver sent the password in the clear whenever asked.</strong> With <code>sslmode=prefer</code>, an attacker answers &quot;no TLS&quot; to the SSLRequest, then asks for a cleartext password, and receives it. The MySQL driver in the same crate already refused the equivalent with a comment explaining why; one crate should not hold two policies on one threat. It is refused on an unencrypted socket now, and still allowed inside TLS, which is how PostgreSQL authenticates against LDAP and PAM.
+</li>
+</ul>
+<h3>Added</h3>
+<ul>
+<li><strong><code>@route(&quot;name&quot;)</code> in templates, and a home that is a route name.</strong> The kit declared thirty named routes and hard-coded fifty-four paths in its templates: <code>Router::url_for</code> existed and was tested, and nothing outside its own tests ever called it. The names were used by <code>route:list</code> and nothing else, so moving a route meant a search-and-replace whose misses announced themselves as 404s. <code>@route</code> resolves at render time, like <code>@lang</code>, and the filling-in still happens in one function that <code>url_for</code> and the directive share. A name nobody registered is an error rather than an empty string — <code>href=&quot;&quot;</code> is a link that looks like a link and reloads the page it is on. Where the application opens is <code>menus.home</code>, and it holds a route name rather than a path. It used to be <code>menus.dashboard_url</code> and it drove the logo only: <code>GET /</code> and the landing after sign-in both hard-coded <code>/dashboard</code>, so an administrator could point &quot;Dashboard opens&quot; at <code>/reports</code> and still arrive at the dashboard every morning. All three read one function now. A name that no route carries is refused when it is saved, which a path could never be.
+</li>
+<li><strong>Sessions in Redis</strong>, behind <code>redis-sessions</code>, for an application running more than one process — the file store keeps a session on local disk, which is right for one machine and wrong for two. Redis owns the expiry, so a session that stops being touched disappears on its own and there is no directory quietly filling with one dead file per visitor. The client is the one in <code>rustlavel-cache</code>; a second Redis implementation would have drifted from it.
+</li>
+<li><strong>A changelog on the documentation site</strong>, generated from this file by <code>docs/build-changelog.py</code> so the two cannot disagree. It refuses to render a construct it does not understand, and refuses to write a page with unpaired markup — both of which it caught while it was being written.
+</li>
+<li><strong>A taken port no longer stops a run.</strong> <code>Address already in use</code> is the most common way starting an application fails, and the operating system&#x27;s answer to it — <code>Io(Os { code: 48, kind: AddrInUse })</code> — names the struct holding the problem rather than the problem. The server now walks up from the port it was asked for and says which one it landed on:
+<pre><code>WARN  port 8399 is in use, so this is serving on 8400 instead
+INFO  Rustlavel serving on http://127.0.0.1:8400</code></pre>
+<p><strong>Not in production.</strong> There the default is a single attempt, because there something does depend on the number — a load balancer, a health check, a firewall rule — and a server that quietly moved to 8301 while traffic still went to 8300 would look like an outage with no cause in the logs. It refuses to start and says why instead. <code>server.port_attempts</code> overrides the default in either direction, and only <code>AddrInUse</code> walks on: a privileged port or an address that is not on this machine is still that error.</p>
+<p><code>doctor</code> now reports a busy port as a warning rather than a failure, and names the port the server will most likely use.</p>
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><strong><code>rustlavel serve</code> leaked a process on every reload, and that is what made a port stay busy.</strong> It ran the application through <code>cargo run</code>, so the application was a *grandchild*: the handle <code>serve</code> held was cargo&#x27;s. Killing it on reload killed cargo and left the application running — still holding the port — so the restart failed with <code>Address already in use</code>. Changing the port did not help, because the process holding the new port was the orphan started with that same new port a moment earlier. <code>serve</code> now runs <code>cargo build</code> and then executes the binary, so the handle is the application. <code>kill</code> kills it, Ctrl-C still reaches it because it stays in this process group, and there is one less process in the tree. Where cargo put the binary is asked of <code>cargo metadata</code> rather than assumed, since <code>target/</code> moves for a workspace member and <code>CARGO_TARGET_DIR</code> moves it for everybody. Measured across three reloads: one application process throughout, no <code>AddrInUse</code>, and no restart when nothing is touched.
+</li>
+<li><strong>The error a failed <code>main</code> prints named the variant, not the problem.</strong> Rust formats it with <code>Debug</code>, so the derived form is what people actually saw: <code>Error: Io(Os { code: 48, kind: AddrInUse, message: &quot;Address already in use&quot; })</code>. <code>Debug</code> now reads exactly like <code>Display</code>, so it is the sentence that was written for them. Test output gains the same thing: <code>unwrap_err()</code> on a bad config says which file and line rather than which variant.
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><strong><code>rustlavel upgrade</code> left a project that could not build.</strong> It merged every kit file and then left <code>Cargo.toml</code> naming the version the project started from, so the first thing anybody saw after a clean merge was a wall of compiler errors about items that did not exist — for a reason the command could have fixed itself. It now bumps the dependency and *unions* the feature list with what the kit needs, which matters because the kit gains flags over time: a 0.5.0 project has no <code>i18n</code>, and <code>@lang</code> does not compile without it. Features a project added of its own accord are never removed, and a <code>path =</code> dependency is left alone — that is somebody working against a checkout, and a version number would break them. Measured: a project scaffolded by the published 0.5.0 CLI upgrades, reports <code>Cargo.toml: 0.5.0 → 0.7.2, and gained i18n</code>, and — after resolving the one six-line <code>src/lib.rs</code> conflict the report explains — builds.
+</li>
+<li>The ten packages the kit&#x27;s code imports were written out in <code>new</code>, and nowhere else, so nothing could check them. They are <code>auth_kit::REQUIRED_PACKAGES</code> now, read by both the scaffold that writes them and the upgrade that repairs them.
+</li>
+</ul>
+<h2 id="0-7-2">0.7.2 — 2026-09-05</h2>
+<h3>Added</h3>
+<ul>
+<li><strong><code>rustlavel upgrade</code>.</strong> A starter kit is a hundred files copied into an application, and from the moment they land they are the application&#x27;s. That is what makes them useful and it was also a dead end: a release that fixed one of them could reach nobody, because reaching them meant overwriting whatever had been written on top. Every project created with 0.5.0 was still running 0.5.0&#x27;s kit, with no way forward but a manual diff. <code>upgrade</code> reconciles three versions of each file instead of two — what the version in <code>.rustlavel/manifest.json</code> wrote, what is in the project now, and what this CLI would write today. Where one side moved, that side wins and nobody is asked. Where both moved to the same place, so does the merge. Where both moved differently, the file is written with <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code> markers and the project stops compiling until a person decides — an upgrade that could not decide must not be able to pass unnoticed. The base comes from crates.io: every release carries <code>templates/</code> inside its <code>.crate</code>, so any version a project was created with is a download away, and downloads are cached. Fetching and unpacking is <code>curl</code> and <code>tar</code> rather than an HTTP client, a TLS stack and a gzip decoder added to a CLI that otherwise depends on nothing; <code>doctor</code> now says so if either is missing. <code>--dry-run</code> reports without writing. <code>--from &lt;version&gt;</code> supplies the base for a project older than manifests. A dirty git tree is refused, because <code>git checkout</code> is the way back and a clean tree is what makes it available. Measured rather than assumed: a project scaffolded by the *published* 0.5.0 CLI, edited in three places, upgrades with 60 files merged, 16 added, 36 already current, and one conflict — in the one file that both the editor and the release had changed.
+</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li><strong>Every file the kit writes is now a file.</strong> Eight of them — <code>main.rs</code>, <code>lib.rs</code>, the two registries, the seeder and the three config files — were Rust constants written to a project without ever existing as templates. That split is what let 0.7.0 ship a seeder with <code>{{crate_name}}</code> still in it, and it also meant <code>upgrade</code> had nothing to use as a base for them. They are template files like the other ninety-nine now, in one manifest, written by one loop. The guard that used to check eight hand-listed constants now renders every file in the manifest, so a template added tomorrow is covered the day it is added. <code>upgrade</code> can still read those old constants out of a published crate&#x27;s source, so a project created before this change gets a proper merge rather than a conflict over a file nobody touched.
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><strong>The starter kit&#x27;s own tests failed in a scaffolded project.</strong> Translating the auth pages replaced the literal &quot;Sign in&quot; with <code>@lang(…)</code>, and <code>@lang</code> asks the *engine* for its translator — but the test built its application with <code>App::bare()</code> and no translator, so the page rendered the key. The wiring lives in <code>support::views</code> now, which <code>main.rs</code> and <code>tests/web.rs</code> both call: a test that renders a page stands in for a visitor, and a visitor never sees a key.
+</li>
+<li><strong>The TLS test containers could not read their own key on Linux.</strong> <code>docker/certs.sh</code> left the PostgreSQL key at mode 600 owned by whoever ran it. On macOS that works by accident; on a CI runner the ownership is real, so postgres got <code>Permission denied</code> and the container exited before a single test ran.
+</li>
+</ul>
+<h2 id="0-7-1">0.7.1 — 2026-09-05</h2>
+<h3>Fixed</h3>
+<ul>
+<li><strong><code>rustlavel new --with auth-kit</code> did not compile on 0.7.0.</strong> The seeder was written to the project straight from its constant while every other generated file went through the placeholder renderer, so it arrived carrying the literal text <code>{{crate_name}}</code>. It is <code>crate::modules::permissions()</code> now — the seeder compiles *inside* the crate it belongs to and cannot name it from outside — and a test refuses any constant that is written unrendered while still holding a placeholder, or any rendered one that has a placeholder left after. Worth saying plainly: the templates were tested and the *writing* of them was not, so nothing in the suite looked at what a real project ends up with. This was found by scaffolding a project from the published crates and building it, which is now the last step of a release rather than an afterthought.
+</li>
+<li><strong>Every crate now has a README on crates.io.</strong> All thirty-three shipped without one, so each page said so. The root <code>README.md</code> could not serve: cargo refuses a readme outside the package it belongs to, and <code>[workspace.package] readme</code> resolves against the workspace root, which lands outside every crate. So each declares its own. The meta-crate and the CLI are written by hand because those are the pages people actually land on; the rest carry what the reader of a package page needs — what it is, that it belongs to Rustlavel, and the feature flag that turns it on.
+</li>
+</ul>
+<h2 id="0-7-0">0.7.0 — 2026-09-05</h2>
+<h3>Added</h3>
+<ul>
+<li><strong>Modules: a feature owns its routes, permissions and settings.</strong> The kit was laid out by technical layer — every controller together, every model together — and the cost is that changing one feature means opening six files in four directories with nothing in the tree saying those six belong together. <code>src/modules/</code> is the alternative, and <code>backup</code> is the first to move: its dump format, schedule arithmetic, controller, four permissions, three settings and four routes are one directory now, and <code>mod.rs</code> is the whole of what the application has to know about it. Nothing is discovered. <code>modules::all()</code> is a hand-written list, the way <code>main.rs</code> is. The seam is the existing <code>Plugin</code> trait, which already carried routes, middleware and state; <code>Module</code> extends it with the four things a plugin could not register because the application collected them centrally. <strong>The middleware comes with the routes.</strong> Those four routes lived inside <code>r.group(&quot;/admin&quot;, …)</code>, which applied <code>Authenticate</code> and <code>IdleTimeout</code> to everything in it. A module registers on the bare router and inherits neither, so the move states them — a version that forgot would have put four unauthenticated routes into the application, one of which restores the database.
+</li>
+<li><strong><code>make:module</code> and <code>make:service</code></strong>, and <code>route:list</code> gained <code>--path</code>, <code>--method</code> and <code>--name</code> with a count under the table. Ninety-six routes do not fit a screen, and piping through <code>grep</code> loses the header row that says what the columns are.
+</li>
+<li><strong><code>@lang</code> in the template engine, and the sign-in pages and sidebar translated.</strong> Settings → Language documented a <code>lang/&lt;code&gt;.json</code> convention and, until this release, promised that &quot;adding one is the whole of adding a language&quot;. It was untrue three times over: the kit did not enable <code>rustlavel-i18n</code>, created no <code>lang/</code> directory, and <strong>no template anywhere asked a translator for a word</strong>. A file could hold a thousand phrases and not one word on screen would change. <code>@lang(&quot;auth.sign_in&quot;)</code> now exists, with <code>@lang(&quot;key&quot;, &quot;name&quot;, value)</code> for a phrase carrying <code>:name</code> placeholders. Two decisions in it are worth stating. The key is a literal fixed at parse time, so a template still cannot compute what it renders — this is not the &quot;calls in templates&quot; the engine rejects. And the words are looked up when the page is written, never when it is parsed: one <code>Engine</code> serves every request and a parsed template is cached and shared, so resolving early would have served the first reader&#x27;s language to everybody after them. There is a test for exactly that. The translator sits on the <code>Engine</code>, which is application-wide; the locale travels in the view context under <code>app_locale</code>, which is per page and which <code>page::shell</code> already set. <code>rustlavel-view</code> defines a small <code>Translate</code> trait and <code>rustlavel-i18n</code> implements it, so the template engine keeps its single dependency and the HTTP stack stays out of it. Translated so far: the sidebar, the header, and the sign-in pages, in English and Indonesian. The settings tabs and administration screens are not, and the Language tab says so rather than implying otherwise. Two guards keep the rest honest: every <code>@lang</code> key a template writes must have an English phrase, and every language file must carry exactly the same keys.
+</li>
+<li><strong>Twelve more icons for a menu item</strong>, and the Dashboard entry is first in the sidebar and points where you say. The rail&#x27;s first entry is the one people reach for without reading, so adding a custom menu no longer pushes it down — and <code>menus.dashboard_url</code>, edited on the Menus screen rather than in Settings because it is navigation, decides where it and the logo above it go. A path inside the application only: the home button is not a place to send everybody off-site.
+</li>
+<li><strong>Bahasa Melayu is off the language list.</strong> Two languages with files, not three with one that would never have had one.
+</li>
+<li><strong>Notifications have a page and a table of their own.</strong> The bell in the header was the audit trail wearing a different label: it read <code>/admin/notifications</code>, which was a filtered view of who-did-what, and &quot;See the whole trail&quot; took you to the audit log. So it showed nothing addressed to you, and it was hidden entirely from anybody without <code>audit.view</code> — which is most people, all of whom have notices of their own. There is now a <code>notifications</code> table where a null <code>user_id</code> means everybody: a notice for one person and an announcement to all of them are the same row, because they are the same thing to a reader. Read state is a separate table, per person, so the first reader of an announcement does not mark it read for the rest. <code>/notifications</code> lists yours with the unread ones marked, &quot;Mark all as read&quot; clears them, and anybody holding the new <code>notifications.send</code> permission can write one — to a person or to everybody — from the page itself, because the alternative is an announcement feature nothing can reach.
+</li>
+</ul>
+<h3>Security</h3>
+<ul>
+<li><strong>Removing a passkey now asks for one.</strong> It was an ordinary form post with nothing behind it but the session cookie and a CSRF token, which travel together — so stripping every passkey off an account was the first and easiest thing to do with a stolen session, and what it left behind was a password the thief already had. The removal now carries a WebAuthn assertion, checked against this account&#x27;s credentials and against the user handle in the assertion, before anything is deleted. It is refused when the proof is missing, blank, or not an assertion at all — the three shapes a forged request takes, each with a test. The assertion may come from <strong>any</strong> of the account&#x27;s passkeys, not the one being removed. Requiring that one sounds stricter and is worse: the reason to remove a passkey is usually that its device is gone, and a rule only the lost device can satisfy leaves a dead credential on the account for good.
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><strong><code>declare_module</code> destroyed any <code>mod.rs</code> that held more than declarations.</strong> It collected every line, dropped the blanks and sorted the lot — correct for a file that is nothing but <code>pub mod</code> lines, and fatal for one that also holds a trait and a function. The first <code>make:module</code> turned <code>src/modules/mod.rs</code> into sorted fragments and the project stopped compiling. It inserts now, in order, leaving every other line where it was.
+</li>
+<li><strong>Test fixtures shared a directory between runs.</strong> Seven tests across four crates named a temp directory after the test and then deleted it on the way in — enough for one run, and not for two: a second <code>cargo test</code> on the same machine wiped the first one&#x27;s tree half-way through, and both failed somewhere unrelated. The process id is in the name now. This is the rule the project already states, applied to the places that were missing it.
+</li>
+<li><strong><code>App</code> replaced a view engine the application had built for itself.</strong> It registered its own whenever <code>resources/views</code> existed — which is whenever an application has views — so <code>.views(...)</code> silently did nothing. An engine carrying a translator was swapped for one that could not translate, and <code>@lang</code> rendered its keys. It now defers to an engine already registered.
+</li>
+<li><strong>The Language tab listed translation files from a different directory than the translator reads.</strong> The tab asked config for <code>view.lang</code>; <code>i18n</code> reads <code>app.lang_path</code>. A project that moved its language files would have had the two looking in different places.
+</li>
+<li><strong>The Language tab looked broken, and one third of it was.</strong> Changing anything there appeared to do nothing, for three different reasons. <code>app.currency</code> genuinely did nothing: <code>money()</code> was called only by its own tests, and the one caller of <code>preferences()</code> wrote <code>let (number, _) = ...</code> — it fetched the currency and threw it away. The setting is gone and <code>money()</code> takes the symbol from its caller, since there is no money in an account and a role. <code>app.number_format</code> did work, invisibly: a fresh install counts 1 user and 2 roles, and <code>1</code> is <code>1</code> in every format there is — the tab now prints a worked example (<code>1.234.567</code>) beside the dropdown, and a test requires the three formats to render differently. <code>app.locale</code> also worked, invisibly: it sets <code>lang</code> on every page, which the tab now says, rather than implying it translates the interface. Worth recording about the guard rather than the bug: the catalogue test passed <code>app.currency</code> all along, because reading a key and discarding the value counts as reading it. That test proves a key is *fetched*, not that it is *used*.
+</li>
+<li><strong>The Menus screen wrote rows the sidebar never read.</strong> It has always saved menu items — and told a person, in its own empty state, that &quot;the application falls back to its built-in navigation until you add something&quot;. Nothing read the table, so adding something changed nothing: <code>partials/nav.rl.html</code> was a hard-coded list. The sidebar now draws the <code>sidebar</code> location when it has items, honouring order, nesting and each item&#x27;s permission, and treating a parent that points at <code>#</code> as a heading rather than a dead link. If that leaves the viewer with nothing, the built-in navigation comes back — a custom menu is a convenience, not a way to edit yourself out of the application: the custom menu sits *above* the built-in list rather than replacing it. Replacing it was the first attempt and it was wrong — adding one item took Users, Roles, Settings and the audit trail off the rail for an administrator who never asked to lose them. Each built-in entry checks its own permission already, so an administrator keeps everything and everybody else keeps what they are granted. Which items appear is a pure function with tests; the viewer&#x27;s permissions are fetched once rather than once per item.
+</li>
+<li><strong>A menu item naming a permission that does not exist saved silently and then never appeared.</strong> The field is free text on purpose, since a menu may point at a feature whose permission has not been created yet. The silence was not on purpose: an item guarded by a permission nobody holds is drawn for nobody, so it looked saved, listed correctly, and vanished. Saving one now says which permission is missing and what to do about it.
+</li>
+<li><strong>Signing in with a passkey and no authenticator app answered 419.</strong> The scripts read the CSRF token out of the hidden <code>_token</code> field, which exists only where a form rendered — and on the two-factor page that form sits behind <code>@if(has_totp)</code>. Somebody enrolled in a passkey and nothing else got a page with no token anywhere on it, so &quot;Use a passkey&quot; posted an empty one and was refused. It worked in the configuration it was built in (passkey *and* authenticator) and in no other. The token is now a <code>&lt;meta&gt;</code> in both layouts, so every page carries one whether or not it renders a form, and the scripts read that first. Measured: the empty token still answers 419, the meta token reaches the handler.
+</li>
+<li><strong>Settings → Appearance did not change the colours until a minute later.</strong> <code>/css/theme.css</code> is generated from those settings and changes the moment somebody clicks Save — and it was served <code>Cache-Control: public, max-age=60</code> with no <code>ETag</code>, so the browser went on painting the old colours out of its own cache. The one file in the application that changes on every Save was the one told to be cached, while <code>app.css</code>, which changes only on a rebuild, already revalidated. It now sends <code>no-cache</code> and a weak <code>ETag</code>, and answers the revalidation it invites: unchanged colours come back <code>304</code> with no body, and a changed colour comes back <code>200</code>. Measured both ways, not assumed.
+</li>
+</ul>
+<h3>Removed</h3>
+<ul>
+<li><strong>The &quot;Check against breached passwords&quot; switch is gone from Settings → Security.</strong> It was never implemented: the lookup needs an outbound HTTPS call behind a feature flag a project may not have enabled, so the honest thing at the time was to refuse every new password while the switch was on and say so on the tab. That is still worse than not offering it. A starter kit should not ship a control whose only working state is off.
+</li>
+</ul>
+<h2 id="0-6-0">0.6.0 — 2026-09-04</h2>
+<h3>Changed</h3>
+<ul>
+<li><strong>The starter kit looks like the dashboard it was drawn from.</strong> 0.5.3 took the *behaviour* out of that mock-up — a Backup tab, a Language tab, a header search, notifications, toasts — and none of its look, which is why the pages still read as a default Tailwind scaffold. The rest of it is here:
+<ul>
+<li><strong>A blue-grey palette rather than a neutral one.</strong> Every surface, border and label sits on a hue of about 250, which is what keeps a screen of tables and forms from reading as photocopier grey. The <code>ink-*</code> numbering keeps its meaning, so a template written against the old scale still says what it meant.
+</li>
+<li><strong>A dark navy sidebar in both schemes</strong>, 240px, with the application&#x27;s mark and description at the top and the signed-in person at the foot. A pale rail beside a pale page was one border away from not being there.
+</li>
+<li><strong>A header that says where you are</strong>, breadcrumb over title, with the search box centred and tinted so it reads as a control rather than as a hole in the bar.
+</li>
+<li><strong>Page titles sit on the page</strong>, not inside a card. A page that opened with two nested boxes before any content now opens with its own name.
+</li>
+<li><strong>Flatter cards, denser type, pill badges, quieter table headings</strong>, and the primary action in the design&#x27;s own blue — which is this palette&#x27;s 700 rather than its 600.
+</li>
+<li><strong>A split sign-in screen</strong>: a flat navy panel on the left, the form on the right on the same pale ground as every other page, and the panel dropped rather than stacked on a narrow screen, because a decorative half-page above a form is something a person scrolls past. A second way in gets a second button under a rule, not a line of small print under the first.
+</li>
+<li><strong>Inter, self-hosted.</strong> The face the design is set in ships with the kit in <code>public/fonts/</code> under its SIL Open Font License, rather than being fetched from a font CDN — which breaks behind a firewall, sends a request per visitor to a third party, and would need the policy this kit is written against opened up. One variable file per subset with <code>unicode-range</code>, so a page with no accented characters never asks for the 85K Latin Extended half; the Latin half is 48K.
+</li>
+<li><strong>A mark inside each address and password field</strong> — an envelope, a padlock — on every sign-in, activation and reset form, positioned rather than laid out beside the box so the field keeps its width, and inert to the pointer so clicking the icon still focuses the field.
+</li>
+<li><strong>The menu button collapses the rail to its icons</strong> on a wide screen and opens the drawer on a narrow one — one control, in one place, at every width. The choice is remembered, and applied before the first paint so a reload does not flash the wide sidebar. In the rail the group headings become the dividers they were standing in for, because a heading clipped to &quot;ADMIN&quot; is worse than no heading. What is *not* here is the fourteen domain screens in that mock-up. They belong to an application, not to a scaffold.
+</li></ul>
+</li>
+</ul>
+<h3>Added</h3>
+<ul>
+<li><strong>A second file manifest, for what is not text.</strong> Everything the CLI writes went through the placeholder renderer, which is right for a template and fatal for a woff2: braces that happened to line up inside the compressed stream would be rewritten and the file would arrive the right size and unreadable. <code>BINARY_FILES</code> carries those byte for byte, and a test compares what is embedded against what is on disk, refuses a binary extension in the text manifest, and fails if a file under <code>templates/auth-kit/</code> is in neither — because a template nobody listed reaches no project, silently.
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><strong>The stylesheet the kit shipped was stale, and 58 classes had no rules.</strong> <code>public/css/app.css</code> is a Tailwind build committed so a project needs no Node toolchain, and that is the trap: adding a class to a template is free, and the build only learns about it when somebody remembers to rebuild. 0.5.3 added a search box, a notification list, toasts, pagination, tab pills and row avatars, and shipped every one of them unstyled. Rebuilt — and a test now fails if a class the templates write is missing from the stylesheet beside them.
+</li>
+<li><strong>Twelve colours on Settings → Appearance changed nothing.</strong> <code>theme_controller</code> has always generated <code>--sidebar-bg</code>, <code>--sidebar-text</code>, <code>--sidebar-active-bg</code>, <code>--sidebar-active-text</code>, <code>--login-from</code> and <code>--login-to</code> into <code>/css/theme.css</code>, and no rule anywhere consumed one. The sidebar and the sign-in panel are drawn from them now, which is what makes that tab do what it says.
+</li>
+<li><strong>Three buttons labelled &quot;(Default)&quot; restored something else.</strong> Settings → Appearance offers quick presets, one named for the value the catalogue declares — and it kept handing back the colours of the palette this release replaced. A test now derives each of those presets from the catalogue and fails when the two drift.
+</li>
+<li><strong>Checkboxes and radios rendered as a dark square.</strong> <code>border-ink-300</code> and friends half-style a native control: the browser goes on painting its own box and the declared border turns it into something neither styled nor default. The classes are gone and <code>accent-color</code> in the base layer does the whole job, which is what the design does too.
+</li>
+<li><strong>The menu button did nothing above <code>lg</code>.</strong> It was <code>lg:hidden</code>, so the only control for the sidebar disappeared exactly where there was room to want one.
+</li>
+<li><strong>Sixteen settings were declared, drawn on a tab, saved to the database and read by nothing.</strong> The Email tab wrote six keys the mailer never consulted — it was built once at boot from <code>config/mail.json</code> — so a host, port, encryption, username or password typed there changed nothing at all. The General tab&#x27;s timezone, date format and description, and the Language tab&#x27;s locale, were the same. Each is now wired: <code>support::mail::mailer_for</code> builds the mailer per send from the store, <code>support::format::Dates</code> renders every timestamp on the audit and backup pages through the chosen timezone and formats, and the name, description and locale reach both layouts — the description as a <code>&lt;meta&gt;</code> and the locale as <code>lang</code> on <code>&lt;html&gt;</code>.
+</li>
+<li><strong><code>backup.path</code> now decides where a backup is written, and where one is read back from.</strong> It was a text field beside a destination dropdown, and the writer called a helper that ignored both. Every path in the controller goes through one place now, because wiring only the write half would have left backups that could be made and not downloaded — and a reader falls back to the built-in directory, so pointing the field somewhere new does not strand the backups already on disk. The traversal check that stops a name climbing out of the directory applies to whichever directory is configured.
+</li>
+<li><strong>The backup destination, S3 bucket, fallback locale and first day of week are gone from the tab.</strong> Nothing uploads a backup, this kit does not enable <code>rustlavel-i18n</code>, and there is no calendar to start on a Monday. A control that cannot be honoured is worse than no control.
+</li>
+<li><strong>The date formatter matched the dropdown&#x27;s labels, not the values it saves.</strong> <code>DD/MM/YYYY</code> is what the tab shows; <code>d/m/Y</code> is what it stores, so three of the four date formats fell through to the fourth — and the test written beside it, against the same labels, agreed with the bug. The formatter now takes its cases from the stored values, and a test takes its inputs from the catalogue and fails if two formats render alike.
+</li>
+<li><strong>Half the timezone list was UTC.</strong> The offset table knew Kuala Lumpur and Bangkok, which the tab does not offer, and not Europe/London or America/New_York, which it does. It also had one fixed offset per zone, which is wrong for those two for part of the year, so it now takes the instant and applies the British and US summer-time rules; a test asserts the exact Sundays the clocks move, and another fails on any zone the tab offers that the formatter answers UTC for all year.
+</li>
+<li><strong>Every date on every page goes through that formatter.</strong> <code>tokens::humanise</code> was a second, absolute, UTC formatter that ignored all three settings, and it was still rendering the users list, the dashboard, the profile, search, passkeys and half the audit page. It is gone, and the line under a timestamp now says how long ago — which is what it is for and what it did not do.
+</li>
+<li><strong>The profile page&#x27;s &quot;Joined&quot; was the literal <code>—</code> for everybody.</strong>
+</li>
+<li><strong>The password minimum a form advertised and the one the server enforced were read from different places.</strong> The form asked <code>Config</code>, the check asked the settings store, so raising it on the Security tab produced a field that accepted twelve characters and a server that refused them. One function reads that key now.
+</li>
+<li><strong>A test walks the catalogue and fails on a key nothing reads.</strong> This is the bug that kept coming back and never showed up in a review — the code that declares a setting and the code that ignores it are in different files, and both look right. Enumerating the catalogue is what finds it.
+</li>
+</ul>
+<h2 id="0-5-3">0.5.3 — 2026-09-03</h2>
+<p>One line per crate, and it is the line that makes 0.5.2&#x27;s headline fix real.</p>
+<h3>Fixed</h3>
+<ul>
+<li><strong><code>rust-version</code> reached no published manifest.</strong> 0.5.2 declared <code>rust-version = &quot;1.88&quot;</code> in <code>[workspace.package]</code> and none of the thirty-three crates inherited it: workspace package fields are opt-in, and a member takes one only by asking with <code>rust-version.workspace = true</code>. crates.io reported <code>rust_version: null</code> for every crate in that release, and a consumer on Rust 1.87 still got `<code>let</code> expressions in this position are unstable<code> from inside </code>rustlavel-core` — the exact error the field exists to replace. Found by exercising the published artifact rather than the working tree: <code>cargo add rustlavel</code> on 1.87, which still locked 0.5.2 and still failed the old way. With the inheritance in place cargo stops at resolution instead:
+<pre><code>error: rustc 1.87.0 is not supported by the following package:
+  rustlavel-core@0.5.3 requires rustc 1.88</code></pre>
+<p>Nothing else changed. If you are on Rust 1.88 or newer, 0.5.2 and 0.5.3 are the same code.</p>
+</li>
+</ul>
+<h2 id="0-5-2">0.5.2 — 2026-09-03</h2>
+<p>An interactive <code>rustlavel new</code>, a Backup tab that does what it says, and a minimum toolchain that is measured rather than assumed.</p>
+<h3>Added</h3>
+<ul>
+<li><strong><code>rustlavel new</code> asks.</strong> With no <code>--with</code>, it now asks what kind of application, which database, and what else to put in. It answers itself when nobody is there — every prompt falls back to its default when stdin is not a terminal, and <code>--with</code>, <code>--all</code> and <code>--yes</code> skip it — so a scaffold in CI produces the same project it always did rather than hanging on a question.
+</li>
+<li><strong>The Backup tab has a schedule, a retention window and a destination.</strong> The retention is live: after a successful backup the ones past the window go, row and file together. The schedule is a statement of intent — this application has no clock, so something outside it has to act on the answer, and <strong>the panel says so, loudly, when a schedule is set and nothing has ever run one</strong>. The destination offered local disk and S3-compatible — <strong>and that was wrong; see Unreleased.</strong> Nothing here uploads a backup anywhere, so the dropdown was the very failure its own note described, and it is gone.
+</li>
+<li><strong>The Language tab&#x27;s number format and currency are read by something.</strong> Every count on every administration page and the size column on the Backup tab go through one formatter. (The first day of the week was listed here too and read nothing; see Unreleased.)
+</li>
+<li><strong>A search box and a notification list in the header.</strong> Search covers people, roles, permissions, menu items and settings, and a group is included only when the person may open what it links to. The notifications are the audit trail rather than a second table kept in step by hand, filtered to what is worth interrupting somebody for — sign-ins are left out, because a list that reports every sign-in is a list nobody reads. Flash messages become toasts, server-rendered first so they survive with scripting off.
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><strong><code>rust-version</code> was wrong, and wrong in the direction that matters.</strong> 0.5.1 did not declare one; the first attempt at this said 1.85, reasoned from edition 2024. The code uses let-chains (<code>&amp;&amp; let</code>) in twenty-one places across eighteen crates, and those stabilised in 1.88. Measured by installing the toolchains: 1.87 refuses, 1.88 builds the whole workspace with every feature and every test target. A declared floor that is too low is worse than none — cargo tells somebody on 1.86 the crate is compatible and rustc then refuses it.
+</li>
+<li><strong>The plugin lines never reached an auth-kit project.</strong> <code>auth-kit</code> writes its own <code>main.rs</code> and that template had no <code>{{plugins}}</code> in it, so the fix shipped in 0.5.1 did nothing for the shape most people scaffold. The test passed because it called the helper directly; it renders all three templates and reads the output now.
+</li>
+<li><strong>Every <code>MAIL_*</code> variable was inert.</strong> There was no <code>config/mail.json</code>, and <code>Config</code> has no automatic <code>MAIL_HOST</code> to <code>mail.host</code> mapping, so the mailer used its defaults while the Email tab — which reads the environment directly — reported that the environment was in charge.
+</li>
+<li><strong>Three ways the Backup screen produced something that was not a backup</strong>: <code>Create</code> could not succeed on a stock scaffold, because the exporter paginated with <code>order by &quot;id&quot;</code> and the RBAC pivots have no surrogate key; the dump covered a hardcoded list that three tables added in one afternoon never reached; and <code>Restore</code> left the settings cache alone, so an administrator restoring a backup to undo a bad change saw the bad change still there.
+</li>
+<li><code>QueueDashboard::new(db.clone())</code> in the scaffold&#x27;s own comment did not compile — the signature takes an <code>Arc&lt;dyn Queue&gt;</code>.
+</li>
+<li><code>rustlavel-openapi</code>&#x27;s header example called an <code>OpenApi</code> type that has never existed. The replacement is a compiled doctest, which caught the first attempt at the fix.
+</li>
+<li><code>cache.path</code> defaulted to <code>storage/framework/cache</code> while the scaffold creates <code>storage/cache</code>.
+</li>
+</ul>
+<h2 id="0-5-1">0.5.1 — 2026-09-03</h2>
+<p>Three fixes, two of them to things 0.5.0 claimed were already done.</p>
+<h3>Fixed</h3>
+<ul>
+<li><strong>The scaffold registered eight of the twelve packages that ship a plugin.</strong> <code>otel</code> has a no-argument constructor and was left out of the list — and <code>OpenTelemetry</code> was missing from the prelude as well, so the line could not have compiled had it been written. That is the same bug 0.5.0 fixed for <code>Metrics</code>, still present for <code>otel</code>. <code>mcp</code>, <code>oauth</code> and <code>oauth-provider</code> were not even named in the comment. The lists are maintained by hand, so the test no longer trusts them: it reads the crates directory, finds every <code>impl Plugin for</code>, and fails on any package the scaffold offers but says nothing about. - <strong>A cache miss cost two queries.</strong> <code>ModelCache::find</code> called <code>Model::find</code> and then read the same row again to cache it — because <code>Model::to_json</code> cannot be rehydrated, so the model in hand was not enough to store. Two round trips on every cold read made the cache worse than no cache on the path it exists to help. Fetching the row once and hydrating from it gets both from a single query. A cache hit whose stored row no longer parses was also counted as a hit *and* fell through to the database, which overstated the hit rate by exactly the entries that were costing a query. The hit is recorded once a model has actually come back. - A test in <code>rustlavel-ai</code> failed on whichever runs interleaved: it collected every <code>ai.call</code> event on the process-global bus and asserted there was exactly one, while ten other tests in the same file make a call. Being the only test that subscribes is not the same as being the only test that emits.
+</li>
+</ul>
+<h3>Added</h3>
+<ul>
+<li><code>OpenTelemetry</code> is re-exported from the meta-crate and its prelude, like <code>Telescope</code>, <code>DebugBar</code> and <code>Metrics</code>.
+</li>
+</ul>
+<h2 id="0-5-0">0.5.0 — 2026-09-03</h2>
+<p>A second-level cache for models, and three things that were switched on and doing nothing.</p>
+<h3>Added</h3>
+<ul>
+<li><strong><code>rustlavel-model-cache</code></strong> — Hibernate&#x27;s second-level cache, in this framework&#x27;s vocabulary. Entities kept by primary key and query results kept by the SQL that produced them, over the <code>Cache</code> trait that already exists, so memory, file and Redis all work with no new configuration. Caching an entity is the easy half: one key, and the write that changes it knows which key to drop. Caching a *query* is the hard one, because a write to one row invalidates an unknown number of cached result sets and there is no way to enumerate them — a cached <code>WHERE role = &#x27;admin&#x27;</code> is invalidated by an insert whose shape the cache never sees. The answer is Hibernate&#x27;s: a <strong>generation counter per table</strong>, recorded on every cached result and bumped by every write. One counter invalidates every stale result set at once. Blunt on purpose — a write to any row of <code>users</code> costs you every cached <code>users</code> query, which beats serving a list that is missing a row somebody just added. The query key is a 64-bit fingerprint *and* the statement, stored beside the rows and compared on the way out, so a collision is a miss rather than one query&#x27;s rows served as another&#x27;s. A model with no registered region is not cached at all: a package that quietly starts holding every table the moment it is registered is a cache nobody chose. Six integration tests run against PostgreSQL 16, MySQL 8.4 and Azure SQL Edge, and prove the two things unit tests cannot — that a second read does not reach the database, and that a write makes it reach the database again.
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><strong>A model with a <code>bool</code> field could not be read on MySQL.</strong> MySQL has no boolean: <code>BOOLEAN</code> is an alias for <code>tinyint(1)</code>, and nothing on the wire tells a flag from a small counter, so the driver hands back an integer. The model does know — it declared the field <code>bool</code> — and that is the layer where the two are now reconciled. Zero and one only: a counter column declared <code>bool</code> is a mistake, and guessing <code>true</code> for 7 would hide it.
+</li>
+<li><strong>A package the scaffold was asked for was never registered.</strong> <code>rustlavel new app --with telescope</code> compiled the dependency in and left <code>main.rs</code> saying nothing about it — the application ran, <code>/telescope</code> answered 404, and the generated file gave no hint a line was missing. The scaffold writes the line now, for the plugins that can be built from nothing; the ones needing a database handle are named in a comment rather than emitted as code that would not compile.
+</li>
+<li><code>DebugBar</code> was not re-exported from the meta-crate at all, and neither it, <code>Metrics</code> nor <code>Telescope</code> was in the prelude — which is the one thing a generated <code>main.rs</code> imports.
+</li>
+<li>One OTel test failed a few runs in a hundred for no reason. It asserts that a tag byte is absent from an encoded span, and reasoned carefully about the identifiers while forgetting that <code>Span::new</code> timestamps itself from the clock, so the nanoseconds supplied a stray <code>0x7a</code> whenever they contained one. The times are pinned.
+</li>
+</ul>
+<h2 id="0-4-0">0.4.0 — 2026-09-03</h2>
+<p>A new package, two bugs that made features look like they worked when they did not, and the administration area the starter kit was missing.</p>
+<h3>Added</h3>
+<ul>
+<li><strong><code>rustlavel-audit</code></strong> — who did what, to which record, from where. Different from the application log on purpose: a log line is for whoever is debugging, an audit entry is a record somebody may be asked about a year later. <code>req.audit(&quot;users.deleted&quot;).on(&quot;User&quot;, id).describe(...).record()</code>. The address and the user agent are read off the request rather than passed in, because an entry that says &quot;someone updated the settings&quot; answers nothing. The actor column is nullable and deliberately not a foreign key: an entry outlives the account it describes, and a cascade would delete the evidence along with the subject.
+</li>
+<li><strong>RS256 in <code>rustlavel-webauthn</code>.</strong> TPM-backed Windows Hello and a number of older security keys sign with nothing else, so a relying party that does not offer it turns them away at registration — which is what Chrome&#x27;s <code>pubKeyCredParams</code> warning is about. The arithmetic is written here, and the crypto rule survives intact: verifying an RSA signature involves no secret at all. The padding is checked by re-encoding the block a valid signature would produce, never by parsing the recovered one — a lenient parser is how Bleichenbacher&#x27;s 2006 forgery worked.
+</li>
+<li>Menu management and an audit page in the starter kit, plus a brand colour on Settings → Appearance that reaches every page. The hue comes from the choice and the lightness ladder stays, which is what keeps white-on-brand legible when somebody picks an unusual colour.
+</li>
+<li><code>QueryBuilder::or_filter_op</code> and <code>or_filter_like</code>: <code>or_filter</code> could only ever mean equality, so a search across three columns with <code>like</code> had no way to say so.
+</li>
+<li><code>Permissions::users_in_role</code>, which answers &quot;is anybody still holding this role&quot; with a count rather than a list.
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><strong>Passkeys could not be registered at all.</strong> The starter kit&#x27;s script sent an invention of its own — <code>raw_id</code>, <code>client_data_json</code>, flat rather than nested under <code>response</code> — where the parser reads what <code>PublicKeyCredential.toJSON()</code> produces, so every credential arrived with no <code>rawId</code>.
+</li>
+<li><strong>Settings → Appearance had never coloured anything.</strong> <code>/css/theme.css</code> was served as <code>text/plain</code>, because <code>Response::with_text</code> sets its own content type and was chained after the header that set the right one. A browser refuses a stylesheet served as plain text and says so only in a console warning, so nothing in the application noticed.
+</li>
+<li><strong><code>Files</code> sent <code>cache-control: public, max-age=3600</code> on everything, with no way to change it.</strong> Nothing it serves is fingerprinted, so that is a promise the filename cannot keep: rebuild a stylesheet and the browser keeps showing the old one for the rest of the hour. The default is now <code>no-cache</code> — cache, but ask first — and <code>Files::cache_control</code> is there for URLs that do carry a content hash.
+</li>
+<li><strong><code>BoxFuture</code> was not reachable outside <code>rustlavel-http</code></strong>, so a middleware written in an application could not spell its own signature. The trait was a documented extension point that could not be extended.
+</li>
+<li><code>rustlavel-auth</code> called <code>GenericArray::from_slice</code>, deprecated in newer generic-array releases. The framework&#x27;s lockfile pins an older one, so clippy here stayed clean while every freshly scaffolded project got three warnings out of a dependency it never asked for.
+</li>
+<li>The Roles page&#x27;s Users column had been empty since the page was written: the handler filled it with a literal null because nothing in <code>rustlavel-rbac</code> could answer it.
+</li>
+<li>Sign-in tab order. &quot;Forgot?&quot; sat between the address and the password in the document, so everybody tabbing out of their email landed on it.
+</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Five settings on the starter kit&#x27;s Security tab were stored and read by nothing, which is worse than not having them. Magic-link sign-in, email verification, password-reuse prevention, the idle session timeout and the From address on the Email tab all do something now. <code>auth.require_mfa</code> was enforced by the login form and by nothing else, so an activation link, a password reset and a magic link were three ways around it.
+</li>
+</ul>
+<h2 id="0-3-2">0.3.2 — 2026-09-03</h2>
+<p>Three bugs that only appear when the thing is run rather than compiled.</p>
+<h3>Fixed</h3>
+<ul>
+<li><strong><code>FLAGS_ON</code> and <code>FLAGS_OFF</code> did nothing.</strong> The crate read <code>flags.on</code> from configuration and nothing mapped the environment into it, so the documented incident switch was inert. It now reads the environment when the configuration key is absent.
+</li>
+<li><strong>The starter kit&#x27;s seeder logged the first administrator&#x27;s activation link at <code>info</code></strong>, so <code>LOG_LEVEL=warn</code> hid the only way into a new application. It is printed now, with the full URL.
+</li>
+<li>The four OTLP collector tests share one container and one log, and could interleave under a full workspace run. They take turns.
+</li>
+<li><code>docker/env.sh</code> printed <code>KEY=value</code> without <code>export</code>, so <code>eval</code> set a shell variable that <code>cargo</code> never saw and every integration suite skipped while reporting a pass. It also now sets <code>DATABASE_URL</code>, without which fifteen more did the same.
+</li>
+</ul>
+<h2 id="0-3-1">0.3.1 — 2026-09-03</h2>
+<h3>Fixed</h3>
+<ul>
+<li><code>rustlavel new --with rbac</code> and <code>--with flags</code> were refused: both are features of the <code>rustlavel</code> crate, and neither was in the list the scaffold accepts. <code>rbac</code> had been missing for a release. A test now reads the meta-crate&#x27;s manifest and fails if the two lists disagree in either direction, so this cannot drift again.
+</li>
+</ul>
+<h2 id="0-3-0">0.3.0 — 2026-09-03</h2>
+<p>The minor number, because <code>Errors</code> gained a field and a <code>Validator</code> built from a request now behaves differently for a browser: it redirects instead of rendering text. Everything else is new.</p>
+<h3>Changed</h3>
+<ul>
+<li><strong>A failed HTML form now redirects back to itself</strong> with the messages and the submitted input, instead of answering a plain <code>422</code> with the page gone. JSON clients are unaffected and still get Laravel&#x27;s shape. An application with no session middleware falls back to the old plain-text <code>422</code>.
+</li>
+</ul>
+<h3>Added</h3>
+<ul>
+<li><code>rustlavel-flags</code> — runtime feature switches resolved per user or tenant, with percentage rollouts that are stable across processes, a store for operator overrides, and <code>FLAGS_OFF</code> as an incident switch that is read before the store is touched.
+</li>
+<li><code>rustlavel make:crud</code>, <code>make:package</code> and <code>tinker</code>.
+</li>
+<li>A cookbook at <a href="https://advancedynamic.github.io/rustlavel/cookbook.html">advancedynamic.github.io/rustlavel/cookbook.html</a>.
+</li>
+<li><code>Flash</code>, in <code>rustlavel-http</code>: somewhere to leave a value for exactly one further request. Implemented by the session, used by validation and the view layer, so neither has to depend on the other.
+</li>
+<li><code>Request::errors</code>, <code>old</code>, <code>old_field</code>, <code>has_errors</code> and <code>previous_url</code>.
+</li>
+<li>A nightly CI workflow and a <code>docker/</code> set that stand up the eight servers the integration suites need — including the TLS certificates, which is why database TLS was untested even though CI already had the databases.
+</li>
+</ul>
+<h2 id="0-2-2">0.2.2 — 2026-09-02</h2>
+<p>Two bugs that met anybody who ran <code>rustlavel new --with auth-kit</code> on 0.2.1. Nothing else changed.</p>
+<h3>Fixed</h3>
+<ul>
+<li>The starter kit shipped a <code>match</code> that clippy rewrites as <code>matches!</code>, so <code>cargo clippy -- -D warnings</code> failed on a freshly scaffolded project. A lint in the kit is a lint in an application&#x27;s own build.
+</li>
+<li>The scaffold&#x27;s default test asserted a public home page, which the kit replaces with a redirect to the sign-in page, so <code>cargo test</code> failed immediately after <code>rustlavel new --with auth-kit</code>. The kit now ships four tests of its own covering the guard and the CSRF check.
+</li>
+</ul>
+<h3>Added</h3>
+<ul>
+<li>A CI job that scaffolds a project with the kit, builds it, runs its tests and runs clippy over it. None of the kit&#x27;s ~57 files are compiled by the workspace, so a rename in the framework used to break them silently.
+</li>
+</ul>
+<h2 id="0-2-1">0.2.1 — 2026-09-02</h2>
+<p>The patch number rather than the minor, and that is the right slot: for a <code>0.x</code> version Cargo treats the minor as the major, so a breaking change would have to be <code>0.3.0</code>. Nothing here breaks anything. Everything below is new, so <code>rustlavel = &quot;0.2&quot;</code> picks it up on its own.</p>
+<h3>Added</h3>
+<ul>
+<li><strong><code>rustlavel new app --with auth-kit</code></strong> — a starter kit, in the shape Laravel Breeze has: the controllers, views, routes and migrations are written into the project and belong to it, so the login page is a file you edit rather than a template you override. The library half stays in crates, so a security fix arrives with <code>cargo update</code>.
+<ul>
+<li>Sign-in with an authenticator app (TOTP), passkeys, and single-use recovery codes; a sign-in audit log; per-account and per-address lockout.
+</li>
+<li>Self-registration (switchable off) and admin invitation, both ending at a link where the person chooses their own password — so an administrator never knows one.
+</li>
+<li>Roles and permissions with a management area, direct per-user grants and denies, and &quot;view as this user&quot; for support.
+</li>
+<li>Eleven pages of Tailwind v4, built to a committed stylesheet so no Node toolchain is needed, under a Content-Security-Policy with no <code>unsafe-inline</code> anywhere.
+</li></ul>
+</li>
+<li><strong><code>rustlavel-rbac</code></strong> — roles, permissions, wildcard matching, a cached check and <code>Can::permission(...)</code> route guards. Tested against PostgreSQL, MySQL and SQL Server.
+</li>
+<li><strong><code>rustlavel-auth::totp</code></strong> — RFC 6238, verified against the full RFC 4226 and RFC 6238 test tables, with recovery codes.
+</li>
+<li><strong><code>rustlavel-auth::qr</code></strong> — a QR encoder, checked byte for byte against libqrencode across 291 payloads. It exists because posting a TOTP secret to a chart API is not acceptable and a JavaScript QR library would need a looser policy than the kit ships with.
+</li>
+<li><strong><code>rustlavel-auth::impersonation</code></strong> — acting as another user, with the real operator kept for the audit trail.
+</li>
+<li><code>CoseKey::to_bytes</code> and a CBOR encoder, without which a passkey could be verified and never stored.
+</li>
+<li><code>RouteHandle::middleware</code>, for a resource whose verbs need different guards.
+</li>
+<li><code>Request::inputs</code>, for the repeated fields a checkbox group sends.
+</li>
+<li><code>Config::list</code>, <code>Request::body_bytes</code> in tests, <code>sha256_hex</code>.
+</li>
+</ul>
+<h2 id="0-2-0">0.2.0 — 2026-09-02</h2>
+<p>The minor number rather than the patch, and deliberately: for a <code>0.x</code> version Cargo treats the minor as the major, so <code>rustlavel = &quot;0.1&quot;</code> would have picked this up on its own. Two changes below need a person to read them first.</p>
+<h3>Breaking</h3>
+<ul>
+<li><strong><code>Request::ip()</code> no longer reads <code>X-Forwarded-For</code> by itself.</strong> An application behind a load balancer must add the new <code>TrustProxies</code> middleware, or it will see the balancer&#x27;s address for every request. See below for why this is worth the interruption.
+</li>
+<li><strong><code>Error</code> has a new variant, <code>Unavailable</code>.</strong> Code that matches on <code>Error</code> exhaustively will not compile until it handles it.
+</li>
+</ul>
+<h3>Security</h3>
+<ul>
+<li><strong><code>Request::ip()</code> no longer trusts <code>X-Forwarded-For</code> on its own.</strong> It did, unconditionally, which meant any client could choose its own address by sending a header — and the rate limiter and idempotency scoping both key on it, so both were escapable by varying one header per request. The address is now the peer that opened the socket unless the new <code>TrustProxies</code> middleware establishes that the connection came from a proxy named in advance. Applications behind a load balancer must add <code>TrustProxies::from_config</code> (or <code>::at([...])</code>) to keep seeing real client addresses.
+</li>
+</ul>
+<h3>Added</h3>
+<ul>
+<li><code>TrustProxies</code>, with CIDR matching for IPv4 and IPv6, reading <code>trustedproxy.proxies</code>. Forwarded hops are stripped from the right, so a value the client wrote before the first proxy appended to it is never taken as the client address.
+</li>
+<li><code>Request::scheme()</code>, <code>is_secure()</code>, <code>forwarded_host()</code>, <code>forwarded_port()</code>, from a trusted proxy&#x27;s <code>X-Forwarded-Proto</code>/<code>-Host</code>/<code>-Port</code>.
+</li>
+<li><code>Request::with_peer</code>, so a test can say where a request came from.
+</li>
+<li><strong>A circuit breaker</strong> for outbound calls, in <code>rustlavel-client</code>: <code>Client::new().breaker(CircuitBreaker::new())</code>. It trips on a failure rate over a sliding window rather than a raw count, keeps one breaker per host, and probes with a few calls before resuming. A 5xx counts against the upstream; a 4xx does not.
+</li>
+<li><code>Error::Unavailable</code>, raised when a call was refused rather than attempted, so a caller can safely fall back. It renders as a 503.
+</li>
+</ul>
+<h2 id="0-1-1">0.1.1 — 2026-09-02</h2>
+<p>The API release: everything an application that only serves JSON needed and did not have, plus five packages that existed in the repository but had never been published.</p>
+<h3>Added</h3>
+<ul>
+<li><strong>CORS</strong> (<code>Cors</code>), configured with the keys of Laravel&#x27;s <code>config/cors.php</code>; every list accepts a comma-separated string so it can come from <code>.env</code>.
+</li>
+<li><strong>Response compression</strong> (<code>Compress</code>): gzip and deflate, with a DEFLATE codec written in the framework — fixed and dynamic Huffman blocks and a complete inflater, checked against zlib&#x27;s own output.
+</li>
+<li><strong>ETag and conditional requests</strong> (<code>ETag</code>): <code>If-None-Match</code> and <code>If-Modified-Since</code> answered with <code>304</code>. Static files now carry <code>Last-Modified</code>.
+</li>
+<li><strong>API resources</strong> (<code>JsonResource</code>, <code>attributes()</code>): one JSON shape per type, with Laravel&#x27;s <code>data</code>/<code>meta</code>/<code>links</code> for pagination.
+</li>
+<li><strong>Request identifiers</strong> (<code>RequestId</code>), on the request, the response, a task-local, and the <code>http.request</code> instrumentation event.
+</li>
+<li><strong>Idempotency keys</strong> (<code>Idempotency</code>, in <code>rustlavel-cache</code>): a write with an <code>Idempotency-Key</code> runs once and is replayed thereafter.
+</li>
+<li><strong>Health probes</strong> (<code>Health</code>): <code>/up</code> for liveness, <code>/up/ready</code> for readiness with concurrent, time-limited checks.
+</li>
+<li><strong><code>Timeout</code></strong> and <strong><code>BodyLimit</code></strong> middleware, per group.
+</li>
+<li><strong>API versioning</strong>: <code>Router::version</code>, <code>VersionHeader</code>, and <code>Deprecation</code>/<code>Sunset</code> headers from <code>.deprecated_at()</code> and <code>.sunset()</code>.
+</li>
+<li><code>#[rustlavel::main]</code> and <code>#[rustlavel::test]</code>, with <code>tokio</code> re-exported, so an application&#x27;s dependency list is one line.
+</li>
+<li><code>Config::list</code>, for values that are an array in JSON and a comma-separated string in <code>.env</code>.
+</li>
+<li><code>SearchClient::from_config</code> and <code>RelyingParty::from_config</code>.
+</li>
+<li><code>rustlavel-client</code> asks for and transparently decodes gzip and deflate.
+</li>
+<li>First publication of <code>rustlavel-debugbar</code>, <code>rustlavel-ldap</code>, <code>rustlavel-otel</code>, <code>rustlavel-search</code> and <code>rustlavel-webauthn</code>.
+</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>A warning from the framework&#x27;s own code no longer appears in an application&#x27;s build when the <code>db</code> and <code>queue</code> packages are both off.
+</li>
+</ul>
+<h2 id="0-1-0">0.1.0 — 2026-08-30</h2>
+<p>First release.</p>
+
+</main>
+
+<footer class="wrap">
+  <p>Generated from <a href="https://github.com/advancedynamic/rustlavel/blob/main/CHANGELOG.md">CHANGELOG.md</a>
+  by <code>docs/build-changelog.py</code>. Edit the markdown, not this page.</p>
+</footer>
+
+</body>
+</html>

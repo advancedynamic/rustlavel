@@ -83,6 +83,7 @@ pub mod expr;
 pub mod lexer;
 pub mod parser;
 pub mod source;
+pub mod routes;
 pub mod translate;
 pub mod value;
 

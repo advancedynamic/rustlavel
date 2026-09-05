@@ -20,6 +20,17 @@
 /// Text only — see `BINARY_FILES` for the rest. The split is not tidiness: the
 /// entries here are run through the placeholder renderer on the way out, and a
 /// woff2 put through a text renderer is a corrupt woff2.
+/// The packages the kit's generated code imports.
+///
+/// `auth-kit` is scaffolding rather than a feature flag, so `new` expands it
+/// into these and `upgrade` makes sure a project that predates one of them
+/// gains it. A kit file that imports something missing from here does not
+/// compile in somebody else's project, which is the one place nobody here
+/// would see it.
+pub const REQUIRED_PACKAGES: &[&str] = &[
+    "audit", "auth", "cache", "db", "i18n", "mail", "rbac", "validation", "view", "webauthn",
+];
+
 pub const FILES: &[(&str, &str)] = &[
     ("src/lib.rs", include_str!("../templates/auth-kit/src/lib.rs")),
     ("src/main.rs", include_str!("../templates/auth-kit/src/main.rs")),
@@ -119,6 +130,7 @@ pub const FILES: &[(&str, &str)] = &[
     ("src/routes/web.rs", include_str!("../templates/auth-kit/src/routes/web.rs")),
     ("src/support/audit.rs", include_str!("../templates/auth-kit/src/support/audit.rs")),
     ("src/support/format.rs", include_str!("../templates/auth-kit/src/support/format.rs")),
+    ("src/support/home.rs", include_str!("../templates/auth-kit/src/support/home.rs")),
     ("src/support/idle.rs", include_str!("../templates/auth-kit/src/support/idle.rs")),
     ("src/support/lockout.rs", include_str!("../templates/auth-kit/src/support/lockout.rs")),
     ("src/support/mail.rs", include_str!("../templates/auth-kit/src/support/mail.rs")),
@@ -131,6 +143,7 @@ pub const FILES: &[(&str, &str)] = &[
     ("src/support/settings.rs", include_str!("../templates/auth-kit/src/support/settings.rs")),
     ("src/support/stats.rs", include_str!("../templates/auth-kit/src/support/stats.rs")),
     ("src/support/tokens.rs", include_str!("../templates/auth-kit/src/support/tokens.rs")),
+    ("src/support/epoch.rs", include_str!("../templates/auth-kit/src/support/epoch.rs")),
     ("src/support/views.rs", include_str!("../templates/auth-kit/src/support/views.rs")),
     ("tests/web.rs", include_str!("../templates/auth-kit/tests/web.rs")),
 ];

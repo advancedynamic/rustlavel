@@ -134,6 +134,46 @@ fn parse_pattern(pattern: &str) -> Vec<Segment> {
         .collect()
 }
 
+/// The named routes of a finished router.
+///
+/// Built by [`Router::named_routes`] and shared with the template engine, so
+/// `@route("users.show")` resolves to the same path `url_for` gives — the
+/// filling in happens in [`fill`], once, rather than in two implementations
+/// that would drift.
+#[derive(Default, Clone)]
+pub struct NamedRoutes(Vec<(String, Vec<Segment>)>);
+
+impl NamedRoutes {
+    pub fn url_for(&self, name: &str, params: &[(&str, &str)]) -> Option<String> {
+        let (_, segments) = self.0.iter().find(|(known, _)| known == name)?;
+        fill(segments, params)
+    }
+
+    /// Every name registered, for a message that can say what is available.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.0.iter().map(|(name, _)| name.as_str())
+    }
+}
+
+/// Put the parameters into a route's shape.
+///
+/// `None` when a parameter the shape needs was not given — a half-filled path
+/// would be a working-looking link to the wrong place.
+fn fill(segments: &[Segment], params: &[(&str, &str)]) -> Option<String> {
+    let lookup = |key: &str| params.iter().find(|(k, _)| *k == key).map(|(_, v)| *v);
+
+    let mut out = String::new();
+    for segment in segments {
+        out.push('/');
+        match segment {
+            Segment::Static(value) => out.push_str(value),
+            Segment::Param(name) => out.push_str(&url::encode(lookup(name)?)),
+            Segment::Wildcard(name) => out.push_str(lookup(name)?),
+        }
+    }
+    Some(if out.is_empty() { "/".to_string() } else { out })
+}
+
 /// Collects routes, then answers requests.
 #[derive(Default)]
 pub struct Router {
@@ -267,18 +307,23 @@ impl Router {
     /// Build a URL from a named route: `url_for("users.show", &[("id", "7")])`.
     pub fn url_for(&self, name: &str, params: &[(&str, &str)]) -> Option<String> {
         let route = self.routes.iter().find(|route| route.name.as_deref() == Some(name))?;
-        let lookup = |key: &str| params.iter().find(|(k, _)| *k == key).map(|(_, v)| *v);
+        fill(&route.segments, params)
+    }
 
-        let mut out = String::new();
-        for segment in &route.segments {
-            out.push('/');
-            match segment {
-                Segment::Static(value) => out.push_str(value),
-                Segment::Param(name) => out.push_str(&url::encode(lookup(name)?)),
-                Segment::Wildcard(name) => out.push_str(lookup(name)?),
-            }
-        }
-        Some(if out.is_empty() { "/".to_string() } else { out })
+    /// The named routes, lifted out so something else can hold them.
+    ///
+    /// The router itself is handed to the server and consumed; a template needs
+    /// the names after that, which is what `@route` renders. Only the names and
+    /// their shapes come along — no handlers, no middleware.
+    pub fn named_routes(&self) -> NamedRoutes {
+        NamedRoutes(
+            self.routes
+                .iter()
+                .filter_map(|route| {
+                    route.name.clone().map(|name| (name, route.segments.clone()))
+                })
+                .collect(),
+        )
     }
 
     /// Match a request and run it through the pipeline.

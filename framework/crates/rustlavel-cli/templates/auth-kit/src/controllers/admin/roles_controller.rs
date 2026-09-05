@@ -145,6 +145,20 @@ impl RolesController {
             return req.view("admin/roles/form", &context);
         }
 
+        // `destroy` has refused to touch a super role since it was written;
+        // this did not. Without the check, `roles.update` is a way to rename a
+        // role you already hold to `super-admin`, or to rename the real one out
+        // of existence and lock its owner out — the escalation `destroy` was
+        // careful about, approached through the edit form instead.
+        if store.super_role_names().contains(&role.name) {
+            page::flash(&req, "error", "A super administrator role cannot be edited here.");
+            return Ok(Response::see_other("/admin/roles"));
+        }
+        if store.super_role_names().contains(&name) {
+            page::flash(&req, "error", "That name is reserved for the super administrator role.");
+            return Ok(Response::see_other("/admin/roles"));
+        }
+
         if name != role.name {
             store.rename_role(&role.name, &name).await?;
         }

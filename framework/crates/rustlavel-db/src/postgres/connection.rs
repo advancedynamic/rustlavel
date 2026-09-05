@@ -189,6 +189,28 @@ impl Connection {
             match self.read_message().await? {
                 Backend::Authentication(Authentication::Ok) => continue,
                 Backend::Authentication(Authentication::CleartextPassword) => {
+                    // Not on a socket anybody can read. With `sslmode=prefer`,
+                    // an attacker positioned to watch the connection is also
+                    // positioned to answer "no TLS here" to the SSLRequest and
+                    // then ask for this — and the password would arrive
+                    // verbatim. The MySQL driver in this crate already refuses
+                    // the equivalent (`mysql_clear_password`); one crate should
+                    // not hold two policies on one threat.
+                    //
+                    // Encrypted, this is ordinary: it is how PostgreSQL is
+                    // configured to authenticate against LDAP and PAM, and the
+                    // password is inside TLS.
+                    if !self.stream.is_encrypted() {
+                        return Err(Error::msg(format!(
+                            "{} asked for the password in the clear on an unencrypted \
+                             connection, and this driver will not send it. A server that asks \
+                             for this can read the password, and so can anyone on the path — \
+                             including someone who answered the SSLRequest with \"no\" to get \
+                             here. Connect with sslmode=require or stronger, or change the \
+                             server's pg_hba.conf to scram-sha-256.",
+                            self.config.host
+                        )));
+                    }
                     let mut buffer = Buffer::new();
                     buffer.password(&self.config.password);
                     self.write(buffer).await?;

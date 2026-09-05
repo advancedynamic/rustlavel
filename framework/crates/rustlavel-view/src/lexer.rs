@@ -8,8 +8,8 @@ use crate::source::syntax_error;
 use rustlavel_core::Result;
 
 /// Directives that take a parenthesised argument list.
-const WITH_ARGUMENTS: [&str; 8] =
-    ["if", "elseif", "foreach", "extends", "section", "yield", "include", "lang"];
+const WITH_ARGUMENTS: [&str; 9] =
+    ["if", "elseif", "foreach", "extends", "section", "yield", "include", "lang", "route"];
 
 /// Directives that stand alone.
 const WITHOUT_ARGUMENTS: [&str; 4] = ["else", "endif", "endforeach", "endsection"];

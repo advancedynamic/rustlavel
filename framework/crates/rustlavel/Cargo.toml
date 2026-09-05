@@ -56,6 +56,10 @@ default = []
 ai = ["dep:rustlavel-ai"]
 auth = ["dep:rustlavel-auth"]
 cache = ["dep:rustlavel-cache"]
+# Sessions in Redis rather than on the local disk, for an application running
+# more than one process. Pulls in the cache package, which is where the Redis
+# client lives.
+redis-sessions = ["auth", "cache", "rustlavel-auth/redis"]
 client = ["dep:rustlavel-client"]
 db = ["dep:rustlavel-db"]
 # The development overlay. Off in production unless said so in full.

@@ -75,9 +75,10 @@ impl PasswordController {
         )
         .await?
         else {
+            let why = tokens::diagnose(&db, PASSWORD_RESET, &token).await?;
             return crate::controllers::auth::register_controller::expired(
                 req,
-                "That reset link has expired or has already been used.",
+                &why.message("reset"),
                 "/forgot-password",
                 "Ask for a new link",
             ).await;
@@ -135,9 +136,10 @@ impl PasswordController {
         }
 
         let Some(record) = tokens::claim(&db, PASSWORD_RESET, &token).await? else {
+            let why = tokens::diagnose(&db, PASSWORD_RESET, &token).await?;
             return crate::controllers::auth::register_controller::expired(
                 req,
-                "That reset link has expired or has already been used.",
+                &why.message("reset"),
                 "/forgot-password",
                 "Ask for a new link",
             ).await;
@@ -168,6 +170,42 @@ impl PasswordController {
         user.update(&db).await?;
 
         use crate::controllers::auth::login_controller::LoginController;
+
+        // Proving the mailbox sets the password. It does not decide whether the
+        // account may sign in, and it is not the second factor.
+        //
+        // Both checks were missing here while the password form and the magic
+        // link both made them, which made this the way around both: somebody an
+        // administrator had deactivated signed themselves back in through
+        // "forgot password" using their own mailbox, and anybody holding the
+        // victim's mailbox walked past the victim's enrolled authenticator.
+        // A reset is a password change, not a licence.
+        //
+        // The lockout cleared above is deliberate and stays — owning the
+        // mailbox is a legitimate way out of a lock — so `can_sign_in` here is
+        // really the `is_active` check.
+        if let Err(reason) = user.can_sign_in(&now) {
+            crate::models::login_attempt::LoginAttempt::record(
+                &db, &user.email.clone(), Some(user.id), false, Some(reason), &req,
+            ).await?;
+            page::flash(&req, "success", "Your password has been changed.");
+            return crate::controllers::auth::register_controller::expired(
+                req,
+                "That account cannot sign in at the moment. The password was changed; ask an \
+                 administrator to re-enable the account.",
+                "/login",
+                "Back to sign in",
+            ).await;
+        }
+
+        if crate::controllers::auth::mfa_controller::has_factor(&db, user.id).await? {
+            let session = req.session();
+            session.regenerate();
+            session.put(crate::controllers::auth::login_controller::PENDING_KEY, Json::from(user.id));
+            page::flash(&req, "success", "Your password has been changed. Other devices have been signed out.");
+            return Ok(Response::see_other("/mfa"));
+        }
+
         LoginController::complete(&req, &db, &mut user, &now).await?;
         if let Some(enrol) = LoginController::enrolment_owed(&req, &db, user.id).await? {
             return Ok(Response::see_other(enrol));

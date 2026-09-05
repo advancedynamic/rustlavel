@@ -7,7 +7,6 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 ///
 /// Application errors are expected to convert into this through `From`, which
 /// is what lets a handler return `Result<T, E>` and still be a valid handler.
-#[derive(Debug)]
 pub enum Error {
     /// A file could not be read or written.
     Io(std::io::Error),
@@ -86,6 +85,27 @@ impl Error {
     }
 }
 
+/// Deliberately the same as [`Display`](fmt::Display).
+///
+/// Rust prints the error a `main` returns with `Debug`, not `Display`, so the
+/// derived form is what people actually see when an application fails to
+/// start. It reads like this:
+///
+/// ```text
+/// Error: Io(Os { code: 48, kind: AddrInUse, message: "Address already in use" })
+/// ```
+///
+/// which names the struct that holds the problem rather than the problem, and
+/// tells somebody nothing they can act on. Delegating to `Display` gives them
+/// the sentence that was written for them instead. Test output improves for
+/// the same reason: `unwrap_err()` on a bad config now says which file and
+/// line, not which variant.
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -130,5 +150,36 @@ impl From<String> for Error {
 impl From<&str> for Error {
     fn from(s: &str) -> Self {
         Error::Message(s.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The failure this exists to stop: `Error: Io(Os { code: 48, kind:
+    /// AddrInUse, ... })` at the top of somebody's terminal, naming the struct
+    /// that holds the problem instead of the problem.
+    #[test]
+    fn the_debug_form_is_the_sentence_not_the_struct() {
+        let error = Error::Io(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            "Address already in use",
+        ));
+        let shown = format!("{error:?}");
+        assert_eq!(shown, format!("{error}"));
+        assert!(!shown.contains("Io("), "the variant is leaking: {shown}");
+        assert!(!shown.contains("Os {"), "the os struct is leaking: {shown}");
+        assert!(shown.contains("Address already in use"), "{shown}");
+    }
+
+    #[test]
+    fn a_config_error_debugs_to_its_file_and_line() {
+        let error = Error::Config {
+            file: ".env".into(),
+            line: 4,
+            message: "expected KEY=value".into(),
+        };
+        assert_eq!(format!("{error:?}"), ".env:4: expected KEY=value");
     }
 }

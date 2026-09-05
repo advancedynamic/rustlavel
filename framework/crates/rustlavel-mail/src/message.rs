@@ -179,6 +179,12 @@ impl Message {
         &self.subject
     }
 
+    /// The plain-text body, before any transfer encoding.
+    ///
+    /// What the `log` transport prints. Quoted-printable is correct on the
+    /// wire and useless on a terminal: it breaks any line over 76 columns with
+    /// a soft `=`, which lands inside a long link and makes the URL somebody
+    /// copies a different URL from the one that was sent.
     pub fn text_body(&self) -> Option<&str> {
         self.text.as_deref()
     }

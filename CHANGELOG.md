@@ -3,6 +3,178 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## Unreleased
+
+### Security
+
+- **Every secret fell back to a clock-seeded mixer when `/dev/urandom` could not
+  be opened.** It was the only entropy source in the framework, and the fallback
+  — a xorshift seeded from the nanosecond clock and a heap address — sat behind
+  a log line. It fed session ids, CSRF tokens, API token secrets, argon2 salts,
+  AES-GCM nonces, WebAuthn challenges and `APP_KEY`. A session id drawn from 64
+  bits of clock is one that somebody who knows roughly when you signed in can
+  enumerate; an `APP_KEY` drawn from it makes every signed cookie forgeable. The
+  trigger was not hypothetical — file-descriptor exhaustion is something an
+  attacker can induce. There is no fallback now: a process that cannot obtain
+  randomness stops rather than issue a secret that can be guessed.
+
+- **A response that changed nothing rewrote the session and re-sent its cookie,
+  which made signing in a race.** Static files are the router's fallback and the
+  fallback runs the global middleware, so every CSS, JavaScript and font request
+  reached the session layer — and for a signed-in visitor the guard `!dirty &&
+  !existed` was always false. `Guard::login` rotates the session id and destroys
+  the old record; the asset requests a browser fires alongside the sign-in are
+  still holding the *old* id, and each one wrote that record back and handed the
+  browser a cookie pointing at it. Whichever response landed last decided which
+  session the visitor kept. When an asset won, they were returned to a pre-login
+  session and the next protected request answered 401 — signed out seconds after
+  signing in, intermittently. The resurrected record was also a live credential
+  after the rotation meant to destroy it.
+
+- **"Other devices have been signed out" was not true.** Three controllers wrote
+  `users.session_epoch` and two also wrote the matching session key, and nothing
+  anywhere read either. Every other session stayed exactly as valid as it had
+  been — after a password reset, which is what somebody does when they believe
+  their account has been taken. `support::epoch::SessionEpoch` now compares it,
+  in all four authenticated groups, and a test refuses any group that installs
+  `Authenticate` without it.
+
+- **A password reset signed somebody in without checking whether they may sign
+  in, or asking for their second factor.** The password form and the magic link
+  both check; this did not. So an account an administrator had deactivated
+  signed itself back in through "forgot password", and anybody holding the
+  victim's mailbox walked past the victim's enrolled authenticator. Activation
+  had the same gap. Clearing a lockout on reset stays — owning the mailbox is a
+  legitimate way out of one.
+
+- **`users.update` alone was enough to become a super administrator.** The form
+  offers every role, `super-admin` included, and nothing stopped somebody
+  posting it at their own id; `destroy` had refused to act on your own account
+  since it was written. Editing your own name is still fine — editing your own
+  grants is not, and a super role holder is no longer editable by somebody who
+  is not one. `roles.update` had the matching hole: `destroy` refused a super
+  role, `update` did not, so the role could be renamed to `super-admin` or the
+  real one renamed out of existence.
+
+- **The SQL Server driver ignored `sslmode` entirely.** It was parsed and
+  validated for `sqlserver://` URLs and then read by nobody: every connection
+  used the default, "encrypt and trust whatever certificate turns up", so
+  `verify-full` got no verification at all and `sslrootcert=` was discarded.
+  Anyone on the path could present a self-signed certificate and read the
+  session, including the LOGIN7 packet whose password is only obfuscated.
+  `prefer` keeps the documented compromise, because SQL Server's own startup
+  certificate cannot be verified; asking for verification now gets it.
+
+- **The PostgreSQL driver sent the password in the clear whenever asked.** With
+  `sslmode=prefer`, an attacker answers "no TLS" to the SSLRequest, then asks
+  for a cleartext password, and receives it. The MySQL driver in the same crate
+  already refused the equivalent with a comment explaining why; one crate should
+  not hold two policies on one threat. It is refused on an unencrypted socket
+  now, and still allowed inside TLS, which is how PostgreSQL authenticates
+  against LDAP and PAM.
+
+### Added
+
+- **`@route("name")` in templates, and a home that is a route name.** The kit
+  declared thirty named routes and hard-coded fifty-four paths in its templates:
+  `Router::url_for` existed and was tested, and nothing outside its own tests
+  ever called it. The names were used by `route:list` and nothing else, so
+  moving a route meant a search-and-replace whose misses announced themselves as
+  404s. `@route` resolves at render time, like `@lang`, and the filling-in still
+  happens in one function that `url_for` and the directive share. A name nobody
+  registered is an error rather than an empty string — `href=""` is a link that
+  looks like a link and reloads the page it is on.
+
+  Where the application opens is `menus.home`, and it holds a route name rather
+  than a path. It used to be `menus.dashboard_url` and it drove the logo only:
+  `GET /` and the landing after sign-in both hard-coded `/dashboard`, so an
+  administrator could point "Dashboard opens" at `/reports` and still arrive at
+  the dashboard every morning. All three read one function now. A name that no
+  route carries is refused when it is saved, which a path could never be.
+
+- **Sessions in Redis**, behind `redis-sessions`, for an application running
+  more than one process — the file store keeps a session on local disk, which is
+  right for one machine and wrong for two. Redis owns the expiry, so a session
+  that stops being touched disappears on its own and there is no directory
+  quietly filling with one dead file per visitor. The client is the one in
+  `rustlavel-cache`; a second Redis implementation would have drifted from it.
+
+- **A changelog on the documentation site**, generated from this file by
+  `docs/build-changelog.py` so the two cannot disagree. It refuses to render a
+  construct it does not understand, and refuses to write a page with unpaired
+  markup — both of which it caught while it was being written.
+
+
+- **A taken port no longer stops a run.** `Address already in use` is the most
+  common way starting an application fails, and the operating system's answer
+  to it — `Io(Os { code: 48, kind: AddrInUse })` — names the struct holding the
+  problem rather than the problem. The server now walks up from the port it was
+  asked for and says which one it landed on:
+
+  ```
+  WARN  port 8399 is in use, so this is serving on 8400 instead
+  INFO  Rustlavel serving on http://127.0.0.1:8400
+  ```
+
+  **Not in production.** There the default is a single attempt, because there
+  something does depend on the number — a load balancer, a health check, a
+  firewall rule — and a server that quietly moved to 8301 while traffic still
+  went to 8300 would look like an outage with no cause in the logs. It refuses
+  to start and says why instead. `server.port_attempts` overrides the default
+  in either direction, and only `AddrInUse` walks on: a privileged port or an
+  address that is not on this machine is still that error.
+
+  `doctor` now reports a busy port as a warning rather than a failure, and names
+  the port the server will most likely use.
+
+### Fixed
+
+- **`rustlavel serve` leaked a process on every reload, and that is what made a
+  port stay busy.** It ran the application through `cargo run`, so the
+  application was a *grandchild*: the handle `serve` held was cargo's. Killing
+  it on reload killed cargo and left the application running — still holding the
+  port — so the restart failed with `Address already in use`. Changing the port
+  did not help, because the process holding the new port was the orphan started
+  with that same new port a moment earlier.
+
+  `serve` now runs `cargo build` and then executes the binary, so the handle is
+  the application. `kill` kills it, Ctrl-C still reaches it because it stays in
+  this process group, and there is one less process in the tree. Where cargo put
+  the binary is asked of `cargo metadata` rather than assumed, since `target/`
+  moves for a workspace member and `CARGO_TARGET_DIR` moves it for everybody.
+
+  Measured across three reloads: one application process throughout, no
+  `AddrInUse`, and no restart when nothing is touched.
+
+- **The error a failed `main` prints named the variant, not the problem.** Rust
+  formats it with `Debug`, so the derived form is what people actually saw:
+  `Error: Io(Os { code: 48, kind: AddrInUse, message: "Address already in use" })`.
+  `Debug` now reads exactly like `Display`, so it is the sentence that was
+  written for them. Test output gains the same thing: `unwrap_err()` on a bad
+  config says which file and line rather than which variant.
+
+### Fixed
+
+- **`rustlavel upgrade` left a project that could not build.** It merged every
+  kit file and then left `Cargo.toml` naming the version the project started
+  from, so the first thing anybody saw after a clean merge was a wall of
+  compiler errors about items that did not exist — for a reason the command
+  could have fixed itself. It now bumps the dependency and *unions* the feature
+  list with what the kit needs, which matters because the kit gains flags over
+  time: a 0.5.0 project has no `i18n`, and `@lang` does not compile without it.
+  Features a project added of its own accord are never removed, and a `path =`
+  dependency is left alone — that is somebody working against a checkout, and a
+  version number would break them.
+
+  Measured: a project scaffolded by the published 0.5.0 CLI upgrades, reports
+  `Cargo.toml: 0.5.0 → 0.7.2, and gained i18n`, and — after resolving the one
+  six-line `src/lib.rs` conflict the report explains — builds.
+
+- The ten packages the kit's code imports were written out in `new`, and
+  nowhere else, so nothing could check them. They are `auth_kit::REQUIRED_PACKAGES`
+  now, read by both the scaffold that writes them and the upgrade that repairs
+  them.
+
 ## 0.7.2 — 2026-09-05
 
 ### Added

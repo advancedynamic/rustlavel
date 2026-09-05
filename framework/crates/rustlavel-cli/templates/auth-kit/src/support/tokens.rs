@@ -95,6 +95,97 @@ pub async fn issue(
     Ok(token)
 }
 
+/// The number of characters a token has: `random::hex(32)` is 64.
+pub const TOKEN_CHARS: usize = 64;
+
+/// Why a link did not work.
+///
+/// Three different situations used to share one sentence — "expired or already
+/// used" — and the least likely of the three was the only one that sentence
+/// named. A link cut in half by an email program, and a link replaced by a
+/// newer request, both sent people to check the clock. Time was never the
+/// problem.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum LinkProblem {
+    /// Not the shape a token has, so it can never have existed. Almost always
+    /// a link that arrived broken across two lines and was copied short.
+    Malformed,
+    /// Real, but a newer link for the same person replaced it. Asking twice is
+    /// enough to do this, and the first email's link dies the moment the second
+    /// is sent.
+    Superseded,
+    /// Used already, or past its hour. Also what an unrecognised token reports:
+    /// telling somebody that a token never existed says more than it needs to.
+    Spent,
+}
+
+impl LinkProblem {
+    /// What to put on the page. `subject` names the kind of link, so the same
+    /// three sentences serve activation, reset and email-change.
+    pub fn message(self, subject: &str) -> String {
+        match self {
+            LinkProblem::Malformed => format!(
+                "That {subject} link is incomplete. Mail programs often break a long link across \
+                 two lines — check that the whole address was copied, or ask for a new one."
+            ),
+            LinkProblem::Superseded => format!(
+                "A newer {subject} link was sent after this one, and only the newest works. Open \
+                 the most recent email, or ask for a new link."
+            ),
+            LinkProblem::Spent => format!(
+                "That {subject} link has expired or has already been used."
+            ),
+        }
+    }
+}
+
+/// The shape a token has, checked before the database is asked.
+///
+/// A token of the wrong length or with a character outside hexadecimal cannot
+/// match any row, so this is not an optimisation — it is the difference between
+/// "this link is broken" and "this link is old", which are different problems
+/// with different fixes.
+pub fn is_well_formed(token: &str) -> bool {
+    token.len() == TOKEN_CHARS && token.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Why this token did not work, for a message somebody can act on.
+///
+/// Only ever called once a claim has already failed, so it costs nothing on
+/// the path that works.
+pub async fn diagnose(db: &Database, purpose: &str, token: &str) -> Result<LinkProblem> {
+    if !is_well_formed(token) {
+        return Ok(LinkProblem::Malformed);
+    }
+
+    // Deliberately without the `used_at` and `expires_at` filters: the question
+    // here is what became of the row, not whether it is usable.
+    let found = UserToken::first(
+        db,
+        UserToken::query().filter("purpose", purpose).filter("token_hash", hash_token(token)),
+    )
+    .await?;
+
+    let Some(record) = found else {
+        // Unrecognised. Reported as spent rather than as unknown, so that
+        // holding a token tells nobody whether it was ever real.
+        return Ok(LinkProblem::Spent);
+    };
+
+    // A later row for the same person and purpose means `issue` retired this
+    // one. Ids ascend, so later is higher.
+    let newer = UserToken::first(
+        db,
+        UserToken::query()
+            .filter("user_id", record.user_id)
+            .filter("purpose", purpose)
+            .filter_op("id", ">", record.id),
+    )
+    .await?;
+
+    Ok(if newer.is_some() { LinkProblem::Superseded } else { LinkProblem::Spent })
+}
+
 /// Look a token up and spend it, in that order.
 ///
 /// Spending it before the caller acts is deliberate: two clicks arriving

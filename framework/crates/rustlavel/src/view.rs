@@ -46,6 +46,29 @@ impl Views for Request {
     }
 }
 
+/// The finished router, seen by `@route` in a template.
+///
+/// A snapshot of the named routes rather than the router itself: the router is
+/// consumed by the server, and a template only ever needs the names and their
+/// patterns. `Router::url_for` does the filling in, so the substitution rules
+/// live in one place — a second implementation here would drift from the one
+/// `route:list` and the application both use.
+pub struct RouteTable(rustlavel_http::NamedRoutes);
+
+impl RouteTable {
+    pub fn new(routes: rustlavel_http::NamedRoutes) -> RouteTable {
+        RouteTable(routes)
+    }
+}
+
+impl rustlavel_view::routes::Routes for RouteTable {
+    fn url(&self, name: &str, params: &[(&str, String)]) -> Option<String> {
+        let borrowed: Vec<(&str, &str)> =
+            params.iter().map(|(key, value)| (*key, value.as_str())).collect();
+        self.0.url_for(name, &borrowed)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -90,17 +90,79 @@ fn wait_for_change(project: &Project, previous: Fingerprint) -> Fingerprint {
     }
 }
 
+/// Build, then run the binary itself.
+///
+/// **Not `cargo run`.** That spawns the application as a *grandchild*, so the
+/// handle kept here is cargo's. Killing it on reload killed cargo and left the
+/// application running — still holding the port — and the restart then failed
+/// with `Address already in use`. Changing the port did not help, because the
+/// process still holding it had been started with the new port a moment
+/// earlier. Every reload leaked one process.
+///
+/// Building first and executing the result means the handle is the application.
+/// `kill` kills it, Ctrl-C still reaches it because it stays in this process
+/// group, and there is one less process in the tree on every run.
 fn spawn(project: &Project, args: &[String]) -> Result<Child, String> {
-    Command::new("cargo")
-        .arg("run")
-        .arg("--quiet")
+    let status = Command::new("cargo")
+        .arg("build")
         .arg("--bin")
         .arg(&project.crate_name)
-        .args(if args.is_empty() { vec![] } else { vec!["--".to_string()] })
+        .current_dir(&project.root)
+        .status()
+        .map_err(|e| format!("cannot run cargo: {e}"))?;
+
+    if !status.success() {
+        // Cargo has already printed the errors. Returning them again would
+        // bury them under a message of ours.
+        return Err("the application did not compile".into());
+    }
+
+    let binary = built_binary(project)?;
+    Command::new(&binary)
         .args(args)
         .current_dir(&project.root)
         .spawn()
-        .map_err(|e| format!("cannot run cargo: {e}"))
+        .map_err(|e| format!("cannot run {}: {e}", binary.display()))
+}
+
+/// Where cargo put the binary.
+///
+/// Asked rather than assumed: `target/` moves for a workspace member, and
+/// `CARGO_TARGET_DIR` moves it for everybody. `cargo metadata` is the only
+/// thing that knows, and one field is read out of its JSON rather than parsing
+/// the document — the CLI has no dependencies, and this is one string.
+fn built_binary(project: &Project) -> Result<PathBuf, String> {
+    let output = Command::new("cargo")
+        .args(["metadata", "--format-version", "1", "--no-deps"])
+        .current_dir(&project.root)
+        .output()
+        .map_err(|e| format!("cannot run cargo metadata: {e}"))?;
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let target = field(&text, "target_directory")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| project.root.join("target"));
+
+    let binary = target.join("debug").join(&project.crate_name);
+    if binary.is_file() {
+        Ok(binary)
+    } else {
+        Err(format!(
+            "cargo said it built {}, but there is no binary at {}. If the package has more \
+             than one, the one named after the crate is the one `serve` runs.",
+            project.crate_name,
+            binary.display()
+        ))
+    }
+}
+
+/// The value of a top-level `"key":"value"` pair in JSON.
+fn field(text: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\":");
+    let after = text.find(&needle)? + needle.len();
+    let rest = text[after..].trim_start().strip_prefix('"')?;
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
 }
 
 type Fingerprint = BTreeMap<PathBuf, SystemTime>;
@@ -149,6 +211,33 @@ fn is_watchable(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The bug this file existed with: `cargo run` makes the application a
+    /// grandchild, so the handle `serve` holds is cargo's and killing it on
+    /// reload leaves the application running on the port.
+    #[test]
+    fn the_spawned_process_is_the_application_not_cargo() {
+        let source = include_str!("serve.rs");
+        let spawn = source
+            .split("fn spawn(")
+            .nth(1)
+            .expect("there is a spawn function");
+        let body = spawn.split("\nfn ").next().unwrap();
+
+        assert!(
+            !body.contains("\"run\""),
+            "`serve` is spawning `cargo run` again. The handle it keeps is then cargo's, and \
+             killing it on reload leaves the application holding the port."
+        );
+        assert!(body.contains("\"build\""), "the build step is gone");
+    }
+
+    #[test]
+    fn the_target_directory_is_read_out_of_cargo_metadata() {
+        let json = r#"{"packages":[],"target_directory":"/tmp/somewhere/target","version":1}"#;
+        assert_eq!(field(json, "target_directory").as_deref(), Some("/tmp/somewhere/target"));
+        assert_eq!(field(json, "absent"), None);
+    }
 
     #[test]
     fn build_output_is_never_watched() {

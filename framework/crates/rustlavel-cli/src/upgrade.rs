@@ -182,6 +182,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
         add_missing_env_keys(&project.root)?
     };
 
+    let dependency = if dry_run { None } else { update_dependency(&project.root, target)? };
+
     if !dry_run {
         write_manifest(&project.root, &manifest.kit, target)?;
     }
@@ -196,6 +198,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         skipped_binary,
         no_base,
         gone,
+        dependency,
         env_keys,
     });
     Ok(())
@@ -220,6 +223,7 @@ struct Report {
     skipped_binary: Vec<String>,
     no_base: Vec<String>,
     gone: Vec<String>,
+    dependency: Option<String>,
     env_keys: Vec<String>,
 }
 
@@ -259,6 +263,10 @@ fn report(r: Report) {
         for path in &r.gone {
             println!("    {path}");
         }
+    }
+
+    if let Some(what) = &r.dependency {
+        println!("\n  Cargo.toml: {what}");
     }
 
     if !r.no_base.is_empty() {
@@ -413,6 +421,75 @@ fn check_clean(root: &Path) -> Result<(), String> {
 /// it would happily reconcile them into the file and produce something with
 /// two generations of markers nested inside each other, which is not something
 /// anybody can untangle by reading.
+/// Bring `Cargo.toml`'s rustlavel dependency in line with the kit just written.
+///
+/// Without this an upgrade leaves a project that cannot build, and for a reason
+/// it could have fixed: the files are 0.7.2's and the dependency is still
+/// 0.5.0's, so the first thing a person sees after a successful merge is a wall
+/// of compiler errors about items that do not exist. The kit also grows feature
+/// flags over time — 0.5.0 had no `i18n`, and `@lang` needs it — so the
+/// features are unioned rather than replaced. Nothing a project added of its
+/// own accord is removed.
+///
+/// A `path = ` dependency is left alone: that is somebody working against a
+/// checkout, and a version number would break it.
+fn update_dependency(root: &Path, target: &str) -> Result<Option<String>, String> {
+    let path = root.join("Cargo.toml");
+    let Ok(text) = std::fs::read_to_string(&path) else { return Ok(None) };
+
+    let Some(line) = text.lines().find(|line| line.trim_start().starts_with("rustlavel = {")) else {
+        return Ok(None);
+    };
+    if line.contains("path = ") {
+        return Ok(Some("left alone: it points at a local checkout".into()));
+    }
+
+    let had: Vec<String> = between(line, "features = [", "]")
+        .map(|list| {
+            list.split(',')
+                .map(|item| item.trim().trim_matches('"').to_string())
+                .filter(|item| !item.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut features = had.clone();
+    for required in auth_kit::REQUIRED_PACKAGES {
+        if !features.iter().any(|f| f == required) {
+            features.push((*required).to_string());
+        }
+    }
+    features.sort();
+    features.dedup();
+
+    let from = between(line, "version = \"", "\"").unwrap_or_default().to_string();
+    if from == target && features == had {
+        return Ok(None);
+    }
+
+    let list = features.iter().map(|f| format!("\"{f}\"")).collect::<Vec<_>>().join(", ");
+    let replacement = format!("rustlavel = {{ version = \"{target}\", features = [{list}] }}");
+    std::fs::write(&path, text.replace(line, &replacement))
+        .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+
+    let gained: Vec<&String> = features.iter().filter(|f| !had.contains(f)).collect();
+    Ok(Some(if gained.is_empty() {
+        format!("{from} → {target}")
+    } else {
+        format!(
+            "{from} → {target}, and gained {}",
+            gained.iter().map(|f| f.as_str()).collect::<Vec<_>>().join(", ")
+        )
+    }))
+}
+
+/// The text between two markers on one line.
+fn between<'a>(line: &'a str, open: &str, close: &str) -> Option<&'a str> {
+    let start = line.find(open)? + open.len();
+    let end = line[start..].find(close)? + start;
+    Some(&line[start..end])
+}
+
 fn check_no_unfinished_merge(root: &Path) -> Result<(), String> {
     let mut unfinished: Vec<&str> = auth_kit::FILES
         .iter()
@@ -507,6 +584,66 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+
+    fn cargo_toml(dir: &std::path::Path, line: &str) -> String {
+        std::fs::write(dir.join("Cargo.toml"), format!("[package]\nname = \"demo\"\n\n[dependencies]\n{line}\n")).unwrap();
+        std::fs::read_to_string(dir.join("Cargo.toml")).unwrap()
+    }
+
+    /// The gap this closes: a 0.5.0 project merged 0.7.2's files and then would
+    /// not build, because the dependency still said 0.5.0 and the kit's new
+    /// `@lang` needs a feature 0.5.0 never enabled.
+    #[test]
+    fn the_dependency_is_bumped_and_gains_what_the_kit_needs() {
+        let dir = temp("dependency");
+        cargo_toml(&dir, r#"rustlavel = { version = "0.5.0", features = ["auth", "db", "view"] }"#);
+
+        let what = update_dependency(&dir, "0.7.2").unwrap().expect("something changed");
+        assert!(what.contains("0.5.0 → 0.7.2"), "{what}");
+        assert!(what.contains("i18n"), "{what}");
+
+        let written = std::fs::read_to_string(dir.join("Cargo.toml")).unwrap();
+        for required in auth_kit::REQUIRED_PACKAGES {
+            assert!(written.contains(&format!("\"{required}\"")), "{required} is missing:\n{written}");
+        }
+        assert!(written.contains(r#"version = "0.7.2""#), "{written}");
+    }
+
+    /// A feature the project chose is not the kit's to remove.
+    #[test]
+    fn features_of_your_own_survive() {
+        let dir = temp("own-features");
+        cargo_toml(&dir, r#"rustlavel = { version = "0.5.0", features = ["auth", "openapi", "ws"] }"#);
+        update_dependency(&dir, "0.7.2").unwrap();
+        let written = std::fs::read_to_string(dir.join("Cargo.toml")).unwrap();
+        assert!(written.contains("\"openapi\""), "{written}");
+        assert!(written.contains("\"ws\""), "{written}");
+    }
+
+    /// Somebody working against a checkout has a path dependency, and writing a
+    /// version number over it would point their project at crates.io mid-change.
+    #[test]
+    fn a_path_dependency_is_never_rewritten() {
+        let dir = temp("path-dep");
+        let before = cargo_toml(&dir, r#"rustlavel = { path = "../framework/crates/rustlavel", features = ["auth"] }"#);
+        let what = update_dependency(&dir, "0.7.2").unwrap().expect("it says why");
+        assert!(what.contains("local checkout"), "{what}");
+        assert_eq!(std::fs::read_to_string(dir.join("Cargo.toml")).unwrap(), before);
+    }
+
+    #[test]
+    fn a_project_already_current_is_not_rewritten() {
+        let dir = temp("already");
+        let list = auth_kit::REQUIRED_PACKAGES
+            .iter()
+            .map(|f| format!("\"{f}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let before = cargo_toml(&dir, &format!(r#"rustlavel = {{ version = "0.7.2", features = [{list}] }}"#));
+        assert!(update_dependency(&dir, "0.7.2").unwrap().is_none());
+        assert_eq!(std::fs::read_to_string(dir.join("Cargo.toml")).unwrap(), before);
     }
 
     #[test]
