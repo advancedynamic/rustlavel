@@ -1,0 +1,7 @@
+[package]
+name = "{{crate_name}}_shared"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rustlavel.workspace = true

@@ -1,0 +1,16 @@
+# A workspace, not one crate with three `[[bin]]` entries.
+#
+# Each service builds and deploys on its own — `rustlavel build` produces one
+# binary per member — and, more to the point, they cannot quietly share a model.
+# Sharing types between services is the coupling microservices exist to avoid,
+# so what crosses between them lives in `shared/` where you have to look at it.
+[workspace]
+resolver = "2"
+members = ["services/gateway", "services/auth", "services/api", "shared"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+rustlavel = { {{dependency}} }

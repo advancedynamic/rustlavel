@@ -37,6 +37,7 @@ rustlavel-otel = { workspace = true, optional = true }
 rustlavel-search = { workspace = true, optional = true }
 rustlavel-audit = { workspace = true, optional = true }
 rustlavel-flags = { workspace = true, optional = true }
+rustlavel-gateway = { workspace = true, optional = true }
 rustlavel-rbac = { workspace = true, optional = true }
 rustlavel-queue = { workspace = true, optional = true }
 rustlavel-storage = { workspace = true, optional = true }
@@ -87,6 +88,8 @@ search = ["dep:rustlavel-search", "client"]
 # above: those are compile-time and decide what is in the binary at all.
 audit = ["dep:rustlavel-audit", "db", "auth"]
 flags = ["dep:rustlavel-flags", "auth"]
+# An API gateway. Pulls in the client, which is what talks to the upstreams.
+gateway = ["dep:rustlavel-gateway", "client"]
 model-cache = ["dep:rustlavel-model-cache", "db", "cache"]
 rbac = ["dep:rustlavel-rbac", "db", "auth"]
 queue = ["dep:rustlavel-queue", "db"]

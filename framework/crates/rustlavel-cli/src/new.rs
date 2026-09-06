@@ -25,11 +25,15 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("db", &["database/migrations", "database/seeders"]),
     ("debugbar", &[]),
     ("flags", &[]),
+    ("gateway", &[]),
     ("i18n", &["lang"]),
     ("ldap", &[]),
     ("mail", &["resources/views"]),
     ("mcp", &[]),
     ("metrics", &[]),
+    // Not a crate of its own: a workspace of three services, expanded into the
+    // packages their code imports. See `microservices_kit`.
+    ("microservices-kit", &[]),
     ("model-cache", &[]),
     ("oauth", &["storage/sessions"]),
     ("oauth-provider", &["storage/sessions"]),
@@ -134,6 +138,15 @@ pub fn run(args: &[String]) -> Result<(), String> {
         packages.retain(|p| p != "auth-kit");
     }
 
+    // The same treatment for the microservices kit: scaffolding, not a flag.
+    let microservices = packages.iter().any(|p| p == "microservices-kit");
+    if microservices {
+        for required in crate::microservices_kit::REQUIRED_PACKAGES {
+            packages.push((*required).to_string());
+        }
+        packages.retain(|p| p != "microservices-kit");
+    }
+
     packages.sort();
     packages.dedup();
 
@@ -222,11 +235,26 @@ pub fn run(args: &[String]) -> Result<(), String> {
         ("tests/web.rs", stubs::TEST_STUB),
     ];
 
-    for (path, template) in files {
-        write(&root.join(path), &render(template, &values))?;
-        console::created(path);
+    // The microservices kit is a workspace, not an application: it has no
+    // `src/` of its own, and the ordinary scaffold's `Cargo.toml` is the wrong
+    // shape for a workspace root. It replaces this rather than layering on it,
+    // which is the difference between it and `auth-kit` — that one augments an
+    // application, this one *is* the project.
+    if !microservices {
+        for (path, template) in files {
+            write(&root.join(path), &render(template, &values))?;
+            console::created(path);
+        }
     }
 
+    // Everything from here to the packages loop belongs to an *application*:
+    // one crate, with a library beside its binary and one set of database
+    // registries. The microservices kit's root is a workspace, where a `src/`
+    // belongs to no member and a `database/` to no service — each has its own.
+    // A `src/lib.rs` at a workspace root is not merely untidy: it is a crate
+    // nothing declares, which is exactly the sort of thing somebody later
+    // spends an afternoon on.
+    //
     // `tests/web.rs` reaches into the app's modules, which requires a library
     // target beside the binary.
     let lib = if packages.iter().any(|p| p == "db") {
@@ -234,12 +262,14 @@ pub fn run(args: &[String]) -> Result<(), String> {
     } else {
         LIB_RS.to_string()
     };
-    write(&root.join("src/lib.rs"), &lib)?;
-    console::created("src/lib.rs");
+    if !microservices {
+        write(&root.join("src/lib.rs"), &lib)?;
+        console::created("src/lib.rs");
+    }
 
     // The database package needs its generated registries to exist before the
     // first build, since main.rs names them.
-    if packages.iter().any(|p| p == "db") {
+    if packages.iter().any(|p| p == "db") && !microservices {
         let empty: BTreeMap<&str, String> =
             [("modules", String::new()), ("entries", String::new())].into_iter().collect();
 
@@ -256,7 +286,12 @@ pub fn run(args: &[String]) -> Result<(), String> {
 
     // A package that needs a directory gets one now, so the first run does not
     // fail on a path that was only ever going to be created by hand.
-    for (package, directories) in PACKAGES {
+    //
+    // Not for the microservices kit: those directories belong to an
+    // application, and the kit's root is a workspace. `storage/sessions` at the
+    // root of a workspace belongs to no service and would be written to by
+    // none of them.
+    for (package, directories) in PACKAGES.iter().filter(|_| !microservices) {
         if !packages.iter().any(|enabled| enabled == package) {
             continue;
         }
@@ -283,6 +318,25 @@ pub fn run(args: &[String]) -> Result<(), String> {
             contents.push_str(&render(stubs::ENV_MAIL, &values));
             write(&path, &contents)?;
         }
+    }
+
+    if microservices {
+        // A workspace of three services and one shared crate. Every file goes
+        // through `render`, like the auth kit's — nothing is written from a
+        // constant, because that split is what let 0.7.0 ship a placeholder.
+        for (path, contents) in crate::microservices_kit::FILES {
+            write(&root.join(path), &render(contents, &values))?;
+        }
+        console::created("services/gateway, services/auth, services/api");
+        console::created("shared/ — what crosses between them, and nothing else");
+
+        for file in [".env", ".env.example"] {
+            let path = root.join(file);
+            let mut contents = std::fs::read_to_string(&path).unwrap_or_default();
+            contents.push_str(&render(crate::microservices_kit::ENV_ADDITIONS, &values));
+            write(&path, &contents)?;
+        }
+        crate::upgrade::write_manifest(&root, "microservices-kit", env!("CARGO_PKG_VERSION"))?;
     }
 
     if auth_kit {
@@ -381,6 +435,13 @@ const NEEDS_WIRING: &[(&str, &str)] = &[
     ("audit", "rustlavel::audit::Audit::new(db.clone())"),
     ("flags", "FeatureFlags::new(flags)"),
     ("vault", "Vault::from_config(app.config())?"),
+    // A bare `Gateway::new()` routes nothing, so inserting one would register a
+    // plugin that does nothing — the shape this project keeps having to remove.
+    // The note says what to write instead.
+    (
+        "gateway",
+        "Gateway::new().route(\"/api/*\", Upstream::at(&env_or(\"API_URL\", \"http://127.0.0.1:9002\")))",
+    ),
     // Not a plugin but a session store, so the note names the store rather
     // than a `.plugin(...)` line. Without it, `--with redis-sessions` would
     // compile the store in and leave the application on the file store — a
@@ -1400,6 +1461,71 @@ mod tests {
         }
     }
 
+
+    /// The same three rules the auth kit is held to, for the second kit.
+    ///
+    /// A kit is a hundred-odd lines the CLI never compiles — they are
+    /// `include_str!` strings — so nothing but these guards and a real scaffold
+    /// sees them at all.
+    #[test]
+    fn the_microservices_kit_is_whole() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("templates")
+            .join("microservices-kit");
+
+        // 1. Every file on disk is in the manifest, or `new` does not write it.
+        let mut on_disk = Vec::new();
+        fn walk(dir: &std::path::Path, root: &std::path::Path, found: &mut Vec<String>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, root, found);
+                } else if let Ok(relative) = path.strip_prefix(root) {
+                    found.push(relative.to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+        walk(&root, &root, &mut on_disk);
+        on_disk.sort();
+
+        let manifested: Vec<&str> =
+            crate::microservices_kit::FILES.iter().map(|(path, _)| *path).collect();
+        let missing: Vec<&String> =
+            on_disk.iter().filter(|path| !manifested.contains(&path.as_str())).collect();
+        assert!(
+            missing.is_empty(),
+            "these files are in templates/microservices-kit/ and in no manifest, so a scaffold \
+             would not receive them: {missing:?}"
+        );
+
+        // 2. Nothing still holds a placeholder once rendered.
+        //
+        // Exactly the values `new` passes — no more. This guard once carried an
+        // invented one, so it rendered cleanly here and left `{{...}}` in a real
+        // scaffold: a test agreeing with a fiction it wrote itself.
+        let values = BTreeMap::from([
+            ("crate_name", "demo".to_string()),
+            ("name", "demo".to_string()),
+            ("dependency", "version = \"0.0.0\"".to_string()),
+            ("plugins", String::new()),
+            ("database", String::new()),
+        ]);
+        for (path, template) in crate::microservices_kit::FILES {
+            if let Some(found) = unrendered_placeholder(&render(template, &values)) {
+                panic!("the kit writes `{path}` still holding `{found}`");
+            }
+        }
+
+        // 3. Every package the generated code imports is one `--with` accepts.
+        for package in crate::microservices_kit::REQUIRED_PACKAGES {
+            assert!(
+                PACKAGES.iter().any(|(known, _)| known == package),
+                "the microservices kit needs `{package}`, which `--with` does not offer"
+            );
+        }
+    }
+
     /// A generated file must not still hold a `{{placeholder}}`.
     ///
     /// 0.7.0 shipped a seeder containing the literal text `{{crate_name}}`,
@@ -1545,9 +1671,9 @@ mod tests {
     fn the_scaffold_offers_nothing_the_meta_crate_cannot_turn_on() {
         let manifest = include_str!("../../rustlavel/Cargo.toml");
         for (package, _) in PACKAGES {
-            // `auth-kit` is scaffolding rather than a feature flag: it writes
+            // The kits are scaffolding rather than feature flags: each writes
             // files and expands into the packages that code imports.
-            if *package == "auth-kit" {
+            if package.ends_with("-kit") {
                 continue;
             }
             assert!(

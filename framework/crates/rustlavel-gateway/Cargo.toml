@@ -1,0 +1,18 @@
+[package]
+name = "rustlavel-gateway"
+description = "An API gateway: route, forward, rate-limit and guard the services behind it"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+readme = "README.md"
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-http.workspace = true
+rustlavel-client.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]

@@ -54,6 +54,7 @@ rustlavel-vault = { path = "crates/rustlavel-vault", version = "0.7.4" }
 rustlavel-telescope = { path = "crates/rustlavel-telescope", version = "0.7.4" }
 rustlavel-ai = { path = "crates/rustlavel-ai", version = "0.7.4" }
 rustlavel-audit = { path = "crates/rustlavel-audit", version = "0.7.4" }
+rustlavel-gateway = { path = "crates/rustlavel-gateway", version = "0.7.4" }
 rustlavel-flags = { path = "crates/rustlavel-flags", version = "0.7.4" }
 rustlavel-rbac = { path = "crates/rustlavel-rbac", version = "0.7.4" }
 rustlavel-queue = { path = "crates/rustlavel-queue", version = "0.7.4" }

@@ -452,6 +452,70 @@ plumbing above. Resolution is where applications differ most, and a framework
 that guesses wrong there is one every application works around. The plumbing is
 what they all need.
 
+## Phase 1.6 — Microservices (in progress)
+
+A second starter kit: a gateway, an authorization server and a resource server,
+scaffolded as a cargo workspace of three crates plus one for the types that
+cross between them. `rustlavel build` produces a binary per service, so each
+deploys on its own — which is the point, and the reason this is a workspace
+rather than one crate with three `[[bin]]` entries. Sharing models between
+services is the coupling microservices exist to avoid.
+
+**Two of the three already existed, which changed the plan.**
+`rustlavel-oauth-provider` is a complete OAuth 2.1 authorization server —
+`/oauth/token`, `/oauth/revoke`, `/oauth/introspect` (RFC 7662), RFC 8414
+metadata, client, code and consent stores. `RequireToken` in the same crate,
+with `rustlavel-rbac` for scopes, is the resource-server half. So the kit wires
+them up rather than writing them.
+
+- [ ] **`rustlavel-gateway`** — the piece nothing in the tree does. Nothing
+      forwards a request upstream today: the client can call out, the cache can
+      rate-limit, `rustlavel-otel` can trace, and no code takes an inbound
+      request, sends it on and streams the answer back.
+
+      A route table, not three hard-wired services: a pattern maps to an
+      upstream, and an upstream is a service behind the gateway *or* an external
+      URL. Hop-by-hop headers are dropped and `X-Forwarded-*` set, because a
+      proxy that passes `Connection` or `Transfer-Encoding` through is a proxy
+      that disagrees with its upstream about where a message ends — the same
+      class of bug as request smuggling, one layer up.
+
+      Also at the gateway: a rate limit per client, a circuit breaker per
+      upstream (both already in the framework), token validation before a
+      request reaches any service, and one health endpoint reporting every
+      upstream behind it.
+
+      The services still check tokens themselves. A gateway is not the only door
+      — anything on the network can reach a service directly — and a check that
+      only happens at the edge is a check that is missing the moment somebody
+      adds a second way in.
+
+- [ ] **Token validation, both ways, tested equally.** Introspection against the
+      auth server with a short-lived cache, and self-contained tokens verified
+      locally. Introspection needs no new cryptography and makes revocation
+      immediate; local verification removes the hop and the auth server as a
+      bottleneck, and makes revocation hard.
+
+      Chosen deliberately over picking one, and the risk of that choice is worth
+      naming: **a security path that is rarely used is the one that is wrong
+      without anybody knowing.** So neither is the default-with-an-afterthought;
+      both carry the same tests.
+
+      The signature is ES256 over `p256`, which the tree already carries for
+      WebAuthn. The JWT *format* — base64url, JSON, the signing input — is
+      written here, like every other format in this project; the primitive is
+      not, because a hand-rolled signature is what the cryptography exception
+      exists to prevent.
+
+- [ ] **A database per service, and none for the gateway.** The auth server owns
+      users, clients, tokens and codes; the resource server owns its domain and
+      never reads an auth table. The gateway is stateless and keeps Redis for
+      rate limiting and the introspection cache — the moment it has a database
+      it stops being a gateway and becomes a fourth service that can fail.
+
+      `Connections` (Phase 1.5) is the primitive: named connections under one
+      budget.
+
 ## Known gaps, stated plainly
 
 - **JSON serialisation is behind serde, and the writer is not the reason.** The

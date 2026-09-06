@@ -27,6 +27,7 @@
 //! Written from scratch on RFC 6749, 6750, 7009 and 7636, save for SHA-256 and
 //! AES-GCM, which come from the RustCrypto crates by way of `rustlavel-auth`.
 
+pub mod verify;
 pub mod client;
 pub mod error;
 pub mod pkce;

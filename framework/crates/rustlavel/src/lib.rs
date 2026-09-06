@@ -36,6 +36,10 @@ pub use rustlavel_db::Connections;
 pub use rustlavel_debugbar as debugbar;
 #[cfg(feature = "debugbar")]
 pub use rustlavel_debugbar::DebugBar;
+#[cfg(feature = "gateway")]
+pub use rustlavel_gateway as gateway;
+#[cfg(feature = "gateway")]
+pub use rustlavel_gateway::{Gateway, Upstream};
 #[cfg(feature = "i18n")]
 pub use rustlavel_i18n as i18n;
 #[cfg(feature = "vault")]

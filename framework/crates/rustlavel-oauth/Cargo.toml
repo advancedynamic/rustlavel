@@ -17,6 +17,11 @@ rustlavel-auth.workspace = true
 # PKCE's S256 challenge, and nothing else. Hashing is the one thing this
 # framework does not write for itself.
 sha2 = "0.10"
+# The ES256 signature on a self-contained token. The JWT *format* is written
+# here like every other format in this project; the signature is not, because a
+# hand-rolled one is what the cryptography exception exists to prevent. Already
+# in the tree for WebAuthn.
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
 
 [dev-dependencies]
 tokio = { workspace = true }

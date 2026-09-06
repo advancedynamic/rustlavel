@@ -660,6 +660,7 @@ dependencies = [
  "rustlavel-db",
  "rustlavel-debugbar",
  "rustlavel-flags",
+ "rustlavel-gateway",
  "rustlavel-http",
  "rustlavel-i18n",
  "rustlavel-ldap",
@@ -790,6 +791,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustlavel-gateway"
+version = "0.7.4"
+dependencies = [
+ "rustlavel-client",
+ "rustlavel-core",
+ "rustlavel-http",
+ "tokio",
+]
+
+[[package]]
 name = "rustlavel-http"
 version = "0.7.4"
 dependencies = [
@@ -869,6 +880,7 @@ dependencies = [
 name = "rustlavel-oauth"
 version = "0.7.4"
 dependencies = [
+ "p256",
  "rustlavel-auth",
  "rustlavel-client",
  "rustlavel-core",

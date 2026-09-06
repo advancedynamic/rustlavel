@@ -1,0 +1,8 @@
+[package]
+name = "{{crate_name}}_api"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rustlavel = { workspace = true, features = ["oauth", "auth", "db", "cache", "client"] }
+{{crate_name}}_shared = { path = "../../shared" }

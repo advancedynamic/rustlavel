@@ -15,6 +15,7 @@ mod doctor;
 mod fields;
 mod make;
 mod merge;
+mod microservices_kit;
 mod naming;
 mod new;
 mod package;
