@@ -36,8 +36,23 @@ use crate::Scopes;
 /// once and the deployment decides how the answer is reached.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Claims {
-    /// Who the token is for — a user id, usually.
-    pub subject: String,
+    /// Who the token is for, or `None` when there is nobody.
+    ///
+    /// **`None` is a machine, not a failure.** A `client_credentials` token has
+    /// no resource owner behind it — RFC 6749 §4.4 — so this authorization
+    /// server deliberately omits `sub` from an introspection response, which is
+    /// how a resource server tells a service's token from a person's. This
+    /// field used to be a `String` and a missing `sub` was refused, so every
+    /// machine-to-machine token in the framework was rejected by the
+    /// framework's own verifier: two halves that disagreed, and the one thing a
+    /// microservices deployment is built on.
+    ///
+    /// Made an `Option` rather than defaulted to the client id, which is the
+    /// tempting fix and the wrong one: a *user's* token whose `sub` went
+    /// missing would then be attributed to the client, and every user of that
+    /// client would share one identity. Callers must decide, and
+    /// [`Claims::owner`] is the usual answer.
+    pub subject: Option<String>,
     /// Which client obtained it.
     pub client: Option<String>,
     /// What it may do.
@@ -47,6 +62,24 @@ pub struct Claims {
 }
 
 impl Claims {
+    /// Who to attribute a row to: the user when there is one, the client when
+    /// the token belongs to a service.
+    ///
+    /// Distinct values by construction — a client id and a user id come from
+    /// different tables — so a service's rows never collide with a person's.
+    /// A token with neither is not a token this returns for.
+    pub fn owner(&self) -> Option<&str> {
+        self.subject.as_deref().or(self.client.as_deref())
+    }
+
+    /// Whether this token stands for a service rather than a person.
+    ///
+    /// The question a resource server asks before doing something only a person
+    /// may do — spending their money, changing their password.
+    pub fn is_service(&self) -> bool {
+        self.subject.is_none()
+    }
+
     /// Whether this token has run out at `now`.
     ///
     /// A token with no expiry is *not* treated as expired: an introspection
@@ -135,10 +168,18 @@ pub fn read_introspection(body: &Json, now: i64) -> Result<Claims> {
 /// The claims shared by both shapes. RFC 7662 and RFC 9068 agree on these
 /// names, which is why one reader serves both.
 fn claims_from(body: &Json) -> Option<Claims> {
-    let subject = body.get("sub").and_then(Json::as_str)?.to_string();
-    if subject.is_empty() {
-        return None;
-    }
+    // Absent or empty are the same thing: nobody. An empty string would
+    // otherwise become a subject that every such token shares.
+    let subject = body
+        .get("sub")
+        .and_then(Json::as_str)
+        .map(str::to_string)
+        .filter(|subject| !subject.is_empty());
+
+    // A token that names neither a person nor a client identifies nothing, and
+    // there is nothing to attribute its actions to.
+    body.get("client_id").and_then(Json::as_str).or(subject.as_deref())?;
+
     Some(Claims {
         subject,
         client: body.get("client_id").and_then(Json::as_str).map(str::to_string),
@@ -190,7 +231,7 @@ mod tests {
         );
 
         let claims = verify_signed(&token, &public(&key), 1000).expect("a good token");
-        assert_eq!(claims.subject, "42");
+        assert_eq!(claims.subject.as_deref(), Some("42"));
         assert_eq!(claims.client.as_deref(), Some("checkout"));
         assert!(claims.scopes.contains("orders.read"));
         assert_eq!(claims.expires_at, Some(2000));
@@ -263,7 +304,7 @@ mod tests {
         .unwrap();
 
         let claims = read_introspection(&body, 1000).expect("an active token");
-        assert_eq!(claims.subject, "42");
+        assert_eq!(claims.subject.as_deref(), Some("42"));
         assert_eq!(claims.client.as_deref(), Some("checkout"));
         assert!(claims.scopes.contains("orders.write"));
     }
@@ -309,6 +350,52 @@ mod tests {
 
     /// Whichever way the answer was reached, a resource server sees the same
     /// thing — which is what lets it be written once.
+    /// A `client_credentials` token has no resource owner, and this
+    /// authorization server omits `sub` to say so. Refusing it made every
+    /// machine-to-machine token in the framework unusable by the framework's
+    /// own verifier — found by asking a scaffolded resource server to accept
+    /// one.
+    #[test]
+    fn a_token_with_no_subject_is_a_service_rather_than_a_refusal() {
+        let body = Json::parse(
+            r#"{"active":true,"client_id":"demo","scope":"orders.read","token_type":"Bearer"}"#,
+        )
+        .unwrap();
+
+        let claims = read_introspection(&body, 0).expect("a machine's token is still a token");
+        assert!(claims.is_service());
+        assert_eq!(claims.subject, None);
+        assert_eq!(claims.owner(), Some("demo"), "a service's rows need an owner too");
+        assert!(claims.scopes.contains("orders.read"));
+    }
+
+    /// The tempting fix was to default the subject to the client id. A user's
+    /// token whose `sub` went missing would then be attributed to the client,
+    /// and every user of that client would share one identity.
+    #[test]
+    fn a_users_token_keeps_its_own_subject() {
+        let body = Json::parse(r#"{"active":true,"sub":"42","client_id":"demo"}"#).unwrap();
+        let claims = read_introspection(&body, 0).unwrap();
+
+        assert!(!claims.is_service());
+        assert_eq!(claims.owner(), Some("42"), "the user was attributed to the client");
+    }
+
+    /// An empty `sub` is nobody, not a subject every such token shares.
+    #[test]
+    fn an_empty_subject_is_the_same_as_none() {
+        let body = Json::parse(r#"{"active":true,"sub":"","client_id":"demo"}"#).unwrap();
+        assert_eq!(read_introspection(&body, 0).unwrap().subject, None);
+    }
+
+    /// Naming neither a person nor a client identifies nothing, and there is
+    /// nothing to attribute its actions to.
+    #[test]
+    fn a_token_naming_nobody_at_all_is_still_refused() {
+        let body = Json::parse(r#"{"active":true,"scope":"orders.read"}"#).unwrap();
+        assert!(read_introspection(&body, 0).is_err());
+    }
+
     #[test]
     fn both_paths_produce_the_same_claims() {
         let key = key();

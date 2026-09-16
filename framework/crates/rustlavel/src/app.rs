@@ -18,6 +18,8 @@ pub struct App {
     router: Router,
     config: Config,
     context: Option<ContextBuilder>,
+    /// Run once the listener has stopped and requests have drained.
+    on_shutdown: Vec<rustlavel_http::OnShutdown>,
     root: PathBuf,
     public: Option<PathBuf>,
     /// Where the generated API document is served, when it is enabled.
@@ -51,6 +53,7 @@ impl App {
         Ok(App {
             router: Router::new(),
             context: Some(Context::builder().config(config.clone())),
+            on_shutdown: Vec::new(),
             config,
             public: public.is_dir().then_some(public),
             root,
@@ -75,6 +78,7 @@ impl App {
         App {
             router: Router::new(),
             context: Some(Context::builder().config(config.clone())),
+            on_shutdown: Vec::new(),
             config,
             root: PathBuf::from("."),
             public: None,
@@ -91,6 +95,12 @@ impl App {
             #[cfg(feature = "queue")]
             scheduler: None,
         }
+    }
+
+    /// Something the application registered with [`App::state`], before it
+    /// runs. The console commands read the database this way.
+    pub fn registered<T: Send + Sync + 'static>(&self) -> Option<&T> {
+        self.context.as_ref().and_then(|builder| builder.registered::<T>())
     }
 
     pub fn config(&self) -> &Config {
@@ -141,6 +151,28 @@ impl App {
     }
 
     /// Register a service that handlers resolve with `req.state::<T>()`.
+    /// Run something on the way down, after in-flight requests have drained.
+    ///
+    /// What a service registered with a discovery server uses to say goodbye —
+    /// the difference between a clean deploy and thirty seconds of requests
+    /// routed to a process that has exited.
+    ///
+    /// ```ignore
+    /// let registrar = Arc::new(Registrar::new(nodes, instance));
+    /// Arc::clone(&registrar).start();
+    ///
+    /// app.on_shutdown(move || Box::pin(async move {
+    ///     let _ = registrar.deregister().await;
+    /// }))
+    /// ```
+    pub fn on_shutdown(
+        mut self,
+        work: impl FnOnce() -> rustlavel_http::BoxFuture<()> + Send + Sync + 'static,
+    ) -> Self {
+        self.on_shutdown.push(Box::new(work));
+        self
+    }
+
     pub fn state<T: Send + Sync + 'static>(mut self, value: T) -> Self {
         self.context = Some(self.context.take().expect("context builder").state(value));
         self
@@ -325,7 +357,7 @@ impl App {
     }
 
     /// Bind and serve until Ctrl-C.
-    pub async fn serve(self) -> Result<()> {
+    pub async fn serve(mut self) -> Result<()> {
         let host = self.config.string("server.host", "127.0.0.1");
         let port = self.config.int("server.port", 8000);
         let name = self.config.string("app.name", "Rustlavel");
@@ -338,8 +370,14 @@ impl App {
         #[cfg(feature = "db")]
         rustlavel_db::set_log_bindings(!self.config.is_production());
 
+        let on_shutdown = std::mem::take(&mut self.on_shutdown);
         let (router, context) = self.finish();
-        Server::new(router, context).listen(format!("{host}:{port}")).await
+
+        let mut server = Server::new(router, context);
+        for work in on_shutdown {
+            server = server.on_shutdown(work);
+        }
+        server.listen(format!("{host}:{port}")).await
     }
 
     /// The finished router and context, for serving on a listener of the

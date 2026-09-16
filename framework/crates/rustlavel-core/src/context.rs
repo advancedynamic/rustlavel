@@ -72,6 +72,17 @@ impl ContextBuilder {
         self
     }
 
+    /// What was registered under this type, before the context is built.
+    ///
+    /// The console commands need it: `migrate` used to build a second database
+    /// connection from `DATABASE_URL`, ignoring the one the application had
+    /// already opened. For an application whose handle comes from anywhere else
+    /// — a second key, a vault lease, a tenant lookup — that is a migration run
+    /// against the wrong database, or against none.
+    pub fn registered<T: Send + Sync + 'static>(&self) -> Option<&T> {
+        self.state.get(&TypeId::of::<T>()).and_then(|value| value.downcast_ref::<T>())
+    }
+
     /// Whether something of this type has already been registered.
     ///
     /// For the case where the framework would otherwise supply a default and

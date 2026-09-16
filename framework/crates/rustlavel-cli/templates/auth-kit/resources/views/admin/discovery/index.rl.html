@@ -1,0 +1,96 @@
+@extends("layouts.app")
+@section("title", "Service Registry")
+
+@section("content")
+  <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h2 class="text-xl font-extrabold tracking-tight">Service Registry</h2>
+      <p class="mt-0.5 text-xs text-ink-500 dark:text-ink-400">Which services are registered, and which instances are answering</p>
+    </div>
+    <p class="text-xs text-ink-500 dark:text-ink-400">Reading <code class="font-mono">{{ registry_url }}</code></p>
+  </div>
+
+  @if(unreachable)
+    {{-- The screen somebody opens when something is wrong must render. An
+         error page here would take away the one tool that could say which
+         service is missing. --}}
+    <div class="card mb-5 border-danger-300 dark:border-danger-700">
+      <div class="card-body">
+        <h3 class="font-bold text-danger-700 dark:text-danger-300">The registry did not answer</h3>
+        <p class="mt-1 text-sm text-ink-600 dark:text-ink-300">{{ problem }}</p>
+        <p class="mt-3 text-xs text-ink-500 dark:text-ink-400">
+          Tried <code class="font-mono">{{ registry_url }}</code>. Change it in Settings, or in
+          <code class="font-mono">DISCOVERY_URL</code>.
+        </p>
+      </div>
+    </div>
+  @else
+    @include("partials.stats")
+
+    @if(self_preservation)
+      {{-- Eureka's most misunderstood state, and the reason somebody finds a
+           dead instance still getting requests. Saying it here is the
+           difference between a five-minute diagnosis and an afternoon. --}}
+      <div class="card mb-5 border-warning-300 dark:border-warning-700">
+        <div class="card-body">
+          <h3 class="font-bold text-warning-700 dark:text-warning-300">Self-preservation</h3>
+          <p class="mt-1 text-sm text-ink-600 dark:text-ink-300">
+            Too much of the registry went quiet at once for it to be believed, so nothing is being
+            evicted. Some instances below may be gone.
+          </p>
+        </div>
+      </div>
+    @endif
+
+    @if(services_empty)
+      <div class="card">
+        <div class="card-body text-sm text-ink-500 dark:text-ink-400">
+          Nothing is registered. A service registers itself on the way up — if one is running and
+          is not here, it is pointed at a different registry.
+        </div>
+      </div>
+    @endif
+
+    @foreach(services as service)
+      <div class="card mb-4">
+        <div class="card-body">
+          <div class="mb-3 flex flex-wrap items-baseline gap-3">
+            <h3 class="font-bold tracking-tight">{{ service.name }}</h3>
+            <span class="text-xs text-ink-500 dark:text-ink-400">{{ service.up }} of {{ service.total }} taking traffic</span>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-[11px] uppercase tracking-wide text-ink-500 dark:text-ink-400">
+                  <th class="pb-2 pr-4 font-medium">Status</th>
+                  <th class="pb-2 pr-4 font-medium">Instance</th>
+                  <th class="pb-2 pr-4 font-medium">Address</th>
+                  <th class="pb-2 pr-4 font-medium">Zone</th>
+                  <th class="pb-2 font-medium">Last heard</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach(service.instances as instance)
+                  <tr class="border-t border-ink-100 dark:border-ink-800">
+                    <td class="py-2 pr-4">
+                      @if(instance.fresh)
+                        <span class="badge-success">{{ instance.status }}</span>
+                      @else
+                        <span class="badge-warning">{{ instance.status }} · silent</span>
+                      @endif
+                    </td>
+                    <td class="py-2 pr-4 font-mono text-xs">{{ instance.id }}</td>
+                    <td class="py-2 pr-4 font-mono text-xs">{{ instance.url }}</td>
+                    <td class="py-2 pr-4">{{ instance.zone }}</td>
+                    <td class="py-2 tabular-nums">{{ instance.silentFor }}s ago</td>
+                  </tr>
+                @endforeach
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    @endforeach
+  @endif
+@endsection

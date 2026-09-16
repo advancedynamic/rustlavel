@@ -659,6 +659,7 @@ dependencies = [
  "rustlavel-core",
  "rustlavel-db",
  "rustlavel-debugbar",
+ "rustlavel-discovery",
  "rustlavel-flags",
  "rustlavel-gateway",
  "rustlavel-http",
@@ -737,6 +738,7 @@ name = "rustlavel-cli"
 version = "0.7.4"
 dependencies = [
  "rustlavel-core",
+ "rustlavel-view",
 ]
 
 [[package]]
@@ -776,6 +778,17 @@ name = "rustlavel-debugbar"
 version = "0.7.4"
 dependencies = [
  "rustlavel-core",
+ "rustlavel-http",
+ "tokio",
+]
+
+[[package]]
+name = "rustlavel-discovery"
+version = "0.7.4"
+dependencies = [
+ "rustlavel-client",
+ "rustlavel-core",
+ "rustlavel-gateway",
  "rustlavel-http",
  "tokio",
 ]
@@ -895,6 +908,7 @@ version = "0.7.4"
 dependencies = [
  "rustlavel-auth",
  "rustlavel-core",
+ "rustlavel-db",
  "rustlavel-http",
  "rustlavel-oauth",
  "sha2",

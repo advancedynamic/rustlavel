@@ -4,4 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-rustlavel.workspace = true
+# `discovery` for `join` below: how a service announces itself is exactly the
+# kind of thing every service has to agree on, which is what this crate is for.
+rustlavel = { workspace = true, features = ["discovery"] }

@@ -101,6 +101,25 @@ impl AccessToken {
         self
     }
 
+    /// Rebuild from a stored digest, for a [`TokenStore`] backed by a table.
+    ///
+    /// The plaintext is not needed and must not be available: a store reads
+    /// rows, and a row holds the digest. Every other field is public and is set
+    /// by the caller from the same row.
+    pub fn from_hash(id: impl Into<String>, hash: impl Into<String>) -> AccessToken {
+        AccessToken {
+            id: id.into(),
+            hash: hash.into(),
+            client_id: String::new(),
+            user_id: None,
+            scopes: Scopes::new(),
+            family: String::new(),
+            issued_at: 0,
+            expires_at: 0,
+            revoked: false,
+        }
+    }
+
     pub fn hash(&self) -> &str {
         &self.hash
     }
@@ -187,6 +206,23 @@ impl RefreshToken {
     pub fn alongside(mut self, access_token_id: impl Into<String>) -> RefreshToken {
         self.access_token_id = access_token_id.into();
         self
+    }
+
+    /// Rebuild from a stored digest. See [`AccessToken::from_hash`].
+    pub fn from_hash(id: impl Into<String>, hash: impl Into<String>) -> RefreshToken {
+        RefreshToken {
+            id: id.into(),
+            hash: hash.into(),
+            client_id: String::new(),
+            user_id: None,
+            scopes: Scopes::new(),
+            family: String::new(),
+            access_token_id: String::new(),
+            issued_at: 0,
+            expires_at: 0,
+            revoked: false,
+            rotated: false,
+        }
     }
 
     pub fn hash(&self) -> &str {

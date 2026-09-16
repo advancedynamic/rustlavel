@@ -31,6 +31,49 @@ pub const REQUIRED_PACKAGES: &[&str] = &[
     "audit", "auth", "cache", "db", "i18n", "mail", "rbac", "validation", "view", "webauthn",
 ];
 
+/// The service discovery dashboard, written only when it is asked for.
+///
+/// A separate manifest rather than a flag inside `FILES`, because these three
+/// files bring a dependency with them: a project that does not run services
+/// behind a registry should not compile a registry client to show a page it
+/// will never open. `new` asks, and `upgrade` brings them forward only for a
+/// project that already has them.
+///
+/// The four `{{module_*}}` placeholders in `FILES` are what wires them in, and
+/// they render to nothing when this manifest is not used.
+pub const DISCOVERY_FILES: &[(&str, &str)] = &[
+    (
+        "src/modules/discovery/mod.rs",
+        include_str!("../templates/auth-kit/src/modules/discovery/mod.rs"),
+    ),
+    (
+        "src/modules/discovery/controller.rs",
+        include_str!("../templates/auth-kit/src/modules/discovery/controller.rs"),
+    ),
+    (
+        "resources/views/admin/discovery/index.rl.html",
+        include_str!("../templates/auth-kit/resources/views/admin/discovery/index.rl.html"),
+    ),
+];
+
+/// What `--with auth-kit` plus the discovery dashboard needs on top of
+/// [`REQUIRED_PACKAGES`].
+pub const DISCOVERY_PACKAGES: &[&str] = &["client", "discovery"];
+
+/// The entry the dashboard draws in the built-in navigation.
+///
+/// Rendered into `{{modules_nav}}` in `partials/nav.rl.html`. Indented to match
+/// what surrounds it there, because a generated line that does not look like
+/// the file it lands in is a line somebody reformats and breaks.
+pub const DISCOVERY_NAV: &str = r#"
+    @if(can_view_discovery)
+      <a href="@route("admin.discovery")" class="nav-link @if(nav == "discovery") nav-link-active @endif">
+        <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 2a3 3 0 0 1 1 5.83v1.42h3.25A2.75 2.75 0 0 1 17 11.9v.27a3 3 0 1 1-2 0v-.27a.75.75 0 0 0-.75-.75H11v1.02a3 3 0 1 1-2 0V11.15H5.75a.75.75 0 0 0-.75.75v.27a3 3 0 1 1-2 0v-.27a2.75 2.75 0 0 1 2.75-2.65H9V7.83A3 3 0 0 1 10 2Z"/></svg>
+        <span class="nav-label">Service Registry</span>
+      </a>
+    @endif
+"#;
+
 pub const FILES: &[(&str, &str)] = &[
     ("src/lib.rs", include_str!("../templates/auth-kit/src/lib.rs")),
     ("src/main.rs", include_str!("../templates/auth-kit/src/main.rs")),

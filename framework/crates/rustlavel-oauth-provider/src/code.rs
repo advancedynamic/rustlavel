@@ -114,6 +114,25 @@ impl AuthorizationCode {
     }
 
     /// The digest this record is stored under.
+    /// Rebuild from a stored digest, for a [`CodeStore`] backed by a table.
+    ///
+    /// The plaintext code is not needed and must not be available. Every other
+    /// field is public and is set by the caller from the same row.
+    pub fn from_hash(hash: impl Into<String>) -> AuthorizationCode {
+        AuthorizationCode {
+            hash: hash.into(),
+            client_id: String::new(),
+            redirect_uri: String::new(),
+            user_id: String::new(),
+            scopes: Scopes::new(),
+            challenge: String::new(),
+            challenge_method: ChallengeMethod::Plain,
+            issued_at: 0,
+            expires_at: 0,
+            family: None,
+        }
+    }
+
     pub fn hash(&self) -> &str {
         &self.hash
     }

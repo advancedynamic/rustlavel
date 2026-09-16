@@ -54,7 +54,7 @@ pub use request::Request;
 pub use request_id::RequestId;
 pub use response::{IntoResponse, Response};
 pub use router::{NamedRoutes, Resource, Route, RouteHandle, Router};
-pub use server::{Limits, Server};
+pub use server::{Limits, OnShutdown, Server};
 pub use status::Status;
 pub use testing::{TestClient, TestResponse};
 pub use timeout::Timeout;

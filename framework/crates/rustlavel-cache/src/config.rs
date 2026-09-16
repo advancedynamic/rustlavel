@@ -42,9 +42,12 @@ impl Driver {
         match name.trim().to_ascii_lowercase().as_str() {
             "memory" | "array" => Ok(Driver::Memory),
             "file" => Ok(Driver::File),
-            "redis" => Ok(Driver::Redis),
+            // One driver, two names. Valkey is the same protocol, and asking
+            // somebody running Valkey to write `redis` in their configuration
+            // is asking them to describe their system incorrectly.
+            "redis" | "valkey" => Ok(Driver::Redis),
             other => Err(Error::msg(format!(
-                "`{other}` is not a cache driver. Set cache.driver to one of: memory, file, redis."
+                "`{other}` is not a cache driver. Set cache.driver to one of: memory, file, redis, valkey."
             ))),
         }
     }
@@ -230,6 +233,17 @@ mod tests {
     use crate::store::CacheExt;
     use rustlavel_core::Json;
     use std::time::Duration;
+
+    /// Asking somebody running Valkey to write `redis` in their configuration
+    /// is asking them to describe their system incorrectly.
+    #[test]
+    fn valkey_names_the_same_driver_as_redis() {
+        assert_eq!(Driver::parse("valkey").unwrap(), Driver::Redis);
+        assert_eq!(Driver::parse("redis").unwrap(), Driver::Redis);
+        // And the refusal lists both, so the next person sees the spelling.
+        let error = Driver::parse("memcached").unwrap_err().to_string();
+        assert!(error.contains("valkey"), "{error}");
+    }
 
     #[test]
     fn a_driver_typo_names_the_valid_choices() {

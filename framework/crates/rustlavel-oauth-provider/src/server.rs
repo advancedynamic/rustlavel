@@ -137,8 +137,11 @@ pub struct AuthorizationServer {
 impl AuthorizationServer {
     /// A server over the given client registry, with everything else in memory.
     ///
-    /// Swap each store out with [`AuthorizationServer::storing_codes`] and its
-    /// siblings; the in-memory ones are for tests and development.
+    /// **The defaults are for tests and a development server.** A restart
+    /// empties them, and an empty store answers "unknown token" to everything —
+    /// so deploying this as it stands signs out every session at once. Give it
+    /// the database stores with [`AuthorizationServer::storing_codes`] and its
+    /// siblings; `crate::database` has one for each, behind the `db` feature.
     pub fn new(clients: impl ClientStore) -> AuthorizationServer {
         AuthorizationServer {
             clients: Arc::new(clients),

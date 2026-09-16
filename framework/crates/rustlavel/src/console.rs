@@ -69,8 +69,25 @@ impl Console {
 }
 
 #[cfg(feature = "db")]
+/// The database these commands should act on.
+///
+/// **The application's own handle first.** This used to go straight to
+/// `DATABASE_URL`, which is right for an application with one database and
+/// wrong for every other arrangement: a service that reads its own key, a
+/// handle opened from a vault lease, a tenant chosen at boot. `migrate` then
+/// ran against whatever `DATABASE_URL` happened to point at — in the
+/// microservices kit, a `postgres` database on the default port that nobody
+/// had configured, so migrating a service failed with a connection error
+/// naming an address that appears nowhere in its `.env`.
+///
+/// Falling back to the configuration keeps every application that never calls
+/// `.state(db)` working exactly as before.
 async fn connect(app: &App) -> Result<rustlavel_db::Database> {
     use rustlavel_db::{Database, DatabaseConfig};
+
+    if let Some(database) = app.registered::<Database>() {
+        return Ok(database.clone());
+    }
 
     let settings = DatabaseConfig::from_app_config(app.config())?;
     Database::with_config(settings).await

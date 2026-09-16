@@ -125,14 +125,14 @@ pub fn routes(r: &mut Router) {
         admin.middleware(IdleTimeout);
 
         admin.get("/users", UsersController::index).name("admin.users").middleware(guard("users.view"));
-        admin.get("/users/create", UsersController::create).middleware(guard("users.create"));
+        admin.get("/users/create", UsersController::create).name("admin.users.create").middleware(guard("users.create"));
         admin.post("/users", UsersController::store).middleware(guard("users.create"));
         admin.get("/users/{id}/edit", UsersController::edit).middleware(guard("users.update"));
         admin.post("/users/{id}", UsersController::update).middleware(guard("users.update"));
         admin.post("/users/{id}/delete", UsersController::destroy).middleware(guard("users.delete"));
 
         admin.get("/roles", RolesController::index).name("admin.roles").middleware(guard("roles.view"));
-        admin.get("/roles/create", RolesController::create).middleware(guard("roles.create"));
+        admin.get("/roles/create", RolesController::create).name("admin.roles.create").middleware(guard("roles.create"));
         admin.post("/roles", RolesController::store).middleware(guard("roles.create"));
         admin.get("/roles/{id}/edit", RolesController::edit).middleware(guard("roles.update"));
         admin.post("/roles/{id}", RolesController::update).middleware(guard("roles.update"));
@@ -142,8 +142,8 @@ pub fn routes(r: &mut Router) {
         // the mail host can already change the application URL, and pretending
         // otherwise would be six permissions that always travel together.
         admin.get("/settings", AdminSettingsController::index).name("admin.settings").middleware(guard("settings.manage"));
-        admin.get("/settings/export", AdminSettingsController::export).middleware(guard("settings.manage"));
-        admin.get("/settings/{tab}", AdminSettingsController::tab).middleware(guard("settings.manage"));
+        admin.get("/settings/export", AdminSettingsController::export).name("admin.settings.export").middleware(guard("settings.manage"));
+        admin.get("/settings/{tab}", AdminSettingsController::tab).name("admin.settings.tab").middleware(guard("settings.manage"));
         admin.post("/settings/email/test", AdminSettingsController::send_test).middleware(guard("settings.manage"));
 
         // Appearance saves in three pieces because the page has three Save
@@ -192,7 +192,7 @@ pub fn routes(r: &mut Router) {
             .get("/permissions", PermissionsController::index)
             .name("admin.permissions")
             .middleware(guard("permissions.view"));
-        admin.get("/permissions/create", PermissionsController::create).middleware(guard("permissions.create"));
+        admin.get("/permissions/create", PermissionsController::create).name("admin.permissions.create").middleware(guard("permissions.create"));
         admin.post("/permissions", PermissionsController::store).middleware(guard("permissions.create"));
         admin.get("/permissions/{id}/edit", PermissionsController::edit).middleware(guard("permissions.update"));
         admin.post("/permissions/{id}", PermissionsController::update).middleware(guard("permissions.update"));

@@ -65,6 +65,7 @@ pub use rustlavel_macros::Model;
 
 /// What a migration, seeder, or model file imports.
 pub mod prelude {
+    pub use crate::connections::Connections;
     pub use crate::migration::{Faker, Migrator, Seeder};
     pub use crate::model::{ModelExt, belongs_to, has_many};
     pub use crate::schema::{Schema, Table};

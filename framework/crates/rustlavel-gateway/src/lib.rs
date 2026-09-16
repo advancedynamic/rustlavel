@@ -38,4 +38,4 @@ pub mod gateway;
 pub mod route;
 
 pub use gateway::Gateway;
-pub use route::{Routes, Upstream};
+pub use route::{Locate, Routes, Upstream};

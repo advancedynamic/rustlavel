@@ -64,6 +64,9 @@ impl Gateway {
 
     /// Refuse a request with no `Authorization` header before forwarding it.
     ///
+    /// Routes an authorization server must be excepted with
+    /// [`Upstream::open`], or nobody can obtain a token in the first place.
+    ///
     /// **This does not replace the check inside each service.** A gateway is
     /// not the only door: anything on the network can reach a service directly,
     /// and a check that happens only at the edge is missing the moment somebody
@@ -120,7 +123,12 @@ impl Plugin for Gateway {
                     return Response::not_found();
                 };
 
-                if gateway.require_token && request.header("authorization").is_none() {
+                // `open` wins. Without it the authorization server would sit
+                // behind a door that only opens from the inside.
+                if gateway.require_token
+                    && !upstream.is_open()
+                    && request.header("authorization").is_none()
+                {
                     return Response::new(Status::UNAUTHORIZED).with_json(
                         rustlavel_core::Json::object([(
                             "message",
@@ -129,7 +137,23 @@ impl Plugin for Gateway {
                     );
                 }
 
-                match forward::forward(&gateway.client, upstream, request).await {
+                // Looked up here, per request, for a route that names a
+                // service rather than an address. A service with nothing
+                // running is 503 — the gateway is fine and there is nothing
+                // behind it, which is not the 502 that means an instance
+                // refused us.
+                let Some(upstream) = upstream.resolved().await else {
+                    rustlavel_core::warn!(
+                        "gateway: {} has no instances",
+                        upstream.service_name().unwrap_or("an upstream")
+                    );
+                    return Response::new(Status(503)).with_json(rustlavel_core::Json::object([(
+                        "message",
+                        rustlavel_core::Json::from("No instances are available."),
+                    )]));
+                };
+
+                match forward::forward(&gateway.client, &upstream, request).await {
                     Ok(response) => response,
                     // `forward` turns an unreachable upstream into 502 itself,
                     // so reaching here means the gateway broke rather than the
@@ -178,5 +202,35 @@ mod tests {
     fn a_token_is_not_required_unless_it_is_asked_for() {
         assert!(!Gateway::new().require_token);
         assert!(Gateway::new().require_token().require_token);
+    }
+
+    /// The microservices kit shipped with `require_token()` covering every
+    /// route, including `/oauth/*`. Asking for a token returned `401`, and
+    /// there was no way to obtain the thing that would have made it succeed —
+    /// a door that only opens from the inside. Found by running it.
+    #[test]
+    fn an_authorization_server_can_be_excepted_from_the_token_requirement() {
+        let gateway = Gateway::new()
+            .require_token()
+            .route("/oauth/*", Upstream::at("http://auth").open())
+            .route("/api/*", Upstream::at("http://api"));
+
+        assert!(
+            gateway.routes().find("/oauth/token").expect("a route").is_open(),
+            "the token endpoint is behind the credential it issues"
+        );
+        assert!(
+            !gateway.routes().find("/api/orders").expect("a route").is_open(),
+            "opening one route opened another"
+        );
+    }
+
+    /// Opening a route must be a line somebody wrote, never a default.
+    #[test]
+    fn an_upstream_is_closed_until_it_is_opened() {
+        assert!(!Upstream::at("http://api").is_open());
+        assert!(Upstream::at("http://api").open().is_open());
+        // And it survives the other builders, whatever order they come in.
+        assert!(Upstream::at("http://api").open().strip("/x").host("h").is_open());
     }
 }

@@ -24,6 +24,10 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("client", &[]),
     ("db", &["database/migrations", "database/seeders"]),
     ("debugbar", &[]),
+    ("discovery", &[]),
+    // Not a crate of its own: three files added to the auth kit, plus the two
+    // packages they import. See `auth_kit::DISCOVERY_FILES`.
+    ("discovery-ui", &[]),
     ("flags", &[]),
     ("gateway", &[]),
     ("i18n", &["lang"]),
@@ -49,6 +53,10 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("storage", &["storage/app"]),
     ("telescope", &[]),
     ("validation", &[]),
+    // The same driver as `cache`, under the name of the server you are actually
+    // running. Turns on the cache package and writes a configuration that
+    // points at Valkey rather than at the memory driver.
+    ("valkey", &["storage/cache"]),
     ("vault", &[]),
     ("view", &["resources/views"]),
     ("webauthn", &["storage/sessions"]),
@@ -138,6 +146,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
         packages.retain(|p| p != "auth-kit");
     }
 
+    // The discovery dashboard: three files and two packages, and only for a
+    // kit — on its own it would be a page in an application with no layout to
+    // put it in.
+    let discovery_ui = packages.iter().any(|p| p == "discovery-ui");
+    if discovery_ui {
+        for required in auth_kit::DISCOVERY_PACKAGES {
+            packages.push((*required).to_string());
+        }
+        packages.retain(|p| p != "discovery-ui");
+    }
+
     // The same treatment for the microservices kit: scaffolding, not a flag.
     let microservices = packages.iter().any(|p| p == "microservices-kit");
     if microservices {
@@ -189,6 +208,57 @@ pub fn run(args: &[String]) -> Result<(), String> {
             true => format!("\n{}\n", database_url_line()),
             false => String::new(),
         },
+    );
+    // The module slots in the kit. Empty unless the dashboard was asked for —
+    // and empty is the whole of what "not asked for" means: no file, no
+    // dependency, no permission check per page.
+    let wired = discovery_ui && auth_kit;
+    if discovery_ui && !auth_kit {
+        // Said out loud rather than written anyway. The dashboard is three
+        // files that extend the kit's layout and use its permissions; dropping
+        // them into a project with neither would not compile. Doing nothing
+        // quietly is the shape this scaffold keeps having to remove.
+        console::info(
+            "`discovery-ui` needs `auth-kit` — it is a page in the kit's admin area. \
+             The discovery package is enabled; the page was not written.",
+        );
+    }
+    values.insert(
+        "module_declarations",
+        match wired {
+            true => "pub mod discovery;\n".to_string(),
+            false => String::new(),
+        },
+    );
+    values.insert(
+        "module_list",
+        match wired {
+            true => ", Box::new(discovery::Discovery)".to_string(),
+            false => String::new(),
+        },
+    );
+    values.insert(
+        "module_nav_flags",
+        match wired {
+            true => "        (\"can_view_discovery\", \"discovery.view\"),\n".to_string(),
+            false => String::new(),
+        },
+    );
+    values.insert(
+        "modules_nav",
+        match wired {
+            true => auth_kit::DISCOVERY_NAV.to_string(),
+            false => String::new(),
+        },
+    );
+    // Which cache the configuration should point at. Asking for `valkey` and
+    // receiving the memory driver would be a package that looks enabled and
+    // does nothing — the shape this scaffold keeps having to remove.
+    let valkey = packages.iter().any(|p| p == "valkey");
+    values.insert("cache_driver", if valkey { "valkey" } else { "memory" }.to_string());
+    values.insert(
+        "cache_url",
+        if valkey { "valkey://127.0.0.1:6379" } else { "" }.to_string(),
     );
     values.insert("name", crate_name.clone());
     values.insert("crate_name", crate_name.clone());
@@ -303,6 +373,22 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
     }
 
+    // The cache package reads `cache.*` from configuration, and configuration
+    // only knows what a file under `config/` declares. Without this file
+    // `CACHE_DRIVER=redis` in `.env` reaches nothing and the application runs on
+    // the memory driver — silently, because the memory driver works.
+    if packages.iter().any(|p| p == "cache" || p == "valkey") && !microservices {
+        write(&root.join("config/cache.json"), &render(stubs::CONFIG_CACHE, &values))?;
+        console::created("config/cache.json");
+
+        for file in [".env", ".env.example"] {
+            let path = root.join(file);
+            let mut contents = std::fs::read_to_string(&path).unwrap_or_default();
+            contents.push_str(&render(stubs::ENV_CACHE, &values));
+            write(&path, &contents)?;
+        }
+    }
+
     // The mail package reads `mail.*` from configuration, and configuration
     // only knows what a file under `config/` declares. Without this the whole
     // `MAIL_*` block in `.env` is inert: the mailer uses its defaults while the
@@ -347,6 +433,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
             // variables, which this does not touch.
             write(&root.join(path), &render(contents, &values))?;
         }
+        if wired {
+            for (path, contents) in auth_kit::DISCOVERY_FILES {
+                write(&root.join(path), &render(contents, &values))?;
+            }
+            console::created("src/modules/discovery/ (the service registry dashboard)");
+        }
+
         // The font, byte for byte: not through `render`, which would rewrite
         // whatever inside a woff2 happened to look like a placeholder.
         for (path, bytes) in auth_kit::BINARY_FILES {
@@ -441,6 +534,20 @@ const NEEDS_WIRING: &[(&str, &str)] = &[
     (
         "gateway",
         "Gateway::new().route(\"/api/*\", Upstream::at(&env_or(\"API_URL\", \"http://127.0.0.1:9002\")))",
+    ),
+    // Not a plugin but application state, so the note names the `.state`
+    // line rather than a `.plugin(...)` one. Without it `--with cache` compiled
+    // the crate, wrote its configuration, and left `main.rs` silent about how
+    // any of it is reached — a package switched on and used by nothing.
+    ("cache", "app.state(CacheStore::from_config(app.config())?) — then `req.state::<CacheStore>()` in a handler"),
+    ("valkey", "app.state(CacheStore::from_config(app.config())?) — reads CACHE_URL, which points at Valkey"),
+    // Two things in one package, and the common one is not the registry. Most
+    // projects asking for discovery want to *join* one — so the note shows the
+    // registrar. `RegistryServer::new()` is the other line, and a project that
+    // wants it is a project whose whole job is being the registry.
+    (
+        "discovery",
+        "Registrar::new(vec![env_or(\"DISCOVERY_URL\", \"http://127.0.0.1:8761\")], Instance::new(\"my-service\", \"127.0.0.1\", 9000)) — then `Arc::new(it).start()`, or `RegistryServer::new()` to *be* the registry",
     ),
     // Not a plugin but a session store, so the note names the store rather
     // than a `.plugin(...)` line. Without it, `--with redis-sessions` would
@@ -561,6 +668,18 @@ fn interview() -> Vec<String> {
 
         let engine = ask::choose("Which database?", &engines, 0);
         chosen_database(engine);
+    }
+
+    // Only for the kit: on its own the dashboard would be a page with no
+    // layout to render it in, and asking everybody about a registry most
+    // projects do not run is a question that teaches people to skim.
+    if shape == 0
+        && ask::confirm(
+            "Add a dashboard for a service registry? (an admin page listing services and their instances)",
+            false,
+        )
+    {
+        packages.push("discovery-ui".to_string());
     }
 
     let extras = ask::choose_many(
@@ -1216,6 +1335,7 @@ mod tests {
             .iter()
             .map(|(path, _)| *path)
             .chain(crate::auth_kit::BINARY_FILES.iter().map(|(path, _)| *path))
+            .chain(crate::auth_kit::DISCOVERY_FILES.iter().map(|(path, _)| *path))
             .collect();
 
         let mut on_disk = Vec::new();
@@ -1508,8 +1628,6 @@ mod tests {
             ("crate_name", "demo".to_string()),
             ("name", "demo".to_string()),
             ("dependency", "version = \"0.0.0\"".to_string()),
-            ("plugins", String::new()),
-            ("database", String::new()),
         ]);
         for (path, template) in crate::microservices_kit::FILES {
             if let Some(found) = unrendered_placeholder(&render(template, &values)) {
@@ -1526,6 +1644,136 @@ mod tests {
         }
     }
 
+    /// Every key the microservices kit's `.env` defines is read by its code,
+    /// and every key its code reads is in that `.env`.
+    ///
+    /// **Both directions, because the kit shipped broken in both.** `.env`
+    /// defined `AUTH_DATABASE_URL` and `API_DATABASE_URL` while both services
+    /// read `DATABASE_URL`, so neither could start — and setting the one key
+    /// they did read would have put two services in one database, which is the
+    /// coupling the kit exists to avoid. `GATEWAY_PORT` was read by nothing at
+    /// all. Neither was visible from a test, because a `.env` is data and the
+    /// code that ignores it compiles perfectly.
+    #[test]
+    fn every_env_key_the_microservices_kit_defines_is_read_by_its_code() {
+        let code: String = crate::microservices_kit::FILES
+            .iter()
+            .filter(|(path, _)| path.ends_with(".rs"))
+            .map(|(_, contents)| *contents)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let declared: Vec<&str> = crate::microservices_kit::ENV_ADDITIONS
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.starts_with('#') && line.contains('='))
+            .filter_map(|line| line.split('=').next())
+            .filter(|key| !key.is_empty())
+            .collect();
+        assert!(declared.len() > 8, "the .env block was not parsed: {declared:?}");
+
+        let unread: Vec<&&str> =
+            declared.iter().filter(|key| !code.contains(&format!("\"{key}\""))).collect();
+        assert!(
+            unread.is_empty(),
+            "these keys are in the kit's .env and no generated file reads them, so setting \
+             one does nothing: {unread:?}"
+        );
+
+        // And the other way: a key the code reads and the .env never mentions
+        // is a setting nobody knows exists.
+        let mut read: Vec<&str> = Vec::new();
+        for (index, _) in code.match_indices("env_or(\"") {
+            let rest = &code[index + "env_or(\"".len()..];
+            if let Some(end) = rest.find('"') {
+                read.push(&rest[..end]);
+            }
+        }
+        read.sort_unstable();
+        read.dedup();
+
+        let undeclared: Vec<&&str> = read
+            .iter()
+            // `SERVER_PORT` is the framework's, and the four services take it
+            // from their own environment rather than from the shared file.
+            .filter(|key| **key != "SERVER_PORT")
+            .filter(|key| !declared.contains(key))
+            .collect();
+        assert!(
+            undeclared.is_empty(),
+            "the kit's code reads these and its .env never mentions them: {undeclared:?}"
+        );
+    }
+
+    /// Every service in the microservices kit answers `/health`.
+    ///
+    /// The authorization server did not, so the gateway's aggregate check
+    /// probed it, got a 404, and reported the whole system `degraded` with a
+    /// 503 — on a deployment where nothing was wrong. A load balancer reading
+    /// that takes the gateway out of rotation, and the one endpoint that could
+    /// have explained it is the one that said so.
+    #[test]
+    fn every_service_in_the_microservices_kit_answers_a_health_check() {
+        let mains: Vec<(&str, &str)> = crate::microservices_kit::FILES
+            .iter()
+            .filter(|(path, _)| path.ends_with("/src/main.rs"))
+            .map(|(path, contents)| (*path, *contents))
+            .collect();
+        assert!(mains.len() >= 4, "only {} services found", mains.len());
+
+        for (path, contents) in mains {
+            assert!(
+                // The gateway mounts its own through the plugin; the rest
+                // declare a route.
+                contents.contains(r#"get("/health""#) || contents.contains(r#".health("/health""#),
+                "{path} serves no /health, so the gateway will report the whole system degraded"
+            );
+        }
+    }
+
+    /// Every view the kit writes must parse with the engine that will render it.
+    ///
+    /// A mismatched `@if`, a directive that does not exist, an `@endforeach`
+    /// closing an `@if` — none of these are visible until somebody opens the
+    /// page, and the page they open is usually the one nobody has opened yet.
+    /// The parser is cheap and it is right here.
+    #[test]
+    fn every_kit_view_parses() {
+        let views = crate::auth_kit::FILES
+            .iter()
+            .chain(crate::auth_kit::DISCOVERY_FILES)
+            .filter(|(path, _)| path.ends_with(".rl.html"));
+
+        let mut checked: Vec<&str> = Vec::new();
+        for (path, source) in views {
+            // The scaffold placeholders come out first, exactly as `new` does
+            // it — the engine has never seen them and should not have to.
+            let rendered = render(
+                source,
+                &BTreeMap::from([
+                    ("crate_name", "demo".to_string()),
+                    ("name", "demo".to_string()),
+                    ("modules_nav", crate::auth_kit::DISCOVERY_NAV.to_string()),
+                ]),
+            );
+
+            if let Err(error) = rustlavel_view::parser::parse(path, &rendered) {
+                panic!("{path} does not parse: {error}");
+            }
+            checked.push(path);
+        }
+
+        // Two floors, because a filter that matches nothing passes every check
+        // above it. The count catches a filter that broke wholesale; the named
+        // view catches the narrower case of the optional manifest dropping out
+        // of the chain, which no count would notice.
+        assert!(checked.len() > 30, "only {} views were checked", checked.len());
+        assert!(
+            checked.contains(&"resources/views/admin/discovery/index.rl.html"),
+            "the optional manifest is not being checked"
+        );
+    }
+
     /// A generated file must not still hold a `{{placeholder}}`.
     ///
     /// 0.7.0 shipped a seeder containing the literal text `{{crate_name}}`,
@@ -1535,7 +1783,7 @@ mod tests {
     /// the writing of them was not.
     #[test]
     fn no_generated_file_still_carries_a_placeholder() {
-        let values = BTreeMap::from([
+        let base = BTreeMap::from([
             ("crate_name", "demo".to_string()),
             ("name", "demo".to_string()),
             ("dependency", "version = \"0.0.0\"".to_string()),
@@ -1543,21 +1791,49 @@ mod tests {
             ("database", String::new()),
         ]);
 
+        // The module slots, in both of the states `new` can leave them: empty
+        // when the discovery dashboard was not asked for, filled when it was.
+        // Checking only one of them would let the other ship a project holding
+        // a literal `{{module_list}}`.
+        let mut values = base.clone();
+        for slot in ["module_declarations", "module_list", "module_nav_flags", "modules_nav"] {
+            values.insert(slot, String::new());
+        }
+
+        let mut wired = base.clone();
+        wired.insert("module_declarations", "pub mod discovery;\n".to_string());
+        wired.insert("module_list", ", Box::new(discovery::Discovery)".to_string());
+        wired.insert(
+            "module_nav_flags",
+            "        (\"can_view_discovery\", \"discovery.view\"),\n".to_string(),
+        );
+        wired.insert("modules_nav", crate::auth_kit::DISCOVERY_NAV.to_string());
+
         // Every file the kit writes, rendered the way `new` renders it. This
-        // reads the manifest rather than a list kept by hand, so a template
+        // reads the manifests rather than a list kept by hand, so a template
         // added tomorrow is covered the day it is added.
         //
         // `{{ spaced }}` is the *view* engine's syntax and is left alone on
         // purpose; only `{{unspaced}}` is a scaffold placeholder, which is why
         // the check looks at the character after the braces.
         for (path, template) in crate::auth_kit::FILES {
-            let rendered = render(template, &values);
+            for filled in [&values, &wired] {
+                let rendered = render(template, filled);
+                if let Some(found) = unrendered_placeholder(&rendered) {
+                    panic!(
+                        "the kit writes `{path}` into a project still holding `{found}` — \
+                         either the value it wants is not among the ones `new` passes, or the \
+                         placeholder should not be there"
+                    );
+                }
+            }
+        }
+
+        // The dashboard's own files are only ever written in the wired state.
+        for (path, template) in crate::auth_kit::DISCOVERY_FILES {
+            let rendered = render(template, &wired);
             if let Some(found) = unrendered_placeholder(&rendered) {
-                panic!(
-                    "the kit writes `{path}` into a project still holding `{found}` — either \
-                     the value it wants is not among the ones `new` passes, or the placeholder \
-                     should not be there"
-                );
+                panic!("the discovery dashboard writes `{path}` still holding `{found}`");
             }
         }
 
@@ -1650,6 +1926,10 @@ mod tests {
             .skip_while(|line| line.trim() != "[features]")
             .skip(1)
             .take_while(|line| !line.trim_start().starts_with('['))
+            // Comments are not features. Without this a comment that happens
+            // to contain `=` — `CACHE_DRIVER=valkey`, say — is read as one,
+            // and the guard fails on prose.
+            .filter(|line| !line.trim_start().starts_with('#'))
             .filter_map(|line| line.split_once('=').map(|(name, _)| name.trim()))
             // `default` and `full` are not packages, they are collections of
             // them; every other key is a package the scaffold should know.
@@ -1666,6 +1946,46 @@ mod tests {
         );
     }
 
+    /// `full` must mean every package, or it means whatever somebody
+    /// remembered.
+    ///
+    /// `gateway` was missing from it for a release, so `features = ["full"]`
+    /// quietly left out a crate — the kind of gap nobody finds by reading,
+    /// because the list is long and sorted and looks complete.
+    #[test]
+    fn the_full_feature_contains_every_package() {
+        let manifest = include_str!("../../rustlavel/Cargo.toml");
+
+        let full: Vec<&str> = manifest
+            .lines()
+            .skip_while(|line| !line.trim_start().starts_with("full = ["))
+            .skip(1)
+            .take_while(|line| !line.trim().starts_with(']'))
+            .map(|line| line.trim().trim_matches(|c| c == '"' || c == ','))
+            .filter(|name| !name.is_empty())
+            .collect();
+        assert!(full.len() > 20, "the `full` list was not found: {full:?}");
+
+        let packages: Vec<&str> = manifest
+            .lines()
+            .skip_while(|line| line.trim() != "[features]")
+            .skip(1)
+            .take_while(|line| !line.trim_start().starts_with('['))
+            // Comments are not features. Without this a comment that happens
+            // to contain `=` — `CACHE_DRIVER=valkey`, say — is read as one,
+            // and the guard fails on prose.
+            .filter(|line| !line.trim_start().starts_with('#'))
+            .filter_map(|line| line.split_once('=').map(|(name, _)| name.trim()))
+            .filter(|name| !name.is_empty() && *name != "default" && *name != "full")
+            .collect();
+
+        let missing: Vec<&&str> = packages.iter().filter(|p| !full.contains(p)).collect();
+        assert!(
+            missing.is_empty(),
+            "these packages exist but `full` does not turn them on: {missing:?}"
+        );
+    }
+
     /// And the other direction, except for the one that is not a feature.
     #[test]
     fn the_scaffold_offers_nothing_the_meta_crate_cannot_turn_on() {
@@ -1673,7 +1993,9 @@ mod tests {
         for (package, _) in PACKAGES {
             // The kits are scaffolding rather than feature flags: each writes
             // files and expands into the packages that code imports.
-            if package.ends_with("-kit") {
+            // Listed by name rather than matched by suffix, so adding one is
+            // a decision somebody makes here rather than a naming accident.
+            if package.ends_with("-kit") || *package == "discovery-ui" {
                 continue;
             }
             assert!(

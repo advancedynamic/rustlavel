@@ -82,7 +82,21 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let mut skipped_binary: Vec<String> = Vec::new();
     let mut no_base: Vec<String> = Vec::new();
 
-    for (path, template) in auth_kit::FILES {
+    // The optional files come last and only for a project that already has
+    // them. Adding them here would turn on a feature somebody declined at
+    // scaffold time — and the module registration that makes them reachable is
+    // not in `modules/mod.rs`, so the project would stop compiling.
+    let optional: Vec<&str> = auth_kit::DISCOVERY_FILES
+        .iter()
+        .map(|(path, _)| *path)
+        .filter(|path| project.root.join(path).exists())
+        .collect();
+
+    let files = auth_kit::FILES
+        .iter()
+        .chain(auth_kit::DISCOVERY_FILES.iter().filter(|(path, _)| optional.contains(path)));
+
+    for (path, template) in files {
         let theirs = render(template, &values);
         let target_path = project.root.join(path);
         let base = base.read(path).map(|text| render(&text, &values));
@@ -330,10 +344,14 @@ fn write(path: &Path, bytes: &[u8]) -> Result<(), String> {
 
 /// Files the old kit had and this one does not.
 fn removed_files(base: &registry::Base, root: &Path) -> Vec<String> {
+    // The optional manifest counts as known. Without it, a project that asked
+    // for the discovery dashboard would be told at the next upgrade that its
+    // three files no longer belong to the kit and should be deleted.
     let known: Vec<&str> = auth_kit::FILES
         .iter()
         .map(|(p, _)| *p)
         .chain(auth_kit::BINARY_FILES.iter().map(|(p, _)| *p))
+        .chain(auth_kit::DISCOVERY_FILES.iter().map(|(p, _)| *p))
         .collect();
 
     base.template_paths()
@@ -493,6 +511,7 @@ fn between<'a>(line: &'a str, open: &str, close: &str) -> Option<&'a str> {
 fn check_no_unfinished_merge(root: &Path) -> Result<(), String> {
     let mut unfinished: Vec<&str> = auth_kit::FILES
         .iter()
+        .chain(auth_kit::DISCOVERY_FILES)
         .map(|(path, _)| *path)
         .filter(|path| {
             std::fs::read_to_string(root.join(path))

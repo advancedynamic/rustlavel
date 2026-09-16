@@ -20,7 +20,7 @@
 {{-- The colours chosen in Settings → Appearance, served as a stylesheet rather
      than written into a <style> block, which this application's
      Content-Security-Policy would refuse. --}}
-<link rel="stylesheet" href="/css/theme.css">
+<link rel="stylesheet" href="@route("theme.css")">
 </head>
 <body class="h-full bg-ink-50 font-sans text-ink-900 antialiased dark:bg-ink-950 dark:text-ink-100">
   @include("partials.impersonation")
@@ -95,7 +95,7 @@
                   <p class="text-xs text-ink-500 dark:text-ink-400">@lang("shell.notifications_hint")</p>
                 </div>
                 <div data-notification-list class="max-h-80 overflow-y-auto"></div>
-                <a href="/notifications" class="block border-t border-ink-200 px-3 py-2 text-center text-sm font-medium text-brand-600 hover:bg-ink-50 dark:border-ink-800 dark:text-brand-400 dark:hover:bg-ink-800">@lang("shell.notifications_all")</a>
+                <a href="@route("notifications")" class="block border-t border-ink-200 px-3 py-2 text-center text-sm font-medium text-brand-600 hover:bg-ink-50 dark:border-ink-800 dark:text-brand-400 dark:hover:bg-ink-800">@lang("shell.notifications_all")</a>
               </div>
             </div>
 
@@ -126,8 +126,8 @@
                 <p class="truncate text-sm font-medium">{{ user_name }}</p>
                 <p class="truncate text-xs text-ink-500 dark:text-ink-400">{{ user_email }}</p>
               </div>
-              <a href="/profile" class="block px-3 py-2 text-sm hover:bg-ink-100 dark:hover:bg-ink-800">Profile</a>
-              <a href="/settings/security" class="block px-3 py-2 text-sm hover:bg-ink-100 dark:hover:bg-ink-800">Security</a>
+              <a href="@route("profile")" class="block px-3 py-2 text-sm hover:bg-ink-100 dark:hover:bg-ink-800">Profile</a>
+              <a href="@route("settings.security")" class="block px-3 py-2 text-sm hover:bg-ink-100 dark:hover:bg-ink-800">Security</a>
               <form method="post" action="/logout">
                 {!! csrf_field !!}
                 <button type="submit" class="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10">Sign out</button>

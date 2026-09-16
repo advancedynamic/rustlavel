@@ -76,7 +76,8 @@ mod tests {
     use rustlavel_core::Json;
 
     fn fixture_views(name: &str) -> std::path::PathBuf {
-        let root = std::env::temp_dir().join(format!("rustlavel-view-wiring-{name}"));
+        let root = std::env::temp_dir()
+            .join(format!("rustlavel-view-wiring-{name}-{}", std::process::id()));
         let views = root.join("resources/views");
         std::fs::create_dir_all(&views).unwrap();
         std::fs::write(

@@ -5,21 +5,33 @@
 //! given. Each is a trait in its own module with an in-memory implementation
 //! beside it.
 //!
-//! # Why there is no database here
+//! # Why the database is optional rather than absent
 //!
-//! This crate deliberately does **not** depend on `rustlavel-db`. An
-//! application that is ready to be an OAuth provider already has migrations, a
-//! connection pool, and an opinion about what its `oauth_clients` table should
+//! An application that is ready to be an OAuth provider already has migrations,
+//! a connection pool, and an opinion about what its `oauth_clients` table should
 //! look like — whether client ids are UUIDs or slugs, whether a deleted client
-//! is a row or a flag, which tenant a client belongs to. Inventing a schema
-//! here would mean every application either accepted those answers or fought
-//! them. Implementing four small traits against tables you already own is less
-//! work than either, and it leaves the crate usable from an application with no
-//! database at all.
+//! is a row or a flag, which tenant a client belongs to. A schema forced on it
+//! would mean every application either accepted those answers or fought them.
+//! So the traits are the contract and a store of your own is four small
+//! implementations against tables you already own.
 //!
-//! The in-memory stores are the right answer for tests and a single-process
-//! development server, and the wrong answer for anything that restarts or runs
-//! more than one worker — a restart would silently un-revoke every token.
+//! **That argument was once used to ship no database stores at all**, and the
+//! result was an authorization server nobody could deploy: the in-memory stores
+//! are the right answer for tests and a single-process development server, and
+//! the wrong answer for anything that restarts or runs more than one worker — a
+//! restart silently un-revokes every token, because an empty store answers
+//! "unknown" to everything. Not forcing a schema and not providing one are
+//! different things.
+//!
+//! The `database` module therefore ships a store for each trait, behind the `db`
+//! feature. Nothing is forced: an application with no database compiles none of
+//! it, and one with its own tables implements the traits instead.
+//!
+//! Whichever you use, **two operations must be atomic**:
+//! [`CodeStore::consume`](crate::CodeStore::consume) spends a code exactly once
+//! and [`TokenStore::rotate`](crate::TokenStore::rotate) rotates a refresh
+//! token exactly once. A read followed by a write satisfies neither and passes
+//! every single-threaded test.
 
 use rustlavel_core::Result;
 use sha2::{Digest, Sha256};

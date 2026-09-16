@@ -20,3 +20,6 @@ path = "src/main.rs"
 # guard can read the kit's language files with the project's own JSON parser
 # rather than a hand-rolled one.
 rustlavel-core.workspace = true
+# And so a guard can parse every kit template with the engine that will render
+# it. A syntax error in a view used to show up when somebody opened the page.
+rustlavel-view.workspace = true

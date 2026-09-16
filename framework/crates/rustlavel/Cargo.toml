@@ -38,6 +38,7 @@ rustlavel-search = { workspace = true, optional = true }
 rustlavel-audit = { workspace = true, optional = true }
 rustlavel-flags = { workspace = true, optional = true }
 rustlavel-gateway = { workspace = true, optional = true }
+rustlavel-discovery = { workspace = true, optional = true }
 rustlavel-rbac = { workspace = true, optional = true }
 rustlavel-queue = { workspace = true, optional = true }
 rustlavel-storage = { workspace = true, optional = true }
@@ -57,12 +58,22 @@ default = []
 ai = ["dep:rustlavel-ai"]
 auth = ["dep:rustlavel-auth"]
 cache = ["dep:rustlavel-cache"]
+# Valkey is the Linux Foundation fork of Redis and speaks its protocol
+# unchanged, so this is the cache package under the name of the server you run.
+# The whole Redis suite passes against Valkey 8, and `valkey://` URLs and
+# `CACHE_DRIVER=valkey` are accepted — the feature exists so that the answer to
+# "does it support Valkey" is a line in this file rather than a search.
+valkey = ["cache"]
 # Sessions in Redis rather than on the local disk, for an application running
 # more than one process. Pulls in the cache package, which is where the Redis
 # client lives.
 redis-sessions = ["auth", "cache", "rustlavel-auth/redis"]
 client = ["dep:rustlavel-client"]
-db = ["dep:rustlavel-db"]
+# `rustlavel-oauth-provider?/db` is a weak feature: the authorization server's
+# database-backed stores are compiled only when the provider is also enabled.
+# Without the `?` every application with a database would drag the OAuth
+# provider in.
+db = ["dep:rustlavel-db", "rustlavel-oauth-provider?/db"]
 # The development overlay. Off in production unless said so in full.
 debugbar = ["dep:rustlavel-debugbar"]
 i18n = ["dep:rustlavel-i18n"]
@@ -76,6 +87,10 @@ metrics = ["dep:rustlavel-metrics"]
 # and the outbound HTTP client, so it turns both on.
 oauth = ["dep:rustlavel-oauth", "auth", "client"]
 # Being the provider yourself. Renders a consent screen, so it needs auth.
+# `rustlavel-oauth-provider?/db` is a weak feature: the database-backed stores
+# are compiled only when the application also enabled `db`. Without the `?` an
+# authorization server whose storage lives elsewhere would drag the whole
+# database package in.
 oauth-provider = ["dep:rustlavel-oauth-provider", "oauth", "auth"]
 openapi = ["dep:rustlavel-openapi"]
 # Traces and metrics over OTLP, fed from the instrumentation bus.
@@ -89,7 +104,14 @@ search = ["dep:rustlavel-search", "client"]
 audit = ["dep:rustlavel-audit", "db", "auth"]
 flags = ["dep:rustlavel-flags", "auth"]
 # An API gateway. Pulls in the client, which is what talks to the upstreams.
-gateway = ["dep:rustlavel-gateway", "client"]
+# `rustlavel-discovery?/gateway` is a weak feature: it turns on routing by
+# service name *only* when discovery is also enabled. Cargo has no way to say
+# "when both of these are on", and without the `?` this would drag the whole
+# registry into every gateway.
+gateway = ["dep:rustlavel-gateway", "client", "rustlavel-discovery?/gateway"]
+# A service registry and the client that uses it. Enabling it alongside the
+# gateway turns on `Upstream::service`, which routes by name.
+discovery = ["dep:rustlavel-discovery", "client"]
 model-cache = ["dep:rustlavel-model-cache", "db", "cache"]
 rbac = ["dep:rustlavel-rbac", "db", "auth"]
 queue = ["dep:rustlavel-queue", "db"]
@@ -110,6 +132,8 @@ full = [
     "client",
     "db",
     "debugbar",
+    "discovery",
+    "gateway",
     "i18n",
     "ldap",
     "mail",
@@ -120,6 +144,7 @@ full = [
     "oauth-provider",
     "openapi",
     "otel",
+    "redis-sessions",
     "search",
     "audit",
     "flags",
@@ -128,6 +153,7 @@ full = [
     "storage",
     "telescope",
     "validation",
+    "valkey",
     "vault",
     "view",
     "webauthn",

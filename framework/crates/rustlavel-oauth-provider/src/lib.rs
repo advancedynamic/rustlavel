@@ -53,9 +53,15 @@
 //! # Where the data lives
 //!
 //! Four traits — [`ClientStore`], [`CodeStore`], [`TokenStore`],
-//! [`ConsentStore`] — each with an in-memory implementation for tests and
-//! development. There is deliberately **no dependency on `rustlavel-db`**; see
-//! [`store`] for why an application backs these with its own tables.
+//! [`ConsentStore`] — each with two implementations: an in-memory one for tests
+//! and a development server, and a table-backed one in `database` behind the
+//! `db` feature. **Deploy the second.** A restart empties the first, and an
+//! empty store answers "unknown token" to everything.
+//!
+//! The database is optional rather than absent: an application with no database
+//! compiles none of it, and one with its own tables implements the traits
+//! instead. See [`store`] for the reasoning, and for the two operations that
+//! must be atomic whichever you use.
 //!
 //! # Cryptography
 //!
@@ -66,6 +72,11 @@
 //! self-contained signed token cannot offer.
 
 pub mod client;
+/// The stores, backed by a table each. Behind the `db` feature: an
+/// authorization server with its own storage should not drag the database
+/// package into one that has none.
+#[cfg(feature = "db")]
+pub mod database;
 pub mod clock;
 pub mod code;
 pub mod consent;

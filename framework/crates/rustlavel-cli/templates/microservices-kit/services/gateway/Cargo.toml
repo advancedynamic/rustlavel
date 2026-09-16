@@ -4,5 +4,5 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-rustlavel = { workspace = true, features = ["gateway", "cache", "client"] }
+rustlavel = { workspace = true, features = ["gateway", "cache", "client", "discovery"] }
 {{crate_name}}_shared = { path = "../../shared" }

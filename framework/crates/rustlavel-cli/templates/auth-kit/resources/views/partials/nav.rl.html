@@ -50,53 +50,54 @@
     @endif
 
     @if(can_view_users)
-      <a href="/admin/users" class="nav-link @if(nav == "users") nav-link-active @endif">
+      <a href="@route("admin.users")" class="nav-link @if(nav == "users") nav-link-active @endif">
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.465 14.493a1.23 1.23 0 0 0 .41 1.412A9.96 9.96 0 0 0 10 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 0 0-13.074.003Z"/></svg>
         <span class="nav-label">@lang("nav.users")</span>
       </a>
     @endif
 
     @if(can_view_roles)
-      <a href="/admin/roles" class="nav-link @if(nav == "roles") nav-link-active @endif">
+      <a href="@route("admin.roles")" class="nav-link @if(nav == "roles") nav-link-active @endif">
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 1 3 4v5.5c0 3.9 2.7 7.5 7 9.5 4.3-2 7-5.6 7-9.5V4l-7-3Zm0 2.2 5 2.1v4.2c0 3-2 5.8-5 7.4-3-1.6-5-4.4-5-7.4V5.3l5-2.1Z"/></svg>
         <span class="nav-label">@lang("nav.roles")</span>
       </a>
     @endif
 
     @if(can_manage_settings)
-      <a href="/admin/settings" class="nav-link @if(nav == "settings") nav-link-active @endif">
+      <a href="@route("admin.settings")" class="nav-link @if(nav == "settings") nav-link-active @endif">
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M8.34 1.8a1 1 0 0 1 .98-.8h1.36a1 1 0 0 1 .98.8l.3 1.48c.5.14.97.34 1.41.58l1.25-.84a1 1 0 0 1 1.27.13l.96.96a1 1 0 0 1 .13 1.26l-.84 1.25c.24.45.44.92.58 1.42l1.47.29a1 1 0 0 1 .81.98v1.36a1 1 0 0 1-.81.98l-1.47.3c-.14.49-.34.96-.58 1.41l.84 1.25a1 1 0 0 1-.13 1.26l-.96.96a1 1 0 0 1-1.27.13l-1.25-.84c-.44.24-.91.44-1.41.58l-.3 1.47a1 1 0 0 1-.98.81H9.32a1 1 0 0 1-.98-.81l-.3-1.47a7 7 0 0 1-1.41-.58l-1.25.84a1 1 0 0 1-1.26-.13l-.96-.96a1 1 0 0 1-.13-1.26l.84-1.25a7 7 0 0 1-.58-1.42l-1.48-.29A1 1 0 0 1 1 10.68V9.32a1 1 0 0 1 .81-.98l1.47-.3c.14-.49.34-.96.58-1.41l-.83-1.25a1 1 0 0 1 .13-1.26l.96-.96a1 1 0 0 1 1.26-.13l1.25.84c.45-.24.92-.44 1.42-.58l.29-1.48ZM13 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
         <span class="nav-label">@lang("nav.settings")</span>
       </a>
     @endif
 
     @if(can_view_permissions)
-      <a href="/admin/permissions" class="nav-link @if(nav == "permissions") nav-link-active @endif">
+      <a href="@route("admin.permissions")" class="nav-link @if(nav == "permissions") nav-link-active @endif">
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 1a4 4 0 0 0-4 4v2H5.5A1.5 1.5 0 0 0 4 8.5v8A1.5 1.5 0 0 0 5.5 18h9a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 14.5 7H14V5a4 4 0 0 0-4-4Zm2.5 6h-5V5a2.5 2.5 0 0 1 5 0v2Z"/></svg>
         <span class="nav-label">@lang("nav.permissions")</span>
       </a>
     @endif
 
     @if(can_view_menus)
-      <a href="/admin/menus" class="nav-link @if(nav == "menus") nav-link-active @endif">
+      <a href="@route("admin.menus")" class="nav-link @if(nav == "menus") nav-link-active @endif">
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M3 5.25A.75.75 0 0 1 3.75 4.5h12.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 5.25Zm0 4.75a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 10Zm0 4.75a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H3.75a.75.75 0 0 1-.75-.75Z"/></svg>
         <span class="nav-label">@lang("nav.menus")</span>
       </a>
     @endif
 
     @if(can_view_audit)
-      <a href="/admin/audit" class="nav-link @if(nav == "audit") nav-link-active @endif">
+      <a href="@route("admin.audit")" class="nav-link @if(nav == "audit") nav-link-active @endif">
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M4.5 3.5A1.5 1.5 0 0 1 6 2h4.6L15.5 6.9V16.5A1.5 1.5 0 0 1 14 18H6a1.5 1.5 0 0 1-1.5-1.5v-13Zm2.75 6a.75.75 0 0 0 0 1.5h5.5a.75.75 0 0 0 0-1.5h-5.5Zm0 3a.75.75 0 0 0 0 1.5h3.5a.75.75 0 0 0 0-1.5h-3.5Z" clip-rule="evenodd"/></svg>
         <span class="nav-label">@lang("nav.audit")</span>
       </a>
     @endif
 
+{{modules_nav}}
     <p class="nav-heading">@lang("nav.account")</p>
-    <a href="/profile" class="nav-link @if(nav == "profile") nav-link-active @endif">
+    <a href="@route("profile")" class="nav-link @if(nav == "profile") nav-link-active @endif">
       <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 1 1 14 0H3Z"/></svg>
       <span class="nav-label">@lang("nav.profile")</span>
     </a>
-    <a href="/settings/security" class="nav-link @if(nav == "security") nav-link-active @endif">
+    <a href="@route("settings.security")" class="nav-link @if(nav == "security") nav-link-active @endif">
       <svg class="h-5 w-5 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M8.34 1.804A1 1 0 0 1 9.32 1h1.36a1 1 0 0 1 .98.804l.295 1.473c.497.144.97.34 1.416.58l1.25-.834a1 1 0 0 1 1.262.125l.962.962a1 1 0 0 1 .125 1.262l-.834 1.25c.24.446.436.919.58 1.416l1.473.294a1 1 0 0 1 .804.98v1.361a1 1 0 0 1-.804.98l-1.473.295a6.95 6.95 0 0 1-.58 1.416l.834 1.25a1 1 0 0 1-.125 1.262l-.962.962a1 1 0 0 1-1.262.125l-1.25-.834c-.446.24-.919.436-1.416.58l-.294 1.473a1 1 0 0 1-.98.804H9.32a1 1 0 0 1-.98-.804l-.295-1.473a6.95 6.95 0 0 1-1.416-.58l-1.25.834a1 1 0 0 1-1.262-.125l-.962-.962a1 1 0 0 1-.125-1.262l.834-1.25a6.95 6.95 0 0 1-.58-1.416l-1.473-.294A1 1 0 0 1 1 10.68V9.32a1 1 0 0 1 .804-.98l1.473-.295c.144-.497.34-.97.58-1.416l-.834-1.25a1 1 0 0 1 .125-1.262l.962-.962A1 1 0 0 1 5.372 3.03l1.25.834c.446-.24.919-.436 1.416-.58l.294-1.473ZM13 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
       <span class="nav-label">@lang("nav.security")</span>
     </a>

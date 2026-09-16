@@ -34,15 +34,26 @@ pub async fn check(client: &Client, routes: &Routes, path: &str) -> Response {
     let mut all_well = true;
 
     for (pattern, upstream) in routes.upstreams() {
-        let url = format!("{}{path}", upstream.base());
-        let well = matches!(
-            tokio::time::timeout(PROBE_TIMEOUT, client.get(&url).send()).await,
-            Ok(Ok(response)) if response.is_success()
-        );
+        // A service that resolves to nothing is down, and is not probed: there
+        // is no address to probe, and reporting it as up because no request
+        // failed would be the most misleading answer available.
+        let well = match upstream.resolved().await {
+            Some(resolved) => {
+                let url = format!("{}{path}", resolved.base());
+                matches!(
+                    tokio::time::timeout(PROBE_TIMEOUT, client.get(&url).send()).await,
+                    Ok(Ok(response)) if response.is_success()
+                )
+            }
+            None => false,
+        };
         all_well &= well;
 
         services.push(Json::object([
             ("route", Json::from(pattern)),
+            // The route's own description — `service://ORDERS` for a resolved
+            // one. Printing one request's address here would describe that
+            // request rather than the route.
             ("upstream", Json::from(upstream.base())),
             ("status", Json::from(if well { "up" } else { "down" })),
         ]));
@@ -67,6 +78,31 @@ mod tests {
     async fn an_empty_table_is_healthy() {
         let response = check(&Client::new(), &Routes::new(), "/health").await;
         assert_eq!(response.status.0, 200);
+    }
+
+    /// Reporting a service with no instances as up, on the grounds that no
+    /// request failed, would be the most misleading answer available.
+    #[tokio::test]
+    async fn a_service_that_resolves_to_nothing_is_down() {
+        struct Nothing;
+        impl crate::route::Locate for Nothing {
+            fn base_for<'a>(
+                &'a self,
+                _service: &'a str,
+            ) -> std::pin::Pin<Box<dyn Future<Output = Option<String>> + Send + 'a>> {
+                Box::pin(async { None })
+            }
+        }
+
+        let mut routes = Routes::new();
+        routes.add("/api/*", Upstream::service("orders", std::sync::Arc::new(Nothing)));
+
+        let response = check(&Client::new(), &routes, "/health").await;
+        assert_eq!(response.status.0, 503);
+
+        let body = String::from_utf8_lossy(&response.body).to_string();
+        assert!(body.contains("service://ORDERS"), "the body does not name the route: {body}");
+        assert!(body.contains("down"), "{body}");
     }
 
     /// And an upstream that is not there is reported by name rather than as a

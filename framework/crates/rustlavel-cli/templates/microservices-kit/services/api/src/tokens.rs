@@ -33,9 +33,16 @@ pub enum Verifier {
 impl Verifier {
     /// Read the choice from the environment.
     ///
-    /// Introspection is the default because it needs no key distribution and
-    /// revocation works the way people expect. `signed` is the one you choose
-    /// deliberately, having decided you can live without immediate revocation.
+    /// Introspection is the default because it needs no key distribution and a
+    /// revoked token stops working within `INTROSPECTION_TTL` — thirty seconds,
+    /// not immediately. The answer is cached, and a cached answer outlives the
+    /// moment it was true; the alternative is a request to the authorization
+    /// server on every single call.
+    ///
+    /// `signed` is the one you choose deliberately, having decided you can live
+    /// with revocation taking until the token expires — an hour, not thirty
+    /// seconds. That is the trade, and it is worth stating in those terms
+    /// rather than as "immediate" against "eventual".
     pub fn from_env() -> Verifier {
         match rustlavel::env::env_or("TOKEN_VERIFICATION", "introspect").as_str() {
             "signed" => Verifier::Signed {
@@ -79,17 +86,58 @@ impl Verifier {
                 let credentials = rustlavel::auth::base64::encode(
                     format!("{client_id}:{secret}").as_bytes(),
                 );
-                let response = Client::new()
+                let response = match Client::new()
                     .post(format!("{url}/oauth/introspect"))
                     .header("authorization", format!("Basic {credentials}"))
                     .header("content-type", "application/x-www-form-urlencoded")
                     .body(format!("token={}", rustlavel::url::encode(token)))
                     .send()
                     .await
-                    .ok()?;
+                {
+                    Ok(response) => response,
+                    // **Said out loud.** Every one of these used to be `.ok()?`,
+                    // so a wrong `AUTH_URL`, an authorization server that was
+                    // down, and wrong introspection credentials all produced the
+                    // same bare `401` with nothing in the log. An operator
+                    // cannot tell a forged token from a typo in a settings file,
+                    // and the answer is identical in both cases. Found by
+                    // pointing `AUTH_URL` at the wrong port.
+                    Err(error) => {
+                        error!("token check: cannot reach {url}/oauth/introspect: {error}");
+                        return None;
+                    }
+                };
 
-                let body = response.json().ok()?;
-                let claims = verify::read_introspection(&body, now).ok()?;
+                // A 401 here is *this service's* credentials being refused, not
+                // the caller's — a distinction worth the extra branch, because
+                // the two are fixed in different files.
+                if !response.is_success() {
+                    error!(
+                        "token check: {url} refused this service's introspection credentials \
+                         (HTTP {}). Check INTROSPECT_CLIENT_ID and INTROSPECT_CLIENT_SECRET.",
+                        response.status
+                    );
+                    return None;
+                }
+
+                let body = match response.json() {
+                    Ok(body) => body,
+                    Err(error) => {
+                        error!("token check: {url} sent something unreadable: {error}");
+                        return None;
+                    }
+                };
+
+                // The only branch that is about the caller: the token really
+                // was refused. Debug rather than error — an expired token is
+                // ordinary traffic, not an incident.
+                let claims = match verify::read_introspection(&body, now) {
+                    Ok(claims) => claims,
+                    Err(_) => {
+                        debug!("token check: the token was refused");
+                        return None;
+                    }
+                };
 
                 if let Some(cache) = req.state::<CacheStore>() {
                     let _ = cache.put(&key, body, INTROSPECTION_TTL).await;
@@ -135,6 +183,8 @@ impl Middleware for RequireCaller {
             };
 
             request.extend(Caller {
+                // `None` for a service, and the resource server is written to
+                // expect that: see `Caller::owner`.
                 subject: claims.subject,
                 client: claims.client,
                 scopes: claims.scopes.iter().map(str::to_string).collect(),

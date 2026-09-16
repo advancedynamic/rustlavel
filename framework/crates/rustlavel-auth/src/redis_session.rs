@@ -189,6 +189,44 @@ mod tests {
         assert!(sessions.read("short").await.unwrap().is_none());
     }
 
+    /// Against a live server, when there is one. `REDIS_URL` names it; a
+    /// `valkey://` URL works, and the suite is run that way on purpose.
+    ///
+    /// Until this test existed the Redis session store had never been
+    /// exercised against a server by the suite — only its key shape and its
+    /// refusal of malformed ids. A store that is shipped for production and
+    /// tested only in the ways that need no server is a store whose one
+    /// important claim is untested.
+    #[tokio::test]
+    async fn a_session_survives_the_round_trip_on_a_live_server() {
+        let Ok(url) = std::env::var("REDIS_URL") else {
+            println!("skipped: set REDIS_URL to run the live session-store test");
+            return;
+        };
+
+        // Its own prefix, so two runs of the suite against one server — or
+        // this test and the cache's — cannot read each other's rows.
+        let sessions = RedisSessions::connect(&url)
+            .unwrap()
+            .prefix(format!("test:{}:session:", std::process::id()))
+            .lifetime(Duration::from_secs(60));
+
+        let mut session = Session::new();
+        session.put("user_id", 42);
+        session.put("theme", "dark");
+        let id = session.id().to_string();
+
+        sessions.write(&session).await.expect("written");
+
+        let found = sessions.read(&id).await.expect("read").expect("the session is there");
+        assert_eq!(found.id(), id);
+        assert_eq!(found.get("user_id").and_then(|v| v.as_i64()), Some(42));
+        assert_eq!(found.get("theme").and_then(|v| v.as_str()), Some("dark"));
+
+        sessions.destroy(&id).await.expect("destroyed");
+        assert!(sessions.read(&id).await.expect("read").is_none(), "a destroyed session came back");
+    }
+
     #[test]
     fn the_lifetime_is_the_one_the_middleware_will_ask_for() {
         let sessions = RedisSessions::connect("redis://127.0.0.1:6379")

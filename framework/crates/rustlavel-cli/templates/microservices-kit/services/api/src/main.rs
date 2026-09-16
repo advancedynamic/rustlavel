@@ -13,29 +13,47 @@
 
 use rustlavel::prelude::*;
 
+mod orders;
 mod tokens;
+
+#[path = "../database/migrations/mod.rs"]
+mod migrations;
+
+// Re-exported so `orders.rs` names them once rather than repeating the shared
+// crate's name on every line.
+pub use {{crate_name}}_shared::{Caller, problem};
 
 #[rustlavel::main]
 async fn main() -> Result<()> {
     let app = App::new()?;
 
-    let url = rustlavel::env::env_or("DATABASE_URL", "");
+    // `API_DATABASE_URL`, not `DATABASE_URL`. Each service owns its own database, so
+    // one shared key would be one shared schema — the coupling this kit is
+    // shaped to avoid, arriving through a configuration file.
+    let url = rustlavel::env::env_or("API_DATABASE_URL", "");
     if url.is_empty() {
         return Err(Error::msg(
-            "DATABASE_URL is not set. The resource server keeps its domain in its own database, \
+            "API_DATABASE_URL is not set. The resource server keeps its domain in its own database, \
              separate from the authorization server's.",
         ));
     }
     let db = Database::connect(&url).await?;
     let cache = CacheStore::from_config(app.config())?;
 
-    app.state(db.clone())
+    // Announced to the registry, when there is one. Held for the life of the
+    // process: dropping the registrar would stop the heartbeats and the
+    // registry would conclude this service died.
+    let registrar = {{crate_name}}_shared::join("api", app.config());
+
+    app.on_shutdown({{crate_name}}_shared::farewell(registrar))
+        .state(db.clone())
         .state(cache)
         // How a token is checked is a deployment decision, not a code one: see
         // `tokens.rs`. Both ways answer with the same `Caller`, so nothing
         // below this line knows which was used.
         .state(tokens::Verifier::from_env())
         .middleware(tokens::RequireCaller)
+        .migrations(migrations::all())
         .routes(routes)
         .run()
         .await
@@ -47,10 +65,14 @@ fn routes(r: &mut Router) {
     r.get("/health", |_req: Request| async { Json::object([("status", Json::from("up"))]) });
 
     r.get("/api/me", |req: Request| async move {
-        match req.extension::<{{crate_name}}_shared::Caller>() {
+        match req.extension::<Caller>() {
             Some(caller) => Response::json(caller.to_json()),
-            None => Response::new(Status::UNAUTHORIZED)
-                .with_json({{crate_name}}_shared::problem("Unauthenticated.")),
+            None => Response::new(Status::UNAUTHORIZED).with_json(problem("Unauthenticated.")),
         }
     });
+
+    // The domain this service owns. `/api/me` shows the token plumbing; this
+    // shows the shape of a service — and it is what reads the database the
+    // service opened at boot.
+    orders::routes(r);
 }

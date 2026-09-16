@@ -25,7 +25,8 @@ fn framework() -> PathBuf {
 /// A directory of this test's own, emptied first so a previous run cannot make
 /// this one pass.
 fn fixture(name: &str) -> PathBuf {
-    let directory = std::env::temp_dir().join(format!("rustlavel-cli-generators-{name}"));
+    let directory = std::env::temp_dir()
+        .join(format!("rustlavel-cli-generators-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&directory);
     std::fs::create_dir_all(&directory).expect("fixture directory");
     directory

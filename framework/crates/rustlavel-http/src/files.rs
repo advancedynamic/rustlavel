@@ -135,7 +135,8 @@ mod tests {
     /// Each test gets its own directory: tests run concurrently, and a shared
     /// fixture would be re-written underneath a test that is reading it.
     fn fixture_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("rustlavel-files-{name}"));
+        let dir = std::env::temp_dir()
+            .join(format!("rustlavel-files-{name}-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("css")).unwrap();
         std::fs::write(dir.join("index.html"), "<h1>home</h1>").unwrap();
         std::fs::write(dir.join("css/app.css"), "body{}").unwrap();

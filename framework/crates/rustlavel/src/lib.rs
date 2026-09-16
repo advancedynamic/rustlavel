@@ -40,6 +40,10 @@ pub use rustlavel_debugbar::DebugBar;
 pub use rustlavel_gateway as gateway;
 #[cfg(feature = "gateway")]
 pub use rustlavel_gateway::{Gateway, Upstream};
+#[cfg(feature = "discovery")]
+pub use rustlavel_discovery as discovery;
+#[cfg(feature = "discovery")]
+pub use rustlavel_discovery::{Discovery, Instance, Peers, Registrar, Registry, RegistryServer};
 #[cfg(feature = "i18n")]
 pub use rustlavel_i18n as i18n;
 #[cfg(feature = "vault")]

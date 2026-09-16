@@ -5,15 +5,17 @@
 //! one every request already goes through. Redis is here for rate limiting,
 //! which is state that may be lost without anybody being locked out.
 
+use std::sync::Arc;
+
 use rustlavel::prelude::*;
+use rustlavel::discovery::{Balancer, Discovery};
 use rustlavel::{Gateway, Upstream};
 
 #[rustlavel::main]
 async fn main() -> Result<()> {
     let app = App::new()?;
 
-    let auth = rustlavel::env::env_or("AUTH_URL", "http://127.0.0.1:9001");
-    let api = rustlavel::env::env_or("API_URL", "http://127.0.0.1:9002");
+    let (auth, api) = upstreams();
 
     // A limiter in front of everything. Per client address, because at the
     // gateway there is not yet a user — that is the point of being in front.
@@ -35,13 +37,15 @@ async fn main() -> Result<()> {
         }))
         .plugin(
             Gateway::new()
-                // The authorization server. Left open: signing in is what
-                // somebody does *before* they have a token, so requiring one
-                // here would be a door that only opens from the inside.
-                .route("/oauth/*", Upstream::at(&auth))
+                // The authorization server, and `.open()` is what makes that
+                // sentence true. `require_token()` below covers every route,
+                // and without this exception `/oauth/token` answers `401` — a
+                // door that only opens from the inside, because a token is what
+                // you ask that endpoint for.
+                .route("/oauth/*", auth.open())
                 // Everything else needs a credential before it costs a hop.
                 // The service still checks for itself — see api/src/main.rs.
-                .route("/api/*", Upstream::at(&api))
+                .route("/api/*", api)
                 .require_token()
                 // Asked of every upstream, and reported by name. A load
                 // balancer reads the status; a person reads the body and
@@ -50,6 +54,35 @@ async fn main() -> Result<()> {
         )
         .run()
         .await
+}
+
+/// Where `/oauth` and `/api` go.
+///
+/// **Two arrangements, one line of configuration apart.** With `DISCOVERY_URL`
+/// set, each name is resolved for every request and balanced across whatever is
+/// registered, so a new instance takes traffic as soon as it registers. Without
+/// it, the two fixed addresses — which is the right answer on a platform that
+/// already balances, and the right answer for one of each on a laptop.
+///
+/// A service that resolves to nothing is `503`, not a request sent to a host
+/// nobody invented.
+fn upstreams() -> (Upstream, Upstream) {
+    let registry = rustlavel::env::env_or("DISCOVERY_URL", "");
+
+    if registry.trim().is_empty() {
+        return (
+            Upstream::at(rustlavel::env::env_or("AUTH_URL", "http://127.0.0.1:9001")),
+            Upstream::at(rustlavel::env::env_or("API_URL", "http://127.0.0.1:9002")),
+        );
+    }
+
+    // One balancer, shared. Two would keep two caches of the same registry and
+    // two round-robin counters, and the counters would drift apart.
+    let balancer = Arc::new(Balancer::new(Discovery::new(vec![registry.trim().to_string()])));
+    (
+        Upstream::service("auth", balancer.clone()),
+        Upstream::service("api", balancer),
+    )
 }
 
 /// Who is being limited.

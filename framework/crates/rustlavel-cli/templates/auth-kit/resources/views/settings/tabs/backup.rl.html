@@ -121,7 +121,7 @@
                forty is how a page loses trust. --}}
           <div class="px-5 py-16 text-center">
             <p class="text-sm text-ink-500 dark:text-ink-400">No backups match &ldquo;{{ q }}&rdquo;.</p>
-            <a href="/admin/settings/backup" class="btn-secondary mt-4">Clear the search</a>
+            <a href="@route("admin.settings.tab", "tab", "backup")" class="btn-secondary mt-4">Clear the search</a>
           </div>
         @else
           <div class="px-5 py-16 text-center">

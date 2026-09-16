@@ -359,8 +359,18 @@ mod tests {
 
     /// Each test writes its own directory: tests run concurrently, and a shared
     /// one would be read while another test was writing into it.
+    /// A directory this test owns, in this process.
+    ///
+    /// **The process id is what makes it owned.** The name used to be
+    /// `rustlavel-mail-{test}`, which is unique per test and shared by every
+    /// process that runs the suite — two `cargo test` invocations at once, two
+    /// terminals, or a CI matrix on one machine. One deletes the directory
+    /// while the other is counting what is in it, and the count is wrong. That
+    /// showed up once in a full workspace run and passed on every rerun, which
+    /// is what a shared fixture looks like from the outside.
     fn fixture(test: &str) -> PathBuf {
-        let directory = std::env::temp_dir().join(format!("rustlavel-mail-{test}"));
+        let directory = std::env::temp_dir()
+            .join(format!("rustlavel-mail-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&directory);
         directory
     }

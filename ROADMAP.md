@@ -468,7 +468,7 @@ metadata, client, code and consent stores. `RequireToken` in the same crate,
 with `rustlavel-rbac` for scopes, is the resource-server half. So the kit wires
 them up rather than writing them.
 
-- [ ] **`rustlavel-gateway`** — the piece nothing in the tree does. Nothing
+- [x] **`rustlavel-gateway`** — the piece nothing in the tree does. Nothing
       forwards a request upstream today: the client can call out, the cache can
       rate-limit, `rustlavel-otel` can trace, and no code takes an inbound
       request, sends it on and streams the answer back.
@@ -490,7 +490,7 @@ them up rather than writing them.
       only happens at the edge is a check that is missing the moment somebody
       adds a second way in.
 
-- [ ] **Token validation, both ways, tested equally.** Introspection against the
+- [x] **Token validation, both ways, tested equally.** Introspection against the
       auth server with a short-lived cache, and self-contained tokens verified
       locally. Introspection needs no new cryptography and makes revocation
       immediate; local verification removes the hop and the auth server as a
@@ -507,7 +507,7 @@ them up rather than writing them.
       not, because a hand-rolled signature is what the cryptography exception
       exists to prevent.
 
-- [ ] **A database per service, and none for the gateway.** The auth server owns
+- [x] **A database per service, and none for the gateway.** The auth server owns
       users, clients, tokens and codes; the resource server owns its domain and
       never reads an auth table. The gateway is stateless and keeps Redis for
       rate limiting and the introspection cache — the moment it has a database
@@ -516,7 +516,58 @@ them up rather than writing them.
       `Connections` (Phase 1.5) is the primitive: named connections under one
       budget.
 
+- [x] **Stores backed by a table, for the authorization server.** The provider
+      shipped with in-memory stores only, so a restart invalidated every issued
+      token — and an empty store answers "unknown token" to everything, which
+      means a deploy signed out every session and broke every integration at
+      once. Clients, codes, access and refresh tokens and consent all read rows
+      now, behind the crate's `db` feature so an authorization server that keeps
+      its state elsewhere compiles none of it.
+
+      **The two operations that had to be atomic are atomic.** Spending a code
+      and rotating a refresh token are each a single `UPDATE … WHERE <still
+      unspent>` and a check of the row count, so the database picks the winner —
+      the only party that can. Proved rather than argued: sixteen tasks presenting
+      the same code at once, and exactly one is told `Fresh`. Rewriting either as
+      a read followed by a write lets 8 and 9 of 16 through respectively, which is
+      the replay both exist to prevent and which passes every single-threaded test.
+
+- [x] **`rustlavel-discovery`** — a service registry, and the client that uses
+      it. Eureka-compatible on the wire, so a Spring Cloud service registers
+      against it with its stock configuration and nothing else changed.
+
+      **Said plainly in the crate's own documentation: on Kubernetes you do not
+      need this.** The platform already knows which instances are ready and
+      already balances across them; a registry there is a second copy of that
+      fact, and two sources for one fact disagree eventually. Three resolvers
+      sit behind one trait — `Static`, `Dns` and the registry — so which one an
+      application uses is a line of configuration.
+
+      Three decisions worth recording, because each is a trade rather than an
+      oversight. The registry is **in memory and never persisted**: every
+      instance re-registers within a heartbeat of a restart, so the state
+      rebuilds itself faster than it could be loaded, and a stored copy would
+      only ever be wrong on the way back up. **Nothing is evicted on a timer** —
+      instances carry a `last_seen` and a *read* decides who is alive, which is
+      what lets the registry notice that most of itself went quiet at once and
+      conclude the network broke rather than that the estate died. And
+      **replication is peer forwarding, not consensus**: a registry is a cache
+      of where things are, so paying for consensus would buy agreement about a
+      stale fact and would mean a node that loses quorum stops answering — the
+      outage the registry exists to survive. Every forwarded write carries a
+      marker and a marked write is never forwarded on: one hop, never two.
+
+      The client's cache has **no expiry**, so a registry that cannot be reached
+      costs you changes rather than traffic.
+
+      A dashboard comes with it, and `rustlavel new` asks whether to add one to
+      the auth kit rather than assuming. The kit's page reads the registry's
+      JSON document over HTTP rather than embedding a registry, so the dashboard
+      does not go down with the thing it is there to tell you about.
+
 ## Known gaps, stated plainly
+
+
 
 - **JSON serialisation is behind serde, and the writer is not the reason.** The
   benchmark put it 1.5x back. Tightening the writer — run-at-a-time escaping, digits

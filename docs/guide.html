@@ -538,6 +538,168 @@ production credentials are untouched; and files outside the kit are never read a
 your own tests before merging the branch &mdash; a merge that applied cleanly is still a
 merge.</p>
 
+<h2 id="microservices">Several services instead of one</h2>
+
+<p>The other starter kit scaffolds a cargo workspace rather than one application:</p>
+
+<pre><code>rustlavel new shop --with microservices-kit
+cd shop
+cargo build --workspace</code></pre>
+
+<p>Four services and a shared crate. The <strong>gateway</strong> is one door in front of the
+rest. The <strong>authorization server</strong> is a complete OAuth 2.1 provider. The
+<strong>resource server</strong> holds your domain. The <strong>registry</strong> is optional
+&mdash; see below. And <code>shared/</code> holds the types that cross between them, and
+nothing else: the moment two services share a model they share a schema, then a migration,
+and then they are one service deployed twice.</p>
+
+<p><strong>A database per service, and none for the gateway.</strong> The authorization
+server owns users, clients, codes and tokens; the resource server owns its domain and never
+reads the other&rsquo;s schema. The moment a gateway owns a table it stops being a gateway and
+becomes a fourth service that can fail &mdash; the one every request already passes
+through.</p>
+
+<p><strong>The resource server checks tokens itself.</strong> The gateway refuses a request
+with no credential, and that saves a hop and nothing else: a gateway is not the only door.
+Anything on the network can reach a service directly, and a check that happens only at the
+edge is missing the moment somebody adds a second way in. Both ways of checking are
+supported and carry the same tests &mdash; introspection against the authorization server,
+or a local ES256 signature check &mdash; because a security path that is rarely used is the
+one that is wrong without anybody knowing. Pick with <code>TOKEN_VERIFICATION</code> in
+<code>.env</code>.</p>
+
+<p>The difference between them is how long a revoked token keeps working, and it is worth
+stating as a number rather than as a word. Introspection caches its answer for thirty
+seconds, so revocation takes up to that long &mdash; not immediately, which is what people
+usually assume. A local signature check has nothing to ask, so revocation waits for the token
+to expire: an hour. <strong>Thirty seconds against an hour</strong>, then, and the cache is
+what buys you a request to the authorization server per token per window rather than one per
+call.</p>
+
+<p><strong>Everything the authorization server issues is stored in its own database.</strong>
+Clients, codes, access and refresh tokens and consent each have a table, so restarting it is
+a deploy rather than a mass sign-out. Spending a code and rotating a refresh token are single
+statements the database adjudicates &mdash; a code cannot be spent twice and a refresh token
+cannot be rotated twice, whatever arrives at the same moment.</p>
+
+<h3>Finding the services</h3>
+
+<p>Out of the box the gateway uses the two addresses in <code>.env</code>. That is the right
+answer on Kubernetes or ECS, where the platform already knows which instances are ready and
+already balances across them &mdash; and it is the right answer for one of each on a laptop.
+<strong>Running a registry there would be a second copy of a fact the platform is already
+keeping, and two sources for one fact disagree eventually.</strong></p>
+
+<p>Where it earns its place: services on plain machines, an estate spread across two clouds,
+or a Spring system already speaking Eureka that a Rustlavel service has to join. Set one
+line and the arrangement changes:</p>
+
+<pre><code># .env
+DISCOVERY_URL=http://127.0.0.1:8761
+SERVICE_HOST=10.0.0.7      # an address other machines can reach, not 127.0.0.1</code></pre>
+
+<p>The gateway then resolves <code>auth</code> and <code>api</code> for every request and
+balances across whatever is registered, so a new instance takes traffic as soon as it starts.
+Each service announces itself on the way up and heartbeats for the life of the process. A
+service that resolves to nothing is <code>503</code> &mdash; the gateway is working and there
+is nothing behind it, which is not the <code>502</code> that means an instance refused the
+request.</p>
+
+<p><code>SERVICE_HOST</code> is the one to get right: the registry hands out what it is told,
+so a service that registers <code>127.0.0.1</code> has told every caller in the estate to talk
+to itself.</p>
+
+<p>Run more than one registry by listing every node in <code>PEERS</code> &mdash; the same
+list on each, since each node drops its own address. Writes are forwarded to the others, and
+a forwarded write is never forwarded on, so three nodes do not pass one registration between
+them forever.</p>
+
+<h3>Running the four services</h3>
+
+<p>They share one <code>.env</code>, so the port cannot live in it &mdash; all four would read
+the same <code>SERVER_PORT</code> and fight over one socket. A real environment variable beats
+anything in the file, which is what makes these work:</p>
+
+<pre><code>SERVER_PORT=8761 cargo run -p shop_registry
+SERVER_PORT=9001 cargo run -p shop_auth
+SERVER_PORT=9002 cargo run -p shop_api
+SERVER_PORT=9000 cargo run -p shop_gateway</code></pre>
+
+<p>Before that, once: <code>cargo run -p shop_auth -- migrate</code> and the same for
+<code>shop_api</code>, then <code>cargo run -p shop_auth -- db:seed</code>. The seeder prints
+two client credentials and will not print them again &mdash; one for the resource server to
+introspect with, and one that can actually call the API so you can try it out. They are
+separate on purpose: the introspection secret lives in the resource server&rsquo;s own
+configuration, and giving it the scopes your domain checks would let anybody who reads that
+file mint a token that writes.</p>
+
+<p>A new instance takes up to thirty seconds to receive traffic, because the gateway caches
+what it read from the registry for that long. That is Eureka&rsquo;s interval and the trade is
+deliberate: the alternative is a lookup on every request, against a service that is then on
+the critical path of every request.</p>
+
+<h3>Three things the registry does that look like bugs</h3>
+
+<p><strong>It keeps nothing on disk.</strong> Every instance re-registers within a heartbeat
+of a restart, so the state rebuilds itself faster than it could be loaded &mdash; and a stored
+copy would only ever be wrong on the way back up.</p>
+
+<p><strong>It sometimes serves instances that are gone.</strong> When most of the registry
+goes quiet at once, a network problem is far more likely than every service dying in the same
+second, so it says so and keeps serving rather than emptying itself. A registry that empties
+during a blink turns the blink into an outage that outlasts it, because everything then has to
+re-register before anything can find anything. The dashboard shows a banner while this is
+happening, which is the difference between a five-minute diagnosis and an afternoon. A
+registry holding fewer than eight instances never does it: a proportion threshold applied to a
+handful fires on the first ordinary failure.</p>
+
+<p><strong>Clients keep their last answer forever.</strong> When the registry cannot be
+reached, a lookup is served from what was last read, for however long that lasts. The outage
+costs you <em>changes</em> &mdash; a new instance is not noticed, a departed one is still
+offered &mdash; and your own retries cover the second. A cache that expired would turn a
+registry outage into a total outage on a timer.</p>
+
+<h3>A dashboard</h3>
+
+<p>The registry serves one at <code>/discovery</code>. <strong>There is no authentication in
+front of it</strong>, and it lists every host and port you run: keep that port private, or
+turn it off with <code>.dashboard(None)</code>.</p>
+
+<p>The other way is to let the auth kit show it. <code>rustlavel new</code> asks:</p>
+
+<pre><code>Add a dashboard for a service registry? [y/N]</code></pre>
+
+<p>Answer yes and you get <code>/admin/discovery</code> behind a <code>discovery.view</code>
+permission, in the kit&rsquo;s own layout. That page reads the registry&rsquo;s JSON document
+over HTTP rather than embedding a registry &mdash; a dashboard that went down with the thing
+it is there to tell you about would be a dashboard nobody could use at the only moment it
+matters. When the registry does not answer, the page says which address it tried instead of
+showing an error page.</p>
+
+<p>To skip the question, ask for it on the command line: <code>rustlavel new app --with auth-kit,discovery-ui</code>.</p>
+
+<h2 id="valkey">Valkey</h2>
+
+<p>There is no separate Valkey package, and that is a decision rather than a gap. Valkey is
+the Linux Foundation fork of Redis 7.2 and speaks Redis&rsquo;s protocol unchanged, so a
+second client would be the existing one with the name changed &mdash; and two copies of a
+protocol implementation drift apart exactly once, at the worst moment. The one client answers
+to both names:</p>
+
+<pre><code>rustlavel new app --with valkey</code></pre>
+
+<p>That enables the cache package, writes <code>config/cache.json</code>, and puts this in
+<code>.env</code>:</p>
+
+<pre><code>CACHE_DRIVER=valkey
+CACHE_URL=valkey://127.0.0.1:6379</code></pre>
+
+<p><code>valkey://</code> and <code>redis://</code> parse identically, <code>VALKEY_URL</code>
+is read where <code>REDIS_URL</code> is, and every error names the scheme you wrote. Sessions
+work the same way: <code>RedisSessions::connect("valkey://…")</code>. The whole integration
+suite runs against Valkey 8 and passes unchanged &mdash; measured, not inferred from the
+protocol being the same.</p>
+
 <h2>What is different from Laravel</h2>
 
 <table>

@@ -173,10 +173,60 @@ async fn bind_walking(addr: &str, attempts: u16) -> Result<TcpListener> {
     }))
 }
 
+/// Resolves when the process has been asked to stop.
+///
+/// **Both signals, not just Ctrl-C.** This waited on `ctrl_c` alone, which is
+/// `SIGINT` — the one a person sends from a terminal. Every orchestrator sends
+/// `SIGTERM`: Kubernetes before it kills a pod, systemd on `stop`, Docker on
+/// `docker stop`. Under all three the default handler terminated the process
+/// immediately, so the drain below never ran and no shutdown work ever
+/// happened — a graceful shutdown that was only graceful when somebody was
+/// watching. Found by killing a service and seeing it stay registered.
+#[cfg(unix)]
+async fn stop_requested() {
+    use tokio::signal::unix::{SignalKind, signal};
+
+    let mut terminate = match signal(SignalKind::terminate()) {
+        Ok(stream) => stream,
+        // A process that cannot install the handler still stops on Ctrl-C
+        // rather than refusing to start.
+        Err(error) => {
+            rustlavel_core::warn!("cannot listen for SIGTERM: {error}");
+            let _ = tokio::signal::ctrl_c().await;
+            return;
+        }
+    };
+
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = terminate.recv() => {}
+    }
+}
+
+#[cfg(not(unix))]
+async fn stop_requested() {
+    let _ = tokio::signal::ctrl_c().await;
+}
+
+/// Something to run once the listener has stopped and in-flight requests have
+/// drained.
+// `Sync` as well as `Send`: the server is shared through an `Arc` while it is
+// accepting, and `Arc<T>` is only `Send` when `T` is `Sync`. A field that is
+// merely `Send` makes the whole server unshareable.
+pub type OnShutdown = Box<dyn FnOnce() -> crate::handler::BoxFuture<()> + Send + Sync>;
+
 pub struct Server {
     router: Arc<Router>,
     context: Context,
     limits: Limits,
+    /// Run after the drain, in the order they were added.
+    ///
+    /// **This exists because advice nothing follows is not a feature.** A
+    /// service registered with a discovery server is meant to say goodbye on
+    /// the way down — the difference between a clean deploy and thirty seconds
+    /// of requests routed to a process that has exited — and there was nowhere
+    /// to put that call, so the documentation said to make it and nothing did.
+    on_shutdown: Vec<OnShutdown>,
 }
 
 impl Server {
@@ -186,7 +236,18 @@ impl Server {
             max_body_bytes: context.config().int("server.max_body_bytes", 10 * 1024 * 1024) as usize,
             ..Limits::default()
         };
-        Server { router: Arc::new(router), context, limits }
+        Server { router: Arc::new(router), context, limits, on_shutdown: Vec::new() }
+    }
+
+    /// Run something once the listener has stopped and requests have drained.
+    ///
+    /// After the drain rather than before it: a service that deregistered
+    /// first would still be serving the requests already in flight, and a
+    /// service that deregistered and then took ten seconds to finish them is
+    /// exactly the clean shutdown this is for.
+    pub fn on_shutdown(mut self, work: OnShutdown) -> Self {
+        self.on_shutdown.push(work);
+        self
     }
 
     pub fn limits(mut self, limits: Limits) -> Self {
@@ -199,7 +260,7 @@ impl Server {
     /// When the port is taken, the next ones are tried — see [`bind_walking`].
     /// How many is `server.port_attempts`, which defaults to ten outside
     /// production and to one inside it.
-    pub async fn listen(self, addr: impl Into<String>) -> Result<()> {
+    pub async fn listen(mut self, addr: impl Into<String>) -> Result<()> {
         let addr = addr.into();
         let listener = bind_walking(&addr, port_attempts(self.context.config())).await?;
         let local = listener.local_addr().map_err(Error::Io)?;
@@ -211,12 +272,15 @@ impl Server {
         rustlavel_core::info!("Press Ctrl-C to stop");
 
         let in_flight = Arc::new(AtomicUsize::new(0));
+        // Taken out before the server is shared, because it runs after the
+        // loop has ended and the `Arc` is no longer the place to reach it.
+        let mut on_shutdown = std::mem::take(&mut self.on_shutdown);
         let shared = Arc::new(self);
 
         loop {
             let accepted = tokio::select! {
                 result = listener.accept() => result,
-                _ = tokio::signal::ctrl_c() => break,
+                _ = stop_requested() => break,
             };
 
             let (stream, peer) = match accepted {
@@ -245,6 +309,12 @@ impl Server {
         while in_flight.load(Ordering::SeqCst) > 0 && Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
+        // After the drain: a service that deregistered first would still be
+        // serving the requests already in flight.
+        for work in on_shutdown.drain(..) {
+            work().await;
+        }
+
         rustlavel_core::info!("Goodbye.");
         Ok(())
     }

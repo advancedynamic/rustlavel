@@ -265,7 +265,8 @@ mod tests {
     /// Each test writes its own view directory, because tests run at the same
     /// time and a shared fixture would be rewritten under one of them.
     fn views(test: &str, files: &[(&str, &str)]) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("rustlavel-mail-views-{test}"));
+        let root = std::env::temp_dir()
+            .join(format!("rustlavel-mail-views-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         for (name, source) in files {
             let path = root.join(format!("{}.{EXTENSION}", name.replace('.', "/")));

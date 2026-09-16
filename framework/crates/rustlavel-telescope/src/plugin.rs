@@ -383,7 +383,7 @@ mod tests {
         events::clear_subscribers();
 
         let path = std::env::temp_dir()
-            .join("rustlavel-telescope-tests")
+            .join(format!("rustlavel-telescope-tests-{}", std::process::id()))
             .join("plugin-persistence.jsonl");
         std::fs::create_dir_all(path.parent().expect("parent")).expect("temp dir");
         let _ = std::fs::remove_file(&path);

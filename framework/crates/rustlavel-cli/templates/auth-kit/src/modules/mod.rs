@@ -16,7 +16,7 @@
 //! nothing else uses `backup`, which is why it went first.
 
 pub mod backup;
-
+{{module_declarations}}
 use rustlavel::Plugin;
 
 /// A feature, and everything it needs to work.
@@ -51,7 +51,7 @@ pub trait Module: Plugin {
 
 /// Every module, in the order they are registered and migrated.
 pub fn all() -> Vec<Box<dyn Module>> {
-    vec![Box::new(backup::Backup)]
+    vec![Box::new(backup::Backup){{module_list}}]
 }
 
 /// Every migration the modules own, flattened for `App::migrations`.

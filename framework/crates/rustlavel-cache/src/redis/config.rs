@@ -17,6 +17,12 @@ pub struct RedisConfig {
     pub connect_timeout: Duration,
     /// How long one command may take before the connection is given up on.
     pub command_timeout: Duration,
+    /// `redis` or `valkey` — whichever the URL said.
+    ///
+    /// Kept so every message about the connection echoes the name the operator
+    /// used. A Valkey deployment told it "cannot connect to redis://…" goes
+    /// looking for a Redis configuration that does not exist.
+    pub scheme: String,
 }
 
 impl Default for RedisConfig {
@@ -30,34 +36,51 @@ impl Default for RedisConfig {
             max_connections: 10,
             connect_timeout: Duration::from_secs(5),
             command_timeout: Duration::from_secs(10),
+            scheme: "redis".to_string(),
         }
     }
 }
 
 impl RedisConfig {
-    /// Parse `redis://[[user]:password@]host[:port][/db]`.
+    /// Parse `redis://[[user]:password@]host[:port][/db]`, or the same with
+    /// `valkey://`.
+    ///
+    /// **Valkey is the same wire protocol.** It is the Linux Foundation fork of
+    /// Redis 7.2, speaks RESP unchanged, and this client's whole test suite
+    /// passes against Valkey 8 as it stands. What a Valkey deployment needs is
+    /// not a second client but a client that answers to the name: its own
+    /// tooling writes `valkey://`, and an operator who pastes that URL should
+    /// not be told it is not a Redis URL.
     ///
     /// The password-only form `redis://:secret@host` is the one almost every
     /// deployment uses, so it is handled first-class rather than as a special
     /// case of a username.
     pub fn from_url(url: &str) -> Result<Self> {
-        let rest = url
-            .strip_prefix("redis://")
-            .or_else(|| url.strip_prefix("rediss://"))
-            .ok_or_else(|| {
-                Error::msg(format!(
-                    "`{url}` is not a Redis URL. Expected redis://[:password@]host:port[/db]"
-                ))
-            })?;
+        const PLAIN: [&str; 2] = ["redis://", "valkey://"];
+        const TLS: [&str; 2] = ["rediss://", "valkeys://"];
 
-        if url.starts_with("rediss://") {
+        if TLS.iter().any(|scheme| url.starts_with(scheme)) {
             return Err(Error::msg(
-                "rustlavel-cache speaks plain RESP over TCP; `rediss://` (TLS) is not supported yet. \
-                 Terminate TLS with stunnel or a sidecar, or use redis://.",
+                "rustlavel-cache speaks plain RESP over TCP; `rediss://` and `valkeys://` (TLS) \
+                 are not supported yet. Terminate TLS with stunnel or a sidecar, or use \
+                 redis:// or valkey://.",
             ));
         }
 
-        let mut config = RedisConfig::default();
+        let (scheme, rest) = PLAIN
+            .iter()
+            .find_map(|scheme| url.strip_prefix(scheme).map(|rest| (*scheme, rest)))
+            .ok_or_else(|| {
+                Error::msg(format!(
+                    "`{url}` is not a Redis or Valkey URL. Expected \
+                     redis://[:password@]host:port[/db] or valkey://[:password@]host:port[/db]"
+                ))
+            })?;
+
+        let mut config = RedisConfig {
+            scheme: scheme.trim_end_matches("://").to_string(),
+            ..RedisConfig::default()
+        };
 
         // Strip the query string first so a `?` inside it is never read as part
         // of the database number.
@@ -132,16 +155,23 @@ impl RedisConfig {
         Ok(config)
     }
 
-    /// Read from the application config, falling back to `REDIS_URL`.
+    /// Read from the application config, falling back to `REDIS_URL` and then
+    /// `VALKEY_URL`.
+    ///
+    /// Both names, because a Valkey deployment's own documentation and
+    /// tooling use the second, and an operator who sets the variable their
+    /// platform told them to set should find it read.
     pub fn from_app_config(config: &Config) -> Result<Self> {
         let url = config.string("cache.url", "");
         if !url.is_empty() {
             return RedisConfig::from_url(&url);
         }
-        if let Ok(url) = std::env::var("REDIS_URL")
-            && !url.is_empty()
-        {
-            return RedisConfig::from_url(&url);
+        for variable in ["REDIS_URL", "VALKEY_URL"] {
+            if let Ok(url) = std::env::var(variable)
+                && !url.is_empty()
+            {
+                return RedisConfig::from_url(&url);
+            }
         }
         Ok(RedisConfig::default())
     }
@@ -160,7 +190,7 @@ impl RedisConfig {
             (true, false) => ":***@".to_string(),
             (false, _) => format!("{}:***@", self.username),
         };
-        format!("redis://{credentials}{}:{}/{}", self.host, self.port, self.database)
+        format!("{}://{credentials}{}:{}/{}", self.scheme, self.host, self.port, self.database)
     }
 }
 
@@ -202,6 +232,44 @@ mod tests {
         assert_eq!(config.host, "cache.internal");
         assert_eq!(config.port, 6380);
         assert_eq!(config.database, 3);
+    }
+
+    /// Valkey's own tooling writes `valkey://`. An operator pasting the URL
+    /// their platform gave them must not be told it is not a Redis URL — it is
+    /// the same protocol, and the whole suite passes against Valkey 8.
+    #[test]
+    fn a_valkey_url_parses_exactly_as_the_redis_one_does() {
+        let redis = RedisConfig::from_url("redis://:hunter2@cache.internal:6380/3").unwrap();
+        let valkey = RedisConfig::from_url("valkey://:hunter2@cache.internal:6380/3").unwrap();
+
+        assert_eq!(valkey.host, redis.host);
+        assert_eq!(valkey.port, redis.port);
+        assert_eq!(valkey.password, redis.password);
+        assert_eq!(valkey.database, redis.database);
+    }
+
+    /// A Valkey deployment told "cannot connect to redis://…" goes looking for
+    /// a Redis configuration that does not exist.
+    #[test]
+    fn messages_echo_the_scheme_the_operator_wrote() {
+        let valkey = RedisConfig::from_url("valkey://:secret@cache:6380/2").unwrap();
+        assert_eq!(valkey.redacted_url(), "valkey://:***@cache:6380/2");
+
+        let redis = RedisConfig::from_url("redis://cache").unwrap();
+        assert!(redis.redacted_url().starts_with("redis://"));
+    }
+
+    /// Both TLS spellings are refused with the same honest message, and a
+    /// scheme that is neither names both accepted ones.
+    #[test]
+    fn the_refusals_name_valkey_too() {
+        let tls = RedisConfig::from_url("valkeys://cache").unwrap_err().to_string();
+        assert!(tls.contains("valkeys://"), "{tls}");
+        assert!(tls.contains("valkey://"), "the fix was not offered: {tls}");
+
+        let wrong = RedisConfig::from_url("memcached://cache").unwrap_err().to_string();
+        assert!(wrong.contains("Redis or Valkey"), "{wrong}");
+        assert!(wrong.contains("valkey://"), "{wrong}");
     }
 
     #[test]
@@ -253,7 +321,7 @@ mod tests {
     #[test]
     fn rejects_a_url_with_the_wrong_scheme() {
         let error = RedisConfig::from_url("memcached://host").unwrap_err();
-        assert!(error.to_string().contains("not a Redis URL"));
+        assert!(error.to_string().contains("not a Redis or Valkey URL"), "{error}");
     }
 
     #[test]

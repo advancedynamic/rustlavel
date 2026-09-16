@@ -186,6 +186,40 @@ pub const CONFIG_APP: &str = r#"{
 }
 "#;
 
+/// `config/cache.json`, written when the `cache` or `valkey` package is enabled.
+///
+/// **Without this file `CACHE_DRIVER` reaches nothing.** `Config` knows only
+/// what `config/*.json` declares, so an application with `CACHE_DRIVER=redis`
+/// in `.env` and no file here runs on the memory driver — silently, because the
+/// memory driver works. This is the same gap `config/mail.json` closed for the
+/// `MAIL_*` block, found the same way.
+///
+/// `CACHE_URL` rather than `REDIS_URL`, because the driver may be Valkey and a
+/// variable named for the other one is a variable somebody sets wrong. Both
+/// `REDIS_URL` and `VALKEY_URL` are still read when this is blank.
+pub const CONFIG_CACHE: &str = r#"{
+  "driver": "${CACHE_DRIVER:memory}",
+  "path": "storage/cache",
+  "url": "${CACHE_URL:}",
+  "prefix": "${APP_NAME:{{app_name}}}:"
+}
+"#;
+
+/// The `.env` block for the cache. `{{cache_driver}}` and `{{cache_url}}` are
+/// filled from the package that was asked for: `cache` gets the memory driver,
+/// `valkey` gets Valkey on its default port.
+pub const ENV_CACHE: &str = r#"
+# --- Cache ------------------------------------------------------------------
+# `memory` is per process and gone on restart, which is right for one machine.
+# `file` survives a restart. `redis` and `valkey` are the same driver under two
+# names — Valkey speaks Redis's protocol unchanged — and are what you want as
+# soon as there is more than one process.
+CACHE_DRIVER={{cache_driver}}
+# redis://[:password@]host:port[/db] or valkey://…; blank with the memory or
+# file driver.
+CACHE_URL={{cache_url}}
+"#;
+
 /// `config/mail.json`, written when the `mail` package is enabled.
 ///
 /// **Without this file the `MAIL_*` variables reach nothing.** `Config` knows

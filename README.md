@@ -117,13 +117,15 @@ App::new()?
 | `rustlavel-validation` | Laravel-style rules and 422 responses |
 | `rustlavel-auth` | Password hashing, encryption, sessions, CSRF, signed URLs, guards, API tokens |
 | `rustlavel-audit` | An audit trail: who did what, to which record, from where |
-| `rustlavel-cache` | Memory, file, and a from-scratch Redis client; rate limiting and idempotency keys |
+| `rustlavel-cache` | Memory, file, and a from-scratch Redis client that also speaks to Valkey; rate limiting and idempotency keys |
 | `rustlavel-flags` | Runtime feature switches, per user or per tenant, with an incident switch |
 | `rustlavel-rbac` | Roles and permissions: assignment, wildcard checks, and route guards |
 | `rustlavel-queue` | Background jobs, workers, retries, dead letters, cron scheduling |
 | `rustlavel-mail` | SMTP written from scratch, MIME, mailables, notifications |
 | `rustlavel-storage` | Local disk and S3-compatible object stores |
 | `rustlavel-client` | Outbound HTTP with TLS, streaming, and `Http::fake()`; circuit breaker |
+| `rustlavel-gateway` | An API gateway: a route table, hop-by-hop headers dropped, one health endpoint for every upstream |
+| `rustlavel-discovery` | A service registry and the client that uses it — register, resolve, replicate; Eureka-compatible |
 | `rustlavel-ai` | Anthropic, OpenAI and Ollama through one API |
 | `rustlavel-mcp` | Model Context Protocol, server and client |
 | `rustlavel-oauth` | Sign in through Google, GitHub and the rest — OAuth 2.1 with mandatory PKCE |
@@ -312,7 +314,7 @@ the whole "opt-in packages" premise, visible without timing anything.
 
 Early, but broad. Everything in the table above works today and is covered by
 tests — over 1,400 of them, including integration suites against real
-PostgreSQL, MySQL, SQL Server and Redis servers. See [ROADMAP.md](ROADMAP.md)
+PostgreSQL, MySQL, SQL Server, Redis and Valkey servers. See [ROADMAP.md](ROADMAP.md)
 for what has landed and what has not.
 
 The database layer additionally carries a conformance suite: the same schema

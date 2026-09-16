@@ -755,7 +755,7 @@ mod tests {
     /// two tests pass or fail depending on which finished first.
     fn scratch(name: &str) -> PathBuf {
         let directory =
-            std::env::temp_dir().join(format!("rustlavel-backup-tests/{name}"));
+            std::env::temp_dir().join(format!("rustlavel-backup-tests-{}/{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&directory);
         std::fs::create_dir_all(&directory).expect("could not make the scratch directory");
         directory

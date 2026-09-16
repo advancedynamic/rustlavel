@@ -127,7 +127,8 @@ mod tests {
 
     /// Each test gets its own root: tests run concurrently.
     fn storage(name: &str) -> LocalStorage {
-        let root = std::env::temp_dir().join(format!("rustlavel-storage-{name}"));
+        let root = std::env::temp_dir()
+            .join(format!("rustlavel-storage-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         LocalStorage::new(root)

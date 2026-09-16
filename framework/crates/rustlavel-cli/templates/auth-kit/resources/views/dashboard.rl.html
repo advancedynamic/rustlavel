@@ -7,7 +7,7 @@
     <p class="mt-1 text-sm text-ink-500 dark:text-ink-400">
       @if(last_login_at)
         Your last sign-in was {{ last_login_at }} from {{ last_login_ip }}.
-        Not you? <a href="/settings/security" class="font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400">Review your security settings</a>.
+        Not you? <a href="@route("settings.security")" class="font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400">Review your security settings</a>.
       @else
         This is your first sign-in.
       @endif
@@ -24,7 +24,7 @@
           <p class="font-medium text-amber-900 dark:text-amber-300">Two-factor authentication is off</p>
           <p class="mt-0.5 text-sm text-amber-800 dark:text-amber-400">A password alone is one leaked list away from being somebody else's.</p>
         </div>
-        <a href="/settings/security" class="btn-primary btn-sm shrink-0">Turn it on</a>
+        <a href="@route("settings.security")" class="btn-primary btn-sm shrink-0">Turn it on</a>
       </div>
     </div>
   @endif
@@ -46,7 +46,7 @@
   <div class="card mt-6">
     <div class="card-header flex items-center justify-between">
       <h3 class="font-semibold">Recent sign-in activity</h3>
-      <a href="/profile" class="text-sm font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400">See all</a>
+      <a href="@route("profile")" class="text-sm font-medium text-brand-600 hover:text-brand-500 dark:text-brand-400">See all</a>
     </div>
     <div class="table-wrap">
       <table class="table">

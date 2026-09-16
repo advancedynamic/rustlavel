@@ -6,7 +6,7 @@
 # so what crosses between them lives in `shared/` where you have to look at it.
 [workspace]
 resolver = "2"
-members = ["services/gateway", "services/auth", "services/api", "shared"]
+members = ["services/gateway", "services/auth", "services/api", "services/registry", "shared"]
 
 [workspace.package]
 version = "0.1.0"

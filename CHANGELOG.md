@@ -3,6 +3,286 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## Unreleased
+
+Two additions for applications built as several services — and a dozen fixes
+found by running the result rather than testing it.
+
+### Fixed
+
+Everything in this section was found by scaffolding the microservices kit,
+starting its four services against a real PostgreSQL, and asking for a token.
+None of it was visible from the test suite, which passed throughout.
+
+- **`SIGTERM` was ignored, so graceful shutdown never happened in production.**
+  The server waited on `ctrl_c` — `SIGINT`, the signal a person sends from a
+  terminal. Kubernetes, systemd and `docker stop` all send `SIGTERM`, and under
+  every one of them the default handler killed the process immediately: the
+  ten-second drain never ran, and in-flight requests died with the process. Both
+  signals now stop the listener.
+
+- **`App::on_shutdown`**, because advice nothing follows is not a feature. There
+  was nowhere to put work that has to happen on the way down, so the
+  documentation recommended deregistering from a service registry and nothing
+  could. Hooks run after the drain, not before it: a service that deregistered
+  first would still be serving the requests already in flight.
+
+- **A `client_credentials` token was refused by the framework's own verifier.**
+  `rustlavel-oauth-provider` deliberately omits `sub` from an introspection
+  response for that grant — there is no resource owner behind it, and the
+  absence is how a resource server tells a machine's token from a person's.
+  `rustlavel-oauth`'s reader required `sub` and refused anything without one. So
+  the two halves disagreed, and machine-to-machine authentication — the thing a
+  microservices deployment is built on — could not work at all. `Claims::subject`
+  is now `Option<String>`, with `Claims::owner()` and `Claims::is_service()`.
+
+  Deliberately **not** defaulted to the client id, which is the tempting fix: a
+  *user's* token whose `sub` went missing would then be attributed to the
+  client, and every user of that client would share one identity.
+
+- **`Gateway::require_token()` closed the token endpoint too.** It applied to
+  every route including `/oauth/*`, so obtaining a token required a token — a
+  door that only opens from the inside. `Upstream::open()` excepts a route, and
+  it is opt-in per route so opening one is a line somebody wrote rather than a
+  hole in a default.
+
+- **`migrate` and `db:seed` ignored the database the application had opened**
+  and reconnected from `DATABASE_URL`. Right for an application with one
+  database and wrong for every other arrangement — a service reading its own
+  key, a handle opened from a vault lease, a tenant chosen at boot. The console
+  now uses `App::registered::<Database>()` and falls back to the configuration,
+  so an application that never calls `.state(db)` is unaffected.
+
+- **The authorization server lost every token on restart.**
+  `rustlavel-oauth-provider` shipped with in-memory stores only, and an empty
+  store answers "unknown token" to everything — so a deploy signed out every
+  session and broke every integration at once. Clients, codes, access and
+  refresh tokens and consent are now backed by a table each, behind the crate's
+  `db` feature. `database::schema` creates them, so a migration and the code
+  that reads it cannot drift apart: the kit's hand-written schema had no
+  `family` column, put access and refresh tokens in one table, and had no
+  consent table at all — it migrated cleanly and nothing could use it.
+
+  **The two operations whose contract is atomicity are atomic.** Spending a code
+  and rotating a refresh token are each one `UPDATE … WHERE <still unspent>` and
+  a check of the row count, so the database picks the winner. Proved rather than
+  argued: sixteen tasks present the same code at once and exactly one is told
+  `Fresh`. Rewritten as a read followed by a write — which passes every
+  single-threaded test — 8 of 16 spend the same code and 9 of 16 rotate the same
+  refresh token. Those are the replay and the stolen-token race, measured.
+
+  Three types gained `from_hash` constructors, without which no store outside
+  the crate could rebuild a token from a row.
+
+- **"Always current" was not true of introspection.** The kit told you to
+  choose introspection over local signature checks because revocation is
+  immediate. It is not: the answer is cached for thirty seconds, so a revoked
+  token keeps working for up to that long. Measured by revoking one and timing
+  it. The choice is thirty seconds against an hour, and it is now described in
+  those terms.
+
+- **`@route` had no reader, and neither did thirty route names.** The directive
+  was built and tested, the auth kit named thirty of its routes, and every link
+  in every one of its templates was a hardcoded path — so changing a route's URL
+  meant finding it in twenty-two files. All thirty-seven are now `@route("…")`,
+  five more routes gained names to make that possible, and the two that are not
+  routes at all (a stylesheet) are left alone. A name that does not exist is a
+  loud `500` naming it rather than `href=""`, which is a link that looks like a
+  link and reloads the page; every converted page was loaded to confirm it.
+
+- **Eight test fixtures were shared between processes.** Each was name-spaced
+  per test, which is what the project's own rule asks for, but not per
+  *process* — so two `cargo test` invocations at once, two terminals, or a CI
+  matrix on one machine wrote into the same directory and counted each other's
+  files. One mail test failed once in a full workspace run and passed on every
+  rerun, which is what a shared fixture looks like from the outside. Running the
+  old binary eight-at-once failed 24 of 40 times; with the process id in the
+  path, 0 of 40. The other seven carried the same hazard and are fixed the same
+  way, including the one in the auth kit's own template, which shipped it into
+  every scaffolded project.
+
+### Fixed in the microservices kit
+
+The kit shipped in a state where nothing could start, and each fix uncovered the
+next.
+
+- **Neither service could start.** `.env` wrote `AUTH_DATABASE_URL` and
+  `API_DATABASE_URL`; both services read `DATABASE_URL`. Setting that one key to
+  make them boot would have put both services in one database — the coupling the
+  kit is shaped to avoid, arriving through a configuration file.
+
+- **`GATEWAY_PORT` was read by nothing** (the framework reads `SERVER_PORT`), and
+  four services sharing one `.env` cannot each take a port from it. Replaced with
+  the four commands that actually work.
+
+- **`migrate` registered the service with the discovery server and exited**,
+  leaving a registration nothing was heartbeating; the registry went on handing
+  that address to the gateway for the length of a lease.
+
+- **The authorization server never mounted `OAuthProvider`.** It migrated three
+  OAuth tables, seeded a client, and served no token endpoint at all — while its
+  own first paragraph said the provider was mounted there.
+
+- **The seeded client secret was hashed with argon2**, which the authorization
+  server never compares against: it digests client secrets with SHA-256 on
+  purpose. The two never matched, so the one credential the kit gave you could
+  not authenticate once.
+
+- **`db:seed` created no client at all** unless two environment variables were
+  already set, and said so in one line of yellow text among the migrations.
+  Secrets are now generated and printed once, with the `.env` lines to paste.
+
+- **Two clients now, not one.** The introspection credential lives in the
+  resource server's `.env`, so giving it the scopes the domain checks would let
+  anybody who reads that file mint a token that writes — a privilege escalation
+  out of a configuration file. It carries no scopes; a separate demo client
+  carries the domain's.
+
+- **The authorization server had no `/health`**, so the gateway's aggregate
+  check probed it, got a 404, and reported the whole system `degraded` with a
+  503 on a deployment where nothing was wrong. A load balancer reading that takes
+  the gateway out of rotation.
+
+- **The resource server demanded a database, opened it, and never read it** —
+  no migrations and no route that touched it. It now owns an `orders` table with
+  a read and a write, each scope-checked, rows scoped to the caller and
+  idempotent on a caller-supplied key.
+
+- **Nothing said goodbye on the way down.** `deregister` was named only in a doc
+  comment. Both services now deregister through `App::on_shutdown`, so a deploy
+  is a clean handover rather than ninety seconds of `502`.
+
+- **The registry service answered no health check either**, which a guard now
+  catches for every service in the kit rather than for the three somebody
+  remembered.
+
+- **A failed token check said nothing.** Every step of introspection was an
+  `.ok()?`, so a wrong `AUTH_URL`, an authorization server that was down, and
+  introspection credentials the authorization server refused all produced the
+  same bare `401` with an empty log. An operator could not tell a forged token
+  from a typo in a settings file — and the two are fixed in different files. The
+  three now log at `error` with the address and the reason, while a token that
+  was genuinely refused logs at `debug`, because an expired token is ordinary
+  traffic rather than an incident.
+
+- **Two guards, so the first two of these cannot come back.** Every key the
+  kit's `.env` defines must be read by its code, and every key its code reads
+  must be in that `.env` — both directions, because the kit shipped broken in
+  both. And every service must answer `/health`. Each was written to fail
+  first, and the second caught the registry service immediately.
+
+### Added
+
+- **A microservices starter kit.** `rustlavel new <name> --with microservices-kit`
+  scaffolds a cargo workspace: a gateway, an OAuth 2.1 authorization server, a
+  resource server, an optional service registry, and one crate for the types
+  that cross between them. `rustlavel build` produces a binary per service, so
+  each deploys on its own — which is the point, and the reason this is a
+  workspace rather than one crate with four `[[bin]]` entries.
+
+  **A database per service, and none for the gateway.** The authorization server
+  owns users, clients, codes and tokens; the resource server owns its domain and
+  never reads the other's schema. The moment a gateway owns a table it stops
+  being a gateway and becomes a fourth service that can fail — the one every
+  request already passes through.
+
+  **The resource server checks tokens itself**, both ways and with the same
+  tests: introspection against the authorization server (RFC 7662, briefly
+  cached) and a local ES256 signature check. Chosen over picking one, because a
+  security path that is rarely used is the one that is wrong without anybody
+  knowing. The gateway also refuses a request with no credential, and that saves
+  a hop and nothing else — a gateway is not the only door.
+
+  The gateway's rate limit is keyed **per client and per feature**. The default
+  key is the address plus the matched route, and at a gateway nothing matches a
+  route — everything arrives through the fallback, so the path is used instead
+  and `/api/1`, `/api/2`, `/api/3` each get a bucket of their own. That is a
+  limit that never fires. The key is now the bearer token's hash (never the
+  token) or the address, plus the first path segment, so a client that exhausts
+  its budget on the API can still reach the authorization server to refresh.
+
+- **`rustlavel-gateway`** — a route table, hop-by-hop headers dropped in both
+  directions, `X-Forwarded-For` **set rather than appended** (what the client
+  sent under that name is a claim; the address that opened the socket is a
+  fact), an unreachable upstream answered as `502` rather than `500`, and one
+  health endpoint that asks every upstream and names which is unwell. Registers
+  as the router's *fallback*, not a wildcard route, so the application's own
+  health and metrics endpoints stay reachable when the services behind it are
+  the problem.
+
+- **`rustlavel-discovery`** — a service registry and the client that uses it,
+  Eureka-compatible on the wire. A Spring Cloud service registers against it
+  with its stock configuration and nothing else changed.
+
+  **On Kubernetes you do not need it**, and the crate's own documentation opens
+  by saying so: the platform already knows which instances are ready and already
+  balances across them, so a registry there is a second copy of a fact, and two
+  sources for one fact disagree eventually. Three resolvers sit behind one
+  trait — `Static`, `Dns` and the registry — so moving between them is a line of
+  configuration rather than a rewrite.
+
+  The registry is **in memory and never persisted**: every instance
+  re-registers within a heartbeat of a restart, so the state rebuilds itself
+  faster than it could be loaded, and a stored copy would only ever be wrong on
+  the way back up. **Nothing is evicted on a timer** — instances carry a
+  `last_seen` and a read decides who is alive, which is what lets the registry
+  notice that most of itself went quiet at once and keep serving rather than
+  emptying itself during a network blink. A registry holding fewer than eight
+  instances never does this: a proportion threshold applied to a handful fires
+  on the first ordinary failure.
+
+  **Replication is peer forwarding, not consensus.** A registry is a cache of
+  where things are, so consensus would buy agreement about a fact that is stale
+  anyway and would mean a node that loses quorum stops answering — the outage
+  the registry exists to survive. Every forwarded write carries a marker
+  (`?isReplication=true`, and a header for anything that strips query strings)
+  and a marked write is applied and never forwarded on: one hop, never two.
+
+  The client's cache has **no expiry**. When the registry cannot be reached,
+  lookups go on being served from what was last read, for however long that
+  lasts. An outage costs you changes — a new instance is not noticed, a departed
+  one is still offered — and the caller's own retries cover the second. A cache
+  that expired would turn a registry outage into a total outage on a timer.
+
+- **Valkey**, as the cache package under the name of the server you run.
+  Valkey is the Linux Foundation fork of Redis 7.2 and speaks RESP unchanged, so
+  a second client would have been this one with the name changed — and two
+  copies of a protocol drift apart exactly once, at the worst moment. Instead
+  the one client answers to both: `valkey://` parses as `redis://` does,
+  `CACHE_DRIVER=valkey` selects the same driver, `VALKEY_URL` is read where
+  `REDIS_URL` is, and `features = ["valkey"]` enables the package. The whole
+  Redis integration suite passes against Valkey 8.1 unchanged, and the Redis
+  session store — which had never been run against a live server by the suite
+  at all — now is, through a `valkey://` URL.
+
+  Every message echoes the scheme the operator wrote. A Valkey deployment told
+  "cannot connect to redis://…" goes looking for a Redis configuration that does
+  not exist; found by pointing a scaffolded project at a closed port.
+
+- **`--with cache` never wrote `config/cache.json`**, so `CACHE_DRIVER=redis` in
+  `.env` reached nothing and the application ran on the memory driver — silently,
+  because the memory driver works. The same gap `config/mail.json` closed for
+  `MAIL_*`. Both `--with cache` and `--with valkey` now write the file and a
+  `.env` block, and `main.rs` is told the one line that reaches the store.
+
+- **A service registry dashboard**, and `rustlavel new` asks whether you want
+  one rather than assuming. The registry serves its own at `/discovery` with no
+  authentication in front of it — it lists every host and port you run, so that
+  is survivable on a private network and nowhere else, and the documentation
+  says so. Answering yes to the question adds a page to the auth kit instead,
+  behind a `discovery.view` permission. That page reads the registry's JSON
+  document over HTTP rather than embedding a registry: a dashboard that went
+  down with the thing it is there to tell you about would be a dashboard nobody
+  could use at the only moment it matters. A registry that does not answer is a
+  panel naming the address it tried, not a 500.
+
+- **`Upstream::service`** routes a gateway by service name, resolved for every
+  request and balanced round-robin across whatever is registered. A service that
+  resolves to nothing is `503` — the gateway is working and there is nothing
+  behind it, which is not the `502` that means an instance refused the request.
+  Behind a feature, so a gateway with a table of fixed addresses compiles no
+  registry client at all.
+
 ## 0.7.4 — 2026-09-05
 
 ### Security

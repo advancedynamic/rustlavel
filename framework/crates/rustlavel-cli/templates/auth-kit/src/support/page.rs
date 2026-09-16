@@ -131,7 +131,11 @@ pub async fn with_user(mut context: ViewContext, req: &Request, user: &User) -> 
         ("can_manage_settings", "settings.manage"),
         ("can_view_menus", "menus.view"),
         ("can_view_audit", "audit.view"),
-    ] {
+        // A module that draws its own entry in the built-in navigation adds its
+        // permission here when the project is scaffolded. Empty otherwise —
+        // checking a permission for a module that is not in the tree would be a
+        // lookup per page that can only ever answer no.
+{{module_nav_flags}}    ] {
         context = context.with(flag, Json::from(req.can(permission).await?));
     }
     Ok(context)

@@ -9,8 +9,15 @@ readme = "README.md"
 authors.workspace = true
 repository.workspace = true
 
+[features]
+# Stores backed by a table each. Optional, so an authorization server whose
+# storage lives somewhere else — or a test using the in-memory stores — does not
+# compile the database package.
+db = ["dep:rustlavel-db"]
+
 [dependencies]
 rustlavel-core.workspace = true
+rustlavel-db = { workspace = true, optional = true }
 rustlavel-http.workspace = true
 rustlavel-auth.workspace = true
 rustlavel-oauth.workspace = true
@@ -23,3 +30,6 @@ sha2 = "0.10"
 
 [dev-dependencies]
 tokio = { workspace = true }
+# The database stores are proved against a real database, including the two
+# operations whose whole contract is what happens under contention.
+rustlavel-db.workspace = true

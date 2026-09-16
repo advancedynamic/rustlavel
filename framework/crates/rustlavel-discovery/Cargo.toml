@@ -1,0 +1,25 @@
+[package]
+name = "rustlavel-discovery"
+description = "Service registry and discovery: register, resolve, replicate — Eureka-compatible"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+readme = "README.md"
+authors.workspace = true
+repository.workspace = true
+
+[features]
+# A gateway that routes by service name. Optional, so a gateway with a table of
+# fixed addresses does not compile a registry client it never calls — and so
+# this crate is useful on its own to a service that only registers itself.
+gateway = ["dep:rustlavel-gateway"]
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-http.workspace = true
+rustlavel-client.workspace = true
+rustlavel-gateway = { workspace = true, optional = true }
+tokio.workspace = true
+
+[dev-dependencies]
