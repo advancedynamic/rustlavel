@@ -100,7 +100,7 @@ pub use rustlavel_view as views;
 #[cfg(feature = "ws")]
 pub use rustlavel_ws as ws;
 #[cfg(feature = "view")]
-pub use view::{Views, engine_from_config};
+pub use view::{Views, engine_from_config, engine_with_routes};
 
 /// The async runtime, re-exported so an application never has to add it.
 ///

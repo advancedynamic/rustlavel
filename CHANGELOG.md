@@ -81,6 +81,29 @@ None of it was visible from the test suite, which passed throughout.
   it. The choice is thirty seconds against an hour, and it is now described in
   those terms.
 
+- **`rustlavel upgrade` wrote raw placeholders into a real project.** The four
+  `{{module_*}}` slots added for the discovery dashboard were filled by `new`
+  and unknown to `upgrade`, which rendered them literally: `{{module_nav_flags}}`
+  landed inside a Rust array in `page.rs` and `{{modules_nav}}` in the
+  navigation. Found by upgrading a copy of a production 0.7.4 project with 648
+  views and 1,313 tests. The slots now come from one function both commands
+  call, and a guard renders every template with the *upgrade's* values — the
+  existing guard had only ever been given `new`'s, which is how a bug in the
+  other writer stayed invisible. With the fix the same upgrade merges cleanly,
+  zero conflicts; the one conflict seen before was caused entirely by this.
+
+- **`@route` in the layouts breaks a test that renders a view with no `App`.**
+  Every kit page includes a layout, every layout now resolves `@route`, and a
+  bare `Engine` has no route table — so 25 of that project's 1,313 tests failed
+  with "an engine with no route table". That message is correct and the
+  behaviour is deliberate (an unresolved name must not become `href=""`), so
+  the fix is to give tests the table: `rustlavel::engine_with_routes` fills an
+  engine from a router, and the kit's `support::views::engine_for_tests`
+  replays `main.rs`'s registration — both route files and every module — then
+  calls it. **Tests only**: `App` fills the table in production and a route
+  added only in `main.rs` lives in that one, so hand a production engine through
+  this and `@route` to that name is a `500`. After the switch, all 1,313 pass.
+
 - **`@route` had no reader, and neither did thirty route names.** The directive
   was built and tested, the auth kit named thirty of its routes, and every link
   in every one of its templates was a hardcoded path — so changing a route's URL

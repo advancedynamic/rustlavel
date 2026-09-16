@@ -11,6 +11,26 @@ use rustlavel_view::{Context, Engine};
 ///
 /// Templates reload from disk outside production, so editing one is visible on
 /// the next request without a recompile.
+/// Give an engine built outside `App` the route table `App` would have given
+/// it, so `@route(…)` resolves.
+///
+/// **For tests, and only for tests.** `App::finish` fills the table from the
+/// router it actually served, and that is the table production must use: a
+/// route added in `main.rs` and nowhere else is in it. The table is a
+/// `OnceLock`, so an engine that arrives at `App` already holding one keeps
+/// what it holds — hand a production engine through this and every `@route` to
+/// a name your test router did not register becomes a `500`.
+///
+/// What it is for: a test that renders a view without a request. The auth kit's
+/// smoke tests render every template with an empty context, and once the
+/// layouts used `@route` those tests had no table to resolve against — found by
+/// upgrading a production project and running its suite: 25 of 1,313 failed.
+pub fn engine_with_routes(engine: Engine, router: &mut rustlavel_http::Router) -> Engine {
+    router.finalize();
+    let _ = engine.routes_cell().set(std::sync::Arc::new(RouteTable::new(router.named_routes())));
+    engine
+}
+
 pub fn engine_from_config(config: &Config, root: &std::path::Path) -> Engine {
     let directory = config.string("view.root", rustlavel_view::DEFAULT_ROOT);
     let reload = config.bool("view.reload", !config.is_production());

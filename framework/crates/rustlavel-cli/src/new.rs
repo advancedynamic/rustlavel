@@ -223,43 +223,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
              The discovery package is enabled; the page was not written.",
         );
     }
-    values.insert(
-        "module_declarations",
-        match wired {
-            true => "pub mod discovery;\n".to_string(),
-            false => String::new(),
-        },
-    );
-    values.insert(
-        "module_list",
-        match wired {
-            true => ", Box::new(discovery::Discovery)".to_string(),
-            false => String::new(),
-        },
-    );
-    values.insert(
-        "module_nav_flags",
-        match wired {
-            true => "        (\"can_view_discovery\", \"discovery.view\"),\n".to_string(),
-            false => String::new(),
-        },
-    );
-    values.insert(
-        "modules_nav",
-        match wired {
-            true => auth_kit::DISCOVERY_NAV.to_string(),
-            false => String::new(),
-        },
-    );
-    // Which cache the configuration should point at. Asking for `valkey` and
-    // receiving the memory driver would be a package that looks enabled and
-    // does nothing — the shape this scaffold keeps having to remove.
-    let valkey = packages.iter().any(|p| p == "valkey");
-    values.insert("cache_driver", if valkey { "valkey" } else { "memory" }.to_string());
-    values.insert(
-        "cache_url",
-        if valkey { "valkey://127.0.0.1:6379" } else { "" }.to_string(),
-    );
+    // The four module slots, from the one place that defines them.
+    for (slot, value) in auth_kit::module_slots(wired) {
+        values.insert(slot, value);
+    }
     values.insert("name", crate_name.clone());
     values.insert("crate_name", crate_name.clone());
     values.insert("app_name", naming::pascal(&name));

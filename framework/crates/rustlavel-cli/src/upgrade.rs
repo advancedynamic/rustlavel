@@ -325,14 +325,23 @@ fn report(r: Report) {
 /// both sides on purpose: whatever a project put there is a change *you* made
 /// relative to base, which is exactly how the merge should see it.
 fn values_for(project: &Project) -> BTreeMap<&'static str, String> {
-    BTreeMap::from([
+    let mut values = BTreeMap::from([
         ("crate_name", project.crate_name.clone()),
         ("name", project.crate_name.clone()),
         ("app_name", naming::pascal(&project.crate_name)),
         ("plugins", String::new()),
         ("database", String::new()),
         ("dependency", String::new()),
-    ])
+    ]);
+
+    // Filled the way the project is: a project with the discovery dashboard
+    // keeps its wiring, one without gets the slots rendered empty. An upgrade
+    // never *adds* the dashboard — that is `new`'s question to ask.
+    let wired = project.root.join("src/modules/discovery/mod.rs").exists();
+    for (slot, value) in auth_kit::module_slots(wired) {
+        values.insert(slot, value);
+    }
+    values
 }
 
 fn write(path: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -650,6 +659,52 @@ mod tests {
         let what = update_dependency(&dir, "0.7.2").unwrap().expect("it says why");
         assert!(what.contains("local checkout"), "{what}");
         assert_eq!(std::fs::read_to_string(dir.join("Cargo.toml")).unwrap(), before);
+    }
+
+    /// Every template the upgrade can write, rendered with *the upgrade's*
+    /// values, in both states a project can be in. The `new` command had this
+    /// guard and the upgrade did not — so upgrading a real 0.7.4 project wrote
+    /// `{{module_nav_flags}}` into `page.rs`, which does not compile, and
+    /// `{{modules_nav}}` into the navigation. A guard that checks one writer's
+    /// values says nothing about the other writer.
+    #[test]
+    fn the_upgrade_renders_every_template_without_a_placeholder() {
+        for wired in [false, true] {
+            let dir = temp(if wired { "render-wired" } else { "render-plain" });
+            if wired {
+                std::fs::create_dir_all(dir.join("src/modules/discovery")).unwrap();
+                std::fs::write(dir.join("src/modules/discovery/mod.rs"), "").unwrap();
+            }
+            let project = Project { root: dir.clone(), crate_name: "demo".into() };
+            let values = values_for(&project);
+
+            let files = auth_kit::FILES.iter().chain(auth_kit::DISCOVERY_FILES);
+            for (path, template) in files {
+                let rendered = render(template, &values);
+                if let Some(found) = placeholder_left(&rendered) {
+                    panic!(
+                        "upgrade writes `{path}` still holding `{found}` (wired={wired}) — \
+                         the value it wants is not among the ones `values_for` supplies"
+                    );
+                }
+            }
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    /// `{{name}}` with a letter right after the braces. `{{ spaced }}` is the
+    /// view engine's own syntax and `{{--` a view comment; neither counts.
+    fn placeholder_left(text: &str) -> Option<String> {
+        let bytes = text.as_bytes();
+        let mut i = 0;
+        while i + 2 < bytes.len() {
+            if bytes[i] == b'{' && bytes[i + 1] == b'{' && bytes[i + 2].is_ascii_alphabetic() {
+                let end = text[i..].find("}}").map(|e| i + e + 2).unwrap_or(text.len());
+                return Some(text[i..end].to_string());
+            }
+            i += 1;
+        }
+        None
     }
 
     #[test]

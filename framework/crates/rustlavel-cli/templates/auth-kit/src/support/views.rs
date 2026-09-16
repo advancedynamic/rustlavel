@@ -11,6 +11,7 @@
 //! drift into building an engine the other does not have.
 
 use rustlavel::prelude::*;
+use rustlavel::{Plugin, Setup};
 
 /// Load `lang/`, falling back to English for anything untranslated.
 ///
@@ -31,4 +32,33 @@ pub fn translator(config: &Config) -> Result<Translator> {
 pub fn engine(config: &Config, root: &std::path::Path, translator: &Translator) -> Engine {
     rustlavel::engine_from_config(config, root)
         .with_translator(std::sync::Arc::new(translator.clone()))
+}
+
+/// The engine above, plus the route table `@route(…)` resolves against.
+///
+/// **For tests, and only for tests.** `App` fills the table from the router it
+/// actually serves, and a route added in `main.rs` and nowhere else is in
+/// *that* table — so `main.rs` must keep using [`engine`] and let `App` do it.
+/// A test that renders a view without a request has no `App`, so this replays
+/// the same registration `main.rs` performs: the two route files and every
+/// module. Once the layouts used `@route`, every such test failed with "an
+/// engine with no route table"; this is what gives them one.
+///
+/// If a name a template uses is missing here, the test fails loudly naming it,
+/// which is the right outcome: it means `main.rs` registers something this
+/// list does not, and the two have drifted.
+pub fn engine_for_tests(config: &Config, root: &std::path::Path, translator: &Translator) -> Engine {
+    let mut router = Router::new();
+    crate::routes::auth::routes(&mut router);
+    crate::routes::web::routes(&mut router);
+
+    // Modules register through `Plugin::register`, which wants a `Setup`. A
+    // builder nobody reads is enough for the routes to land.
+    let mut context = Some(rustlavel::Context::builder());
+    for module in crate::modules::all() {
+        let plugin: Box<dyn Plugin> = module;
+        plugin.register(&mut Setup { router: &mut router, config, context: &mut context });
+    }
+
+    rustlavel::engine_with_routes(engine(config, root, translator), &mut router)
 }

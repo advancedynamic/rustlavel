@@ -74,6 +74,25 @@ pub const DISCOVERY_NAV: &str = r#"
     @endif
 "#;
 
+/// The four `{{module_*}}` slots the kit's templates carry, filled for a
+/// project with the discovery dashboard or left empty for one without.
+///
+/// **One definition, used by `new` and `upgrade` both.** The values used to be
+/// written inline in `new`, and `upgrade` did not know they existed — so
+/// upgrading a real 0.7.4 project wrote `{{module_nav_flags}}` into `page.rs`
+/// (which does not compile) and `{{modules_nav}}` into the navigation. Found by
+/// running the upgrade against a copy of a production project; the placeholder
+/// guard had only ever been given `new`'s values.
+pub fn module_slots(wired: bool) -> Vec<(&'static str, String)> {
+    let filled = |yes: &str| if wired { yes.to_string() } else { String::new() };
+    vec![
+        ("module_declarations", filled("pub mod discovery;\n")),
+        ("module_list", filled(", Box::new(discovery::Discovery)")),
+        ("module_nav_flags", filled("        (\"can_view_discovery\", \"discovery.view\"),\n")),
+        ("modules_nav", filled(DISCOVERY_NAV)),
+    ]
+}
+
 pub const FILES: &[(&str, &str)] = &[
     ("src/lib.rs", include_str!("../templates/auth-kit/src/lib.rs")),
     ("src/main.rs", include_str!("../templates/auth-kit/src/main.rs")),
