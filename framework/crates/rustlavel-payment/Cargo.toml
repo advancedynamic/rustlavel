@@ -1,0 +1,31 @@
+[package]
+name = "rustlavel-payment"
+description = "Payment gateways behind one trait: charges over virtual account, QRIS, e-wallet and retail; transfers; a webhook receiver that verifies and deduplicates"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+readme = "README.md"
+authors.workspace = true
+repository.workspace = true
+
+[features]
+# A webhook log backed by a table, so a duplicate callback is still a
+# duplicate after a restart. Optional: an application with no database keeps
+# the in-memory log, which is right for a test and for nothing else.
+db = ["dep:rustlavel-db"]
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-http.workspace = true
+rustlavel-client.workspace = true
+rustlavel-db = { workspace = true, optional = true }
+tokio.workspace = true
+# Webhook signatures are HMAC-SHA256 at every gateway this crate has met, and
+# a signature scheme is the one thing the framework does not write for itself.
+hmac = "0.12"
+sha2 = "0.10"
+
+[dev-dependencies]
+# The database log is proved against a real database, including the race.
+rustlavel-db.workspace = true

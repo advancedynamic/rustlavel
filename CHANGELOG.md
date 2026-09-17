@@ -267,6 +267,24 @@ next.
   one is still offered — and the caller's own retries cover the second. A cache
   that expired would turn a registry outage into a total outage on a timer.
 
+- **`rustlavel-payment`** — gateways behind one trait: charges over virtual
+  account, QRIS, e-wallet and retail; transfers out, singly and in batch; and a
+  webhook receiver. `Money` is an integer of minor units, `Channel` an enum, so
+  a rounding error or a typo in a bank code is impossible rather than unlikely.
+
+  The receiver verifies the signature over the raw bytes, records the event
+  under the gateway's id, and runs the handler — in that order. A duplicate is
+  acknowledged without the handler running; a failed handler withdraws the
+  record so the gateway's retry is processed rather than dropped. The
+  table-backed log is one `INSERT` against a unique index: sixteen deliveries
+  racing, exactly one told it was first — and sixteen of sixteen without the
+  index, measured.
+
+  `FakeGateway` is the only driver. It signs its callbacks properly and refuses
+  a reused transfer reference, so a test cannot pass on behaviour production
+  lacks. A driver for a real gateway is written from its specification, not
+  guessed.
+
 - **Uploads that never touch the server.** `S3Storage::presigned_put` and
   `presigned_get` sign a request into a URL, so a browser can upload or download
   with no credential of its own and the application is never in the path — the

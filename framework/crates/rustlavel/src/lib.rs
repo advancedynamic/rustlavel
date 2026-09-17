@@ -42,6 +42,8 @@ pub use rustlavel_gateway as gateway;
 pub use rustlavel_gateway::{Gateway, Upstream};
 #[cfg(feature = "discovery")]
 pub use rustlavel_discovery as discovery;
+#[cfg(feature = "payment")]
+pub use rustlavel_payment as payment;
 #[cfg(feature = "discovery")]
 pub use rustlavel_discovery::{Discovery, Instance, Peers, Registrar, Registry, RegistryServer};
 #[cfg(feature = "i18n")]

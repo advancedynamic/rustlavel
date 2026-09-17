@@ -674,6 +674,7 @@ dependencies = [
  "rustlavel-oauth-provider",
  "rustlavel-openapi",
  "rustlavel-otel",
+ "rustlavel-payment",
  "rustlavel-queue",
  "rustlavel-rbac",
  "rustlavel-search",
@@ -931,6 +932,19 @@ dependencies = [
  "rustlavel-client",
  "rustlavel-core",
  "rustlavel-http",
+ "tokio",
+]
+
+[[package]]
+name = "rustlavel-payment"
+version = "0.7.4"
+dependencies = [
+ "hmac",
+ "rustlavel-client",
+ "rustlavel-core",
+ "rustlavel-db",
+ "rustlavel-http",
+ "sha2",
  "tokio",
 ]
 

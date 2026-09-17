@@ -43,6 +43,7 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("oauth-provider", &["storage/sessions"]),
     ("openapi", &[]),
     ("otel", &[]),
+    ("payment", &["database/migrations"]),
     ("queue", &["database/migrations"]),
     ("rbac", &["database/migrations"]),
     // Not a crate of its own: it turns on `rustlavel-auth`'s Redis session
@@ -535,6 +536,9 @@ const NEEDS_WIRING: &[(&str, &str)] = &[
     // is not.
     ("i18n", "Translator::new() — load_dir(\"lang\"), then .state(it) and .views(engine.with_translator(...))"),
     ("mcp", "Mcp::new(server)"),
+    // A receiver needs the gateway the application chose and the handler
+    // that credits the customer — neither of which a scaffold can invent.
+    ("payment", "Receiver::new(Arc::new(FakeGateway::new(secret)), Arc::new(DatabaseWebhookLog::new(db.clone(), \"fake\")), |event| Box::pin(async move { … }))"),
     ("oauth", "Socialite::new().provider(client)"),
     ("oauth-provider", "OAuthProvider::new(server)"),
 ];

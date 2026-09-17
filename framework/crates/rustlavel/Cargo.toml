@@ -39,6 +39,7 @@ rustlavel-audit = { workspace = true, optional = true }
 rustlavel-flags = { workspace = true, optional = true }
 rustlavel-gateway = { workspace = true, optional = true }
 rustlavel-discovery = { workspace = true, optional = true }
+rustlavel-payment = { workspace = true, optional = true }
 rustlavel-rbac = { workspace = true, optional = true }
 rustlavel-queue = { workspace = true, optional = true }
 rustlavel-storage = { workspace = true, optional = true }
@@ -73,7 +74,7 @@ client = ["dep:rustlavel-client"]
 # database-backed stores are compiled only when the provider is also enabled.
 # Without the `?` every application with a database would drag the OAuth
 # provider in.
-db = ["dep:rustlavel-db", "rustlavel-oauth-provider?/db"]
+db = ["dep:rustlavel-db", "rustlavel-oauth-provider?/db", "rustlavel-payment?/db"]
 # The development overlay. Off in production unless said so in full.
 debugbar = ["dep:rustlavel-debugbar"]
 i18n = ["dep:rustlavel-i18n"]
@@ -112,6 +113,10 @@ gateway = ["dep:rustlavel-gateway", "client", "rustlavel-discovery?/gateway"]
 # A service registry and the client that uses it. Enabling it alongside the
 # gateway turns on `Upstream::service`, which routes by name.
 discovery = ["dep:rustlavel-discovery", "client"]
+# Payment gateways behind one trait, and a webhook receiver that verifies and
+# deduplicates. The table-backed webhook log rides on `db` the way the OAuth
+# provider's stores do.
+payment = ["dep:rustlavel-payment", "client"]
 model-cache = ["dep:rustlavel-model-cache", "db", "cache"]
 rbac = ["dep:rustlavel-rbac", "db", "auth"]
 queue = ["dep:rustlavel-queue", "db"]
@@ -144,6 +149,7 @@ full = [
     "oauth-provider",
     "openapi",
     "otel",
+    "payment",
     "redis-sessions",
     "search",
     "audit",
