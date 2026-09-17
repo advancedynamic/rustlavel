@@ -665,6 +665,7 @@ dependencies = [
  "rustlavel-http",
  "rustlavel-i18n",
  "rustlavel-ldap",
+ "rustlavel-ledger",
  "rustlavel-macros",
  "rustlavel-mail",
  "rustlavel-mcp",
@@ -842,6 +843,15 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "webpki-roots 0.26.11",
+]
+
+[[package]]
+name = "rustlavel-ledger"
+version = "0.7.4"
+dependencies = [
+ "rustlavel-core",
+ "rustlavel-db",
+ "tokio",
 ]
 
 [[package]]

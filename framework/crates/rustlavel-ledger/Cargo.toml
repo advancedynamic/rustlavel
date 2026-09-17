@@ -1,0 +1,17 @@
+[package]
+name = "rustlavel-ledger"
+description = "A double-entry ledger for credits and balances: atomic debit and credit, holds that capture or release, credits that expire by batch, and a history that adds up"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+readme = "README.md"
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-db.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]

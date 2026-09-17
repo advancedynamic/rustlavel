@@ -267,6 +267,29 @@ next.
   one is still offered — and the caller's own retries cover the second. A cache
   that expired would turn a registry outage into a total outage on a timer.
 
+- **`rustlavel-ledger`** — a double-entry book for credits. Every movement is
+  a transfer between two accounts writing two equal and opposite entries, with
+  `system:topup`, `system:consumption` and `system:expiry` as the other side,
+  so every balance in the book sums to zero and `audit()` can say whether it
+  does. Top-ups and consumes are idempotent on their reference; holds reserve
+  and then capture or release exactly once; credits expire by batch, oldest
+  spent first; the history carries its running balance.
+
+  The debit is `UPDATE … WHERE balance - held >= amount` and the row count is
+  the answer — the check and the lock in one statement. Measured against
+  PostgreSQL: twenty consumers racing for a balance good for ten, exactly ten
+  succeed; remove the guard and twenty do. Sixteen captures of one hold, one
+  charge. Eight first-time callers, one account — and that last one found that
+  PostgreSQL aborts the whole transaction on the unique-index violation an
+  idempotent insert courts on purpose, so every such insert sits in a
+  savepoint.
+
+- **Query builder inside a transaction.** `get_in`, `first_in`, `count_in`,
+  `insert_in`, `update_in`, `delete_in` run the same statements on a
+  `Transaction` rather than the pool. Anything that is several statements or
+  nothing needed these, and until now wrote SQL by hand with the placeholder
+  style of whichever database it happened to be on.
+
 - **Job progress, readable from outside the worker, and job chains.**
   `handle_with(&self, ctx)` — a default that calls `handle`, so nothing
   existing changes — gives a job `ctx.progress(percent, "stage")`, and a

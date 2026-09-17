@@ -565,6 +565,58 @@ impl QueryBuilder {
         let (sql, params) = self.to_delete_sql(db.dialect(), true)?;
         db.execute(&sql, &params).await
     }
+
+    // ------------------------------------------------------------------
+    // Inside a transaction.
+    //
+    // The same statements, run on a `Transaction` rather than the pool. A
+    // ledger moving money between two accounts, a hold being captured, an
+    // order and its lines — anything that is several statements or nothing —
+    // needs these, and until they existed every such caller wrote SQL by hand
+    // with the right placeholder style for the database it happened to be on.
+    // ------------------------------------------------------------------
+
+    /// [`get`](Self::get), inside a transaction.
+    pub async fn get_in(&self, tx: &mut crate::Transaction) -> Result<Vec<Row>> {
+        let (sql, params) = self.to_sql(tx.dialect())?;
+        tx.select(&sql, &params).await
+    }
+
+    /// [`first`](Self::first), inside a transaction.
+    pub async fn first_in(&self, tx: &mut crate::Transaction) -> Result<Option<Row>> {
+        let (sql, params) = self.clone().limit(1).to_sql(tx.dialect())?;
+        tx.select_one(&sql, &params).await
+    }
+
+    /// [`count`](Self::count), inside a transaction.
+    pub async fn count_in(&self, tx: &mut crate::Transaction) -> Result<i64> {
+        let (sql, params) = self.to_count_sql(tx.dialect())?;
+        Ok(tx.scalar::<i64>(&sql, &params).await?.unwrap_or(0))
+    }
+
+    /// [`insert_without_id`](Self::insert_without_id), inside a transaction.
+    pub async fn insert_in(&self, tx: &mut crate::Transaction, values: &[(&str, Value)]) -> Result<u64> {
+        let row: Vec<(String, Value)> =
+            values.iter().map(|(name, value)| ((*name).to_string(), value.clone())).collect();
+        let (sql, params) = self.to_insert_sql(tx.dialect(), std::slice::from_ref(&row), None)?;
+        tx.execute(&sql, &params).await
+    }
+
+    /// [`update`](Self::update), inside a transaction. The row count it
+    /// returns is what a compare-and-set reads: `filter("balance", …)` and
+    /// zero rows means somebody else moved first.
+    pub async fn update_in(&self, tx: &mut crate::Transaction, values: &[(&str, Value)]) -> Result<u64> {
+        let owned: Vec<(String, Value)> =
+            values.iter().map(|(name, value)| ((*name).to_string(), value.clone())).collect();
+        let (sql, params) = self.to_update_sql(tx.dialect(), &owned)?;
+        tx.execute(&sql, &params).await
+    }
+
+    /// [`delete`](Self::delete), inside a transaction.
+    pub async fn delete_in(&self, tx: &mut crate::Transaction) -> Result<u64> {
+        let (sql, params) = self.to_delete_sql(tx.dialect(), false)?;
+        tx.execute(&sql, &params).await
+    }
 }
 
 /// Render a condition list, threading parameter numbering through it.

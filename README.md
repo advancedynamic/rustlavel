@@ -127,6 +127,7 @@ App::new()?
 | `rustlavel-gateway` | An API gateway: a route table, hop-by-hop headers dropped, one health endpoint for every upstream |
 | `rustlavel-discovery` | A service registry and the client that uses it — register, resolve, replicate; Eureka-compatible |
 | `rustlavel-payment` | Payment gateways behind one trait — VA, QRIS, e-wallet, retail, transfers — and a webhook receiver that verifies and deduplicates |
+| `rustlavel-ledger` | A double-entry ledger for credits — atomic debit and credit, holds, expiry by batch, a history that adds up |
 | `rustlavel-ai` | Anthropic, OpenAI and Ollama through one API |
 | `rustlavel-mcp` | Model Context Protocol, server and client |
 | `rustlavel-oauth` | Sign in through Google, GitHub and the rest — OAuth 2.1 with mandatory PKCE |

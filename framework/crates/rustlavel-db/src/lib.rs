@@ -224,6 +224,12 @@ impl Transaction {
             .ok_or_else(|| Error::msg("this transaction has already finished"))
     }
 
+    /// The dialect this transaction speaks, so a query builder can render for
+    /// it. See the `*_in` methods on [`QueryBuilder`].
+    pub fn dialect(&self) -> &dyn Dialect {
+        self.dialect.as_ref()
+    }
+
     pub async fn select(&mut self, sql: &str, params: &[Value]) -> Result<Vec<Row>> {
         Ok(self.connection()?.query(sql, params).await?.rows)
     }

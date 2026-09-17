@@ -32,6 +32,7 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("gateway", &[]),
     ("i18n", &["lang"]),
     ("ldap", &[]),
+    ("ledger", &["database/migrations"]),
     ("mail", &["resources/views"]),
     ("mcp", &[]),
     ("metrics", &[]),
@@ -538,6 +539,7 @@ const NEEDS_WIRING: &[(&str, &str)] = &[
     ("mcp", "Mcp::new(server)"),
     // A receiver needs the gateway the application chose and the handler
     // that credits the customer — neither of which a scaffold can invent.
+    ("ledger", "Ledger::new(db.clone(), \"credits\") — then .state(it); register CreateLedgerTables in the migrations"),
     ("payment", "Receiver::new(Arc::new(FakeGateway::new(secret)), Arc::new(DatabaseWebhookLog::new(db.clone(), \"fake\")), |event| Box::pin(async move { … }))"),
     ("oauth", "Socialite::new().provider(client)"),
     ("oauth-provider", "OAuthProvider::new(server)"),

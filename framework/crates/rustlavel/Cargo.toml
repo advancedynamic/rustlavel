@@ -40,6 +40,7 @@ rustlavel-flags = { workspace = true, optional = true }
 rustlavel-gateway = { workspace = true, optional = true }
 rustlavel-discovery = { workspace = true, optional = true }
 rustlavel-payment = { workspace = true, optional = true }
+rustlavel-ledger = { workspace = true, optional = true }
 rustlavel-rbac = { workspace = true, optional = true }
 rustlavel-queue = { workspace = true, optional = true }
 rustlavel-storage = { workspace = true, optional = true }
@@ -117,6 +118,9 @@ discovery = ["dep:rustlavel-discovery", "client"]
 # deduplicates. The table-backed webhook log rides on `db` the way the OAuth
 # provider's stores do.
 payment = ["dep:rustlavel-payment", "client"]
+# A double-entry ledger for credits and balances. Needs the database: the
+# guarantees are about what the database does under contention.
+ledger = ["dep:rustlavel-ledger", "db"]
 model-cache = ["dep:rustlavel-model-cache", "db", "cache"]
 rbac = ["dep:rustlavel-rbac", "db", "auth"]
 queue = ["dep:rustlavel-queue", "db"]
@@ -141,6 +145,7 @@ full = [
     "gateway",
     "i18n",
     "ldap",
+    "ledger",
     "mail",
     "mcp",
     "metrics",
