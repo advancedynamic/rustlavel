@@ -20,6 +20,7 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("audit", &["database/migrations"]),
     ("auth", &["storage/sessions"]),
     ("auth-kit", &["storage/sessions", "resources/views", "public/css", "public/js"]),
+    ("billing", &["database/migrations"]),
     ("cache", &["storage/cache"]),
     ("client", &[]),
     ("db", &["database/migrations", "database/seeders"]),
@@ -540,6 +541,7 @@ const NEEDS_WIRING: &[(&str, &str)] = &[
     // A receiver needs the gateway the application chose and the handler
     // that credits the customer — neither of which a scaffold can invent.
     ("ledger", "Ledger::new(db.clone(), \"credits\") — then .state(it); register CreateLedgerTables in the migrations"),
+    ("billing", "Billing::new(db.clone(), ledger.clone(), gateway, plans) — then .state(it); register CreateBillingTables; schedule billing.tick() and send what it returns"),
     ("payment", "Receiver::new(Arc::new(FakeGateway::new(secret)), Arc::new(DatabaseWebhookLog::new(db.clone(), \"fake\")), |event| Box::pin(async move { … }))"),
     ("oauth", "Socialite::new().provider(client)"),
     ("oauth-provider", "OAuthProvider::new(server)"),

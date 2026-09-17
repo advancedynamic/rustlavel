@@ -41,6 +41,7 @@ rustlavel-gateway = { workspace = true, optional = true }
 rustlavel-discovery = { workspace = true, optional = true }
 rustlavel-payment = { workspace = true, optional = true }
 rustlavel-ledger = { workspace = true, optional = true }
+rustlavel-billing = { workspace = true, optional = true }
 rustlavel-rbac = { workspace = true, optional = true }
 rustlavel-queue = { workspace = true, optional = true }
 rustlavel-storage = { workspace = true, optional = true }
@@ -121,6 +122,9 @@ payment = ["dep:rustlavel-payment", "client"]
 # A double-entry ledger for credits and balances. Needs the database: the
 # guarantees are about what the database does under contention.
 ledger = ["dep:rustlavel-ledger", "db"]
+# Plans and subscriptions paid by invoice rather than auto-debit: a charge each
+# cycle through `payment`, credits each cycle through `ledger`.
+billing = ["dep:rustlavel-billing", "payment", "ledger"]
 model-cache = ["dep:rustlavel-model-cache", "db", "cache"]
 rbac = ["dep:rustlavel-rbac", "db", "auth"]
 queue = ["dep:rustlavel-queue", "db"]
@@ -137,6 +141,7 @@ ws = ["dep:rustlavel-ws"]
 full = [
     "ai",
     "auth",
+    "billing",
     "cache",
     "client",
     "db",

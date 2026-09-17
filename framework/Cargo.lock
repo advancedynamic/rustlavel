@@ -654,6 +654,7 @@ dependencies = [
  "rustlavel-ai",
  "rustlavel-audit",
  "rustlavel-auth",
+ "rustlavel-billing",
  "rustlavel-cache",
  "rustlavel-client",
  "rustlavel-core",
@@ -723,6 +724,17 @@ dependencies = [
  "sha1",
  "sha2",
  "subtle",
+ "tokio",
+]
+
+[[package]]
+name = "rustlavel-billing"
+version = "0.7.4"
+dependencies = [
+ "rustlavel-core",
+ "rustlavel-db",
+ "rustlavel-ledger",
+ "rustlavel-payment",
  "tokio",
 ]
 

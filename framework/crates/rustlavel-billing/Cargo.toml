@@ -1,0 +1,19 @@
+[package]
+name = "rustlavel-billing"
+description = "Plans and subscriptions without auto-debit: an invoice and a charge each cycle, access extended when the callback says paid, a grace period, and the reminders to send"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+readme = "README.md"
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-db.workspace = true
+rustlavel-payment.workspace = true
+rustlavel-ledger.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]

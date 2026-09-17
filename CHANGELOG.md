@@ -284,6 +284,29 @@ next.
   idempotent insert courts on purpose, so every such insert sits in a
   savepoint.
 
+- **`rustlavel-billing`** — plans and subscriptions for a market where a
+  subscription cannot pull money. Each cycle it raises an invoice and a charge
+  through `rustlavel-payment` — a VA number, a QR — and waits; when the
+  webhook says paid, `on_paid` extends the period by one cycle and credits the
+  plan's allowance through `rustlavel-ledger`, idempotently under the
+  invoice's id. `tick` runs on a schedule: renewals raised seven days ahead,
+  `Due` reminders at three days and one, **grace** when the period ends
+  unpaid (still served, told `Overdue`), **suspension** when grace runs out.
+  It returns the reminders that fell due; the words and the sending are the
+  application's. `change_plan` takes effect at the next cycle and reissues a
+  renewal already on the table; `cancel` ends at the period end; `renew`
+  brings a suspended subscription back; `reissue` moves an invoice to another
+  channel. A renewal paid in grace starts where the last period ended; one
+  that ends a suspension starts now.
+
+  Safe under two schedulers: guarded status updates, reminders claimed
+  through a unique index on `(invoice, kind)`, renewals through one on
+  `(subscription, period)`. Eight concurrent ticks over five subscriptions
+  raise five renewals and ten reminders — without the reminder index, eighty;
+  without the period index, a sixth renewal, because "is there one already"
+  followed by an insert has a gap another tick's insert fits in. Sixteen
+  concurrent "paid" webhooks extend once and credit once.
+
 - **Query builder inside a transaction.** `get_in`, `first_in`, `count_in`,
   `insert_in`, `update_in`, `delete_in` run the same statements on a
   `Transaction` rather than the pool. Anything that is several statements or

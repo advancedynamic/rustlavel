@@ -48,6 +48,10 @@ pub use rustlavel_payment as payment;
 pub use rustlavel_ledger as ledger;
 #[cfg(feature = "ledger")]
 pub use rustlavel_ledger::Ledger;
+#[cfg(feature = "billing")]
+pub use rustlavel_billing as billing;
+#[cfg(feature = "billing")]
+pub use rustlavel_billing::Billing;
 #[cfg(feature = "discovery")]
 pub use rustlavel_discovery::{Discovery, Instance, Peers, Registrar, Registry, RegistryServer};
 #[cfg(feature = "i18n")]
