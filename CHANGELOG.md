@@ -284,6 +284,20 @@ next.
   idempotent insert courts on purpose, so every such insert sits in a
   savepoint.
 
+- **Speech to text in `rustlavel-ai`** — `Transcription`, over a
+  `Transcriber` trait with two wire formats: `Whisper` (OpenAI's
+  `/v1/audio/transcriptions`, which a self-hosted faster-whisper server also
+  serves — `Whisper::local(url)`, no key) and `Deepgram` (`/v1/listen`). The
+  answer is a `Transcript`: every word with its start and end in seconds, its
+  speaker when diarized, its confidence when reported; segments for sentence
+  edges; `words_between(start, end)` for what a clip says; `to_srt()` and
+  `to_vtt()` for burning in. Asking Whisper for speakers is an error, not a
+  quiet `None`. Configured by `ai.transcribe.*` or `TRANSCRIBE_*`, with
+  `OPENAI_API_KEY` / `DEEPGRAM_API_KEY` as the conventional fallbacks, and no
+  key demanded for a server that is not OpenAI's. `FakeTranscriber` for tests;
+  an `ai.transcribe` event with sizes and timings and never the words.
+  Measured against `fedirz/faster-whisper-server` with a spoken clip.
+
 - **`rustlavel-billing`** — plans and subscriptions for a market where a
   subscription cannot pull money. Each cycle it raises an invoice and a charge
   through `rustlavel-payment` — a VA number, a QR — and waits; when the

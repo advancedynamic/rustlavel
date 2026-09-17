@@ -22,7 +22,9 @@
 //! ```
 //!
 //! Tools, structured output and multi-turn conversations are the same builder
-//! with one more call on it. Every call reports an `ai.call` event — provider,
+//! with one more call on it. Speech is [`transcribe`]: the same shape over
+//! Whisper (OpenAI's, or a faster-whisper server of your own) and Deepgram,
+//! answering with every word and the moment it was said. Every call reports an `ai.call` event — provider,
 //! model, token counts, duration — so Telescope can show what the models cost
 //! without ever seeing a prompt or a key.
 
@@ -35,6 +37,7 @@ pub mod providers;
 pub mod request;
 pub mod structured;
 pub mod tool;
+pub mod transcribe;
 
 pub use completion::{Completion, StopReason, ToolCall, Usage};
 pub use config::{ApiKey, Settings};
@@ -45,6 +48,7 @@ pub use providers::{Anthropic, Ollama, OpenAi};
 pub use request::Request;
 pub use structured::generate_as;
 pub use tool::{DEFAULT_MAX_ROUNDS, Schema, Tool, Toolbox, run_tools};
+pub use transcribe::{Audio, Deepgram, FakeTranscriber, Transcriber, Transcript, Transcription, Whisper};
 
 use rustlavel_client::Client;
 use rustlavel_core::{Config, Error, Json, Result};
