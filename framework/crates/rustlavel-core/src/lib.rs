@@ -4,6 +4,7 @@
 //! application context that replaces Laravel's service container, structured
 //! logging, and the instrumentation bus that Telescope and tracing listen on.
 
+pub mod base64;
 pub mod config;
 pub mod context;
 pub mod dispatcher;

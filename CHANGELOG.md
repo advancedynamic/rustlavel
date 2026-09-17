@@ -267,6 +267,17 @@ next.
   one is still offered — and the caller's own retries cover the second. A cache
   that expired would turn a registry outage into a total outage on a timer.
 
+- **Uploads that never touch the server.** `S3Storage::presigned_put` and
+  `presigned_get` sign a request into a URL, so a browser can upload or download
+  with no credential of its own and the application is never in the path — the
+  only sane shape for a video. `create_multipart`, `presigned_part`,
+  `complete_multipart` and `abort_multipart` do the same for files of any size,
+  a part at a time and in parallel; `expire_after` sets the bucket's lifecycle
+  so raw uploads and abandoned parts stop being billed. The query-string
+  signing is checked against the worked example in AWS's documentation, byte
+  for byte. Base64 moved to `rustlavel-core` for this, with a re-export from
+  `rustlavel-auth` so every existing path still works.
+
 - **Valkey**, as the cache package under the name of the server you run.
   Valkey is the Linux Foundation fork of Redis 7.2 and speaks RESP unchanged, so
   a second client would have been this one with the name changed — and two

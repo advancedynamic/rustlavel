@@ -18,6 +18,10 @@ tokio.workspace = true
 # signing scheme is written here; the hash primitives are not.
 sha2 = "0.10"
 hmac = "0.12"
+# For the `Content-MD5` header S3 requires on a lifecycle configuration and on
+# nothing else this crate sends. Not a security use — the checksum the API
+# demands — and one of the primitives the project does not write for itself.
+md-5 = "0.10"
 
 [dev-dependencies]
 tokio = { workspace = true }

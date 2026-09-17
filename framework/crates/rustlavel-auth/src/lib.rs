@@ -27,7 +27,13 @@
 //! from the first test and is a vulnerability regardless — this is the one
 //! place where writing less code is the safer engineering decision.
 
-pub mod base64;
+/// Base64 now lives in `rustlavel-core`, beside the other formats the
+/// framework writes for itself, so a crate that needs it — storage, for a
+/// `Content-MD5` header — is not made to depend on the whole of auth. Every
+/// `rustlavel_auth::base64::…` path keeps working through this re-export.
+pub mod base64 {
+    pub use rustlavel_core::base64::*;
+}
 pub mod csrf;
 pub mod encryption;
 pub mod guard;

@@ -970,6 +970,7 @@ name = "rustlavel-storage"
 version = "0.7.4"
 dependencies = [
  "hmac",
+ "md-5",
  "rustlavel-client",
  "rustlavel-core",
  "rustlavel-http",

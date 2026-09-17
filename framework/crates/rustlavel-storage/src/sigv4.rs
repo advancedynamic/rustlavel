@@ -96,6 +96,66 @@ pub fn encode_segment(segment: &str) -> String {
     out
 }
 
+/// The signature over a canonical request, as lowercase hex.
+pub fn signature(signing: &Signing<'_>, canonical: &str) -> String {
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{}\n{}\n{}",
+        signing.timestamp,
+        signing.scope(),
+        sha256_hex(canonical.as_bytes())
+    );
+    hex(&hmac(&signing_key(signing), string_to_sign.as_bytes()))
+}
+
+/// The query string of a presigned URL: the request signed into the URL
+/// itself, so a browser can make it without ever holding a credential.
+///
+/// This is how a large upload should reach a bucket. A video that passes
+/// through the application server costs that server the whole file in memory
+/// and the whole transfer twice; a browser given a URL like this one PUTs
+/// straight to the bucket and the server is never in the path. `expires` is
+/// how long the URL stays valid — seconds, at most seven days, which is the
+/// limit AWS enforces.
+///
+/// The payload is `UNSIGNED-PAYLOAD`, which is the only option: the signer
+/// does not have the bytes, the browser does. Only `host` is signed, so the
+/// browser is free to add whatever headers it likes — with one exception a
+/// caller can opt into via `extra`, such as pinning `content-type`.
+pub fn presigned_query(
+    signing: &Signing<'_>,
+    method: &str,
+    host: &str,
+    path: &str,
+    expires_seconds: u64,
+    extra: &[(&str, &str)],
+) -> String {
+    let credential = format!("{}/{}", signing.access_key, signing.scope());
+
+    let mut pairs: Vec<(String, String)> = vec![
+        ("X-Amz-Algorithm".into(), "AWS4-HMAC-SHA256".into()),
+        ("X-Amz-Credential".into(), credential),
+        ("X-Amz-Date".into(), signing.timestamp.into()),
+        ("X-Amz-Expires".into(), expires_seconds.to_string()),
+        ("X-Amz-SignedHeaders".into(), "host".into()),
+    ];
+    for (name, value) in extra {
+        pairs.push(((*name).into(), (*value).into()));
+    }
+    // Sorted by name, and every name and value encoded: the canonical query is
+    // what is signed, and it has to be byte-for-byte what is sent.
+    pairs.sort();
+    let query: String = pairs
+        .iter()
+        .map(|(name, value)| format!("{}={}", encode_segment(name), encode_segment(value)))
+        .collect::<Vec<_>>()
+        .join("&");
+
+    let headers = vec![("host".to_string(), host.to_string())];
+    let (canonical, _) = canonical_request(method, path, &query, &headers, UNSIGNED_PAYLOAD);
+
+    format!("{query}&X-Amz-Signature={}", signature(signing, &canonical))
+}
+
 /// The `Authorization` header value for a request.
 pub fn authorization(
     signing: &Signing<'_>,
@@ -107,15 +167,7 @@ pub fn authorization(
 ) -> String {
     let (canonical, signed_headers) =
         canonical_request(method, path, query, headers, payload_hash);
-
-    let string_to_sign = format!(
-        "AWS4-HMAC-SHA256\n{}\n{}\n{}",
-        signing.timestamp,
-        signing.scope(),
-        sha256_hex(canonical.as_bytes())
-    );
-
-    let signature = hex(&hmac(&signing_key(signing), string_to_sign.as_bytes()));
+    let signature = signature(signing, &canonical);
 
     format!(
         "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={signed_headers}, Signature={signature}",
@@ -149,6 +201,35 @@ mod tests {
             service: "s3",
             timestamp: "20130524T000000Z",
         }
+    }
+
+    /// The worked example in AWS's own documentation for query-string signing:
+    /// a GET of `test.txt` in `examplebucket`, valid for a day, on 24 May 2013.
+    /// The signature is the one the document prints, so a mistake in any of
+    /// the dozen inputs shows up here rather than as `SignatureDoesNotMatch`
+    /// against a real bucket.
+    #[test]
+    fn presigns_the_documented_example_to_the_documented_signature() {
+        let signing = Signing {
+            access_key: "AKIAIOSFODNN7EXAMPLE",
+            secret_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            region: "us-east-1",
+            service: "s3",
+            timestamp: "20130524T000000Z",
+        };
+
+        let query =
+            presigned_query(&signing, "GET", "examplebucket.s3.amazonaws.com", "/test.txt", 86400, &[]);
+
+        assert!(
+            query.ends_with(
+                "&X-Amz-Signature=aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404"
+            ),
+            "{query}"
+        );
+        assert!(query.starts_with("X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential="), "{query}");
+        assert!(query.contains("X-Amz-Expires=86400"), "{query}");
+        assert!(query.contains("X-Amz-SignedHeaders=host"), "{query}");
     }
 
     #[test]
