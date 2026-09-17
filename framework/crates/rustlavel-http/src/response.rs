@@ -39,6 +39,19 @@ impl Response {
         self
     }
 
+    /// Keep the status and headers, and hand the connection over once they are
+    /// written — for a body that is produced over time rather than known now.
+    ///
+    /// This is what an event stream is: a `200` whose body is events written
+    /// as they happen, for as long as the client stays. [`upgrading`] is the
+    /// same mechanism with a `101`, for a protocol that stops being HTTP.
+    ///
+    /// [`upgrading`]: Response::upgrading
+    pub fn streaming(mut self, body: impl crate::upgrade::Upgrade) -> Self {
+        self.upgrade = Some(std::sync::Arc::new(body));
+        self
+    }
+
     /// Whether this response takes the connection over.
     pub fn upgrades(&self) -> bool {
         self.upgrade.is_some()
@@ -143,7 +156,11 @@ impl Response {
             }
             head.push_str(&format!("{name}: {value}\r\n"));
         }
-        if !bodyless {
+        // No length for a response whose body is written by whatever takes
+        // the socket over: the server does not know it yet, and `content-length:
+        // 0` would tell the client the body is complete before the first byte
+        // of an event stream arrives.
+        if !bodyless && self.upgrade.is_none() {
             head.push_str(&format!("content-length: {}\r\n", body.len()));
         }
         head.push_str("\r\n");

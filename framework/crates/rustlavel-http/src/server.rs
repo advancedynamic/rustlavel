@@ -319,7 +319,7 @@ impl Server {
         Ok(())
     }
 
-    async fn serve_connection(&self, stream: TcpStream, peer: SocketAddr) -> Result<()> {
+    pub(crate) async fn serve_connection(&self, stream: TcpStream, peer: SocketAddr) -> Result<()> {
         // Small responses should leave for the client immediately.
         let _ = stream.set_nodelay(true);
         let (mut reader, writer) = stream.into_split();
@@ -349,8 +349,16 @@ impl Server {
 
             // A handler that answered 101 wants the socket. Write the
             // handshake, then stop speaking HTTP on this connection.
-            if let Some(upgrade) = response.take_upgrade() {
-                writer.write_all(&response.to_bytes(false)).await.map_err(Error::Io)?;
+            if response.upgrades() {
+                // The head is rendered *before* the upgrade is taken out of
+                // the response: `to_bytes` omits the content length for a
+                // response that hands the socket over, and it can only see
+                // that while the upgrade is still there. Taking it first
+                // wrote `content-length: 0` on every event stream, and the
+                // browser closed the stream before the first event.
+                let head = response.to_bytes(false);
+                let upgrade = response.take_upgrade().expect("checked just above");
+                writer.write_all(&head).await.map_err(Error::Io)?;
                 writer.flush().await.map_err(Error::Io)?;
 
                 let upgraded = crate::upgrade::Upgraded {

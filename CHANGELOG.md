@@ -267,6 +267,21 @@ next.
   one is still offered — and the caller's own retries cover the second. A cache
   that expired would turn a registry outage into a total outage on a timer.
 
+- **Server-Sent Events.** `Response::events(receiver)` is a `200` that stays
+  open and writes each `SseEvent` as it arrives — a job's progress to a UI, one
+  direction, with the browser's `EventSource` reconnecting on its own and
+  sending `Last-Event-ID`. Multi-line data is split across `data:` lines so a
+  newline cannot end an event early; a comment is written every fifteen
+  seconds so a proxy does not close an idle stream; and `Response::streaming`
+  underneath it is the general form — a body produced over time, the same
+  hand-over WebSocket uses without the `101`.
+
+  Proved over a real socket, not just by rendering: the client reads each
+  event before the next is sent, and EOF when the sender is dropped. That test
+  caught what the unit tests could not — the server took the upgrade out of the
+  response *before* rendering the head, so `content-length: 0` was written on
+  every stream and the browser would have closed it before the first event.
+
 - **`rustlavel-payment`** — gateways behind one trait: charges over virtual
   account, QRIS, e-wallet and retail; transfers out, singly and in batch; and a
   webhook receiver. `Money` is an integer of minor units, `Channel` an enum, so
