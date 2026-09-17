@@ -151,6 +151,8 @@ pub struct Worker {
     queue: Arc<dyn Queue>,
     registry: Arc<JobRegistry>,
     options: WorkerOptions,
+    /// Where jobs report how far they have got, when there is somewhere.
+    progress: Option<Arc<dyn crate::progress::ProgressStore>>,
 }
 
 impl Worker {
@@ -160,7 +162,15 @@ impl Worker {
         // we are about to report ourselves.
         rustlavel_http::panic::install_hook();
 
-        Worker { queue, registry, options: WorkerOptions::default() }
+        Worker { queue, registry, options: WorkerOptions::default(), progress: None }
+    }
+
+    /// Give jobs somewhere to report progress. The web process reads the same
+    /// store, so it must be one both can reach — the database one, unless the
+    /// worker runs inside the web process.
+    pub fn reporting_to(mut self, store: Arc<dyn crate::progress::ProgressStore>) -> Self {
+        self.progress = Some(store);
+        self
     }
 
     pub fn on_queue(mut self, queue: impl Into<String>) -> Self {
@@ -232,6 +242,15 @@ impl Worker {
         match result {
             Ok(()) => {
                 self.queue.delete(&reserved).await?;
+
+                // The chain advances only on success, and the next step is
+                // pushed *after* this one is deleted: a crash between the two
+                // costs a step rather than duplicating one.
+                if let Some(next) = reserved.job.next_in_chain() {
+                    self.queue.push(next).await?;
+                }
+                self.close_progress(&reserved, None).await;
+
                 record(
                     "queue.processed",
                     self.queue.driver(),
@@ -246,6 +265,7 @@ impl Worker {
 
                 if dead {
                     self.queue.fail(&reserved, &error).await?;
+                    self.close_progress(&reserved, Some(&error)).await;
                     rustlavel_core::error!(
                         "job `{}` failed after {} attempt(s) and was moved to failed_jobs: {error}",
                         reserved.job.name,
@@ -279,6 +299,35 @@ impl Worker {
         }
     }
 
+    /// Mark a job finished, or failed for good, whatever it last reported.
+    ///
+    /// The job's own reports are hints; this is the fact. A job that crashed
+    /// at 40% is not at 40%, and a job that returned `Ok` is at 100% whether
+    /// or not it said so. Under the chain's key too, but only when the chain
+    /// is over — a step finishing is not the pipeline finishing.
+    async fn close_progress(&self, reserved: &ReservedJob, failure: Option<&str>) {
+        let Some(store) = &self.progress else { return };
+
+        let last = store.get(&reserved.id).await.ok().flatten();
+        let closed = crate::progress::Progress {
+            percent: if failure.is_none() { 100 } else { last.as_ref().map_or(0, |p| p.percent) },
+            stage: match failure {
+                None => "finished".to_string(),
+                Some(_) => last.as_ref().map_or_else(|| "failed".to_string(), |p| p.stage.clone()),
+            },
+            updated_at: crate::time::unix_now().max(0) as u64,
+            finished: true,
+            failed: failure.map(str::to_string),
+        };
+
+        let _ = store.set(&reserved.id, closed.clone()).await;
+
+        let chain_is_over = failure.is_some() || reserved.job.then.is_empty();
+        if let (Some(chain), true) = (&reserved.job.chain, chain_is_over) {
+            let _ = store.set(&format!("chain:{chain}"), closed).await;
+        }
+    }
+
     /// Run the handler, turning every way it can go wrong into one `Err`.
     ///
     /// A panicking job must not take the worker with it: one bad payload would
@@ -287,7 +336,12 @@ impl Worker {
     /// an await point is caught too, and treated as an ordinary failure — it
     /// retries and it dead-letters, exactly like a returned error.
     async fn run_handler(&self, reserved: &ReservedJob) -> std::result::Result<(), String> {
-        let future = self.registry.run(&reserved.job.name, reserved.job.payload.clone());
+        let ctx = crate::progress::JobContext::new(
+            reserved.id.clone(),
+            reserved.job.chain.clone(),
+            self.progress.clone(),
+        );
+        let future = self.registry.run_with(&reserved.job.name, reserved.job.payload.clone(), ctx);
 
         match rustlavel_http::panic::catch(future).await {
             Ok(Ok(())) => Ok(()),

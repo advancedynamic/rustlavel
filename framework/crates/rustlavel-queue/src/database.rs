@@ -72,6 +72,104 @@ rustlavel_db::migration!(
     },
 );
 
+pub const JOB_PROGRESS_TABLE: &str = "job_progress";
+
+/// Where a job's progress is kept, so a worker in one process and a request
+/// handler in another read the same row.
+pub fn define_job_progress_table(t: &mut Table) {
+    t.id();
+    // The job id, or `chain:<id>` for a pipeline.
+    t.string("key").unique();
+    t.integer("percent");
+    t.string("stage");
+    t.big_integer("updated_at");
+    t.boolean("finished").default_bool(false);
+    t.text("failed").nullable();
+}
+
+// Its own migration, separate from the queue tables: a project that has run
+// `CreateQueueTables` already adds this one and touches nothing else.
+rustlavel_db::migration!(
+    CreateJobProgressTable,
+    "2026_09_17_000001_create_job_progress_table",
+    up: |schema| { schema.create(JOB_PROGRESS_TABLE, crate::database::define_job_progress_table).await },
+    down: |schema| { schema.drop(JOB_PROGRESS_TABLE).await },
+);
+
+/// Progress in a table. The one to use once the worker is its own process.
+#[derive(Clone)]
+pub struct DatabaseProgress {
+    db: Database,
+    table: String,
+}
+
+impl DatabaseProgress {
+    pub fn new(db: Database) -> DatabaseProgress {
+        DatabaseProgress { db, table: JOB_PROGRESS_TABLE.to_string() }
+    }
+
+    pub fn with_table(mut self, table: impl Into<String>) -> DatabaseProgress {
+        self.table = table.into();
+        self
+    }
+}
+
+impl crate::progress::ProgressStore for DatabaseProgress {
+    fn set<'a>(&'a self, key: &'a str, progress: crate::progress::Progress) -> crate::progress::ProgressFuture<'a, ()> {
+        Box::pin(async move {
+            let values: Vec<(&str, Value)> = vec![
+                ("percent", Value::from(progress.percent as i64)),
+                ("stage", Value::from(progress.stage.as_str())),
+                ("updated_at", Value::from(progress.updated_at as i64)),
+                ("finished", Value::from(progress.finished)),
+                ("failed", progress.failed.as_deref().map_or(Value::Null, Value::from)),
+            ];
+
+            // An upsert without a dialect-specific `ON CONFLICT`: update, and
+            // insert if there was nothing to update. Two writers racing on a
+            // brand-new key can both miss the update and one insert then loses
+            // to the unique index — in which case the update is tried again.
+            // Progress is a hint, so the last writer winning is the right
+            // outcome and no write is an error.
+            let updated = self.db.table(&self.table).filter("key", key).update(&self.db, &values).await?;
+            if updated > 0 {
+                return Ok(());
+            }
+            let mut insert = values.clone();
+            insert.push(("key", Value::from(key)));
+            if self.db.table(&self.table).insert_without_id(&self.db, &insert).await.is_err() {
+                self.db.table(&self.table).filter("key", key).update(&self.db, &values).await?;
+            }
+            Ok(())
+        })
+    }
+
+    fn get<'a>(&'a self, key: &'a str) -> crate::progress::ProgressFuture<'a, Option<crate::progress::Progress>> {
+        Box::pin(async move {
+            let row = self.db.table(&self.table).filter("key", key).first(&self.db).await?;
+            Ok(row.map(|row| crate::progress::Progress {
+                percent: row.get::<i64>("percent").unwrap_or(0).clamp(0, 100) as u8,
+                stage: row.get::<String>("stage").unwrap_or_default(),
+                updated_at: row.get::<i64>("updated_at").unwrap_or(0).max(0) as u64,
+                finished: row.get::<bool>("finished").unwrap_or(false),
+                failed: row.get::<String>("failed").ok().filter(|f| !f.is_empty()),
+            }))
+        })
+    }
+
+    fn purge<'a>(&'a self, before: u64) -> crate::progress::ProgressFuture<'a, usize> {
+        Box::pin(async move {
+            let removed = self
+                .db
+                .table(&self.table)
+                .filter_op("updated_at", "<", before as i64)
+                .delete(&self.db)
+                .await?;
+            Ok(removed as usize)
+        })
+    }
+}
+
 /// A queue backed by two database tables.
 ///
 /// Survives a restart, and is shared by every process pointed at the same
@@ -113,7 +211,12 @@ impl DatabaseQueue {
     /// register [`CreateQueueTables`] in its migration registry.
     pub async fn migrate(&self) -> Result<()> {
         let schema = Schema::new(&self.db);
-        create_tables(&schema, &self.jobs, &self.failed).await
+        create_tables(&schema, &self.jobs, &self.failed).await?;
+        // The progress table too. `create_if_missing`, not `has_table` then
+        // `create`: this runs on every boot, and two workers booting at once
+        // would both see no table and one would fail — which is exactly what
+        // happened to the test suite the first time this ran.
+        schema.create_if_missing(JOB_PROGRESS_TABLE, define_job_progress_table).await
     }
 
     /// Drop the tables. Intended for tests and `queue:fresh`.
@@ -184,16 +287,24 @@ impl DatabaseQueue {
 
         tx.commit().await?;
 
+        // The payload column may hold a chain envelope; `with_stored_payload`
+        // unfolds it and leaves an ordinary payload alone.
+        let stored: Json = row.get::<Json>("payload")?;
+        let job = QueuedJob {
+            name: row.get::<String>("name")?,
+            payload: Json::Null,
+            queue: queue.to_string(),
+            max_tries: row.get::<i64>("max_tries")?.max(1) as u32,
+            retry_after,
+            delay: Duration::ZERO,
+            chain: None,
+            then: Vec::new(),
+        }
+        .with_stored_payload(stored);
+
         Ok(Some(ReservedJob {
             id: id.to_string(),
-            job: QueuedJob {
-                name: row.get::<String>("name")?,
-                payload: row.get::<Json>("payload")?,
-                queue: queue.to_string(),
-                max_tries: row.get::<i64>("max_tries")?.max(1) as u32,
-                retry_after,
-                delay: Duration::ZERO,
-            },
+            job,
             attempts,
         }))
     }
@@ -260,7 +371,7 @@ impl Queue for DatabaseQueue {
                     &[
                         ("queue", Value::from(job.queue.as_str())),
                         ("name", Value::from(job.name.as_str())),
-                        ("payload", Value::from(job.payload.clone())),
+                        ("payload", Value::from(job.stored_payload())),
                         ("attempts", Value::from(0)),
                         ("max_tries", Value::from(job.max_tries)),
                         ("retry_after", Value::from(job.retry_after.as_secs() as i64)),
@@ -344,7 +455,10 @@ impl Queue for DatabaseQueue {
                 &[
                     Value::from(job.job.queue.as_str()),
                     Value::from(job.job.name.as_str()),
-                    Value::from(job.job.payload.clone()),
+                    // The envelope, chain included, so a failed step's
+                    // remaining steps are visible in the dead-letter table
+                    // rather than silently gone.
+                    Value::from(job.job.stored_payload()),
                     Value::from(job.attempts),
                     Value::from(error),
                     Value::from(unix_now()),

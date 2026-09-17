@@ -71,18 +71,22 @@ pub mod queue;
 pub mod schedule;
 pub mod time;
 pub mod worker;
+pub mod chain;
+pub mod progress;
 
 #[cfg(test)]
 mod tests_support;
 
+pub use chain::Chain;
 pub use cron::{Cron, Weekday};
-pub use database::{CreateQueueTables, DatabaseQueue};
+pub use database::{CreateJobProgressTable, CreateQueueTables, DatabaseProgress, DatabaseQueue};
 pub use fake::{FakeQueue, fake};
 pub use job::{
     BoxFuture, DEFAULT_QUEUE, DEFAULT_RETRY_AFTER, DEFAULT_TRIES, FailedJob, Job, JobRegistry,
     QueuedJob, ReservedJob,
 };
 pub use memory::MemoryQueue;
+pub use progress::{JobContext, MemoryProgress, Progress, ProgressStore};
 pub use plugin::QueueDashboard;
 pub use queue::{Queue, QueueExt};
 pub use schedule::{ScheduledEvent, Scheduler, TickReport, schedule};

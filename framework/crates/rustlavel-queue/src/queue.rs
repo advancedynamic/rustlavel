@@ -71,6 +71,17 @@ pub trait Queue: Send + Sync + 'static {
 /// dyn-compatible trait. Blanket-implemented, including for `dyn Queue`.
 pub trait QueueExt: Queue {
     /// `dispatch(SendWelcomeEmail { user_id })` — the everyday call.
+    /// Push the first step of a chain; the worker pushes each next step as
+    /// the one before it succeeds. Returns the first step's id.
+    fn dispatch_chain<'a>(&'a self, chain: crate::chain::Chain) -> BoxFuture<'a, Result<String>> {
+        Box::pin(async move {
+            if chain.is_empty() {
+                return Err(rustlavel_core::Error::msg("a chain needs at least one step"));
+            }
+            self.push(chain.into_queued()).await
+        })
+    }
+
     fn dispatch<'a, J: Job>(&'a self, job: &'a J) -> BoxFuture<'a, Result<String>> {
         self.push(job.to_queued())
     }

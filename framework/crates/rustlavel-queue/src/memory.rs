@@ -171,7 +171,10 @@ impl Queue for MemoryQueue {
                 id: job.id.clone(),
                 name: job.job.name.clone(),
                 queue: job.job.queue.clone(),
-                payload: job.job.payload.clone(),
+                // The envelope, chain included, so a failed step's remaining
+                // steps are visible rather than silently gone — the same as
+                // the database driver.
+                payload: job.job.stored_payload(),
                 attempts: job.attempts,
                 error: error.to_string(),
                 failed_at: unix_now(),

@@ -342,6 +342,45 @@ impl<'a> Schema<'a> {
         Ok(())
     }
 
+    /// Create the table unless it exists, safely under concurrent callers.
+    ///
+    /// For a table an application creates on the way up rather than in a
+    /// migration. **Not** `has_table` followed by `create`: two processes
+    /// booting at once both see no table, both create, and one fails.
+    ///
+    /// `create table if not exists` is sent where the dialect has it — and the
+    /// error meaning "it exists" is accepted **anyway**, because PostgreSQL's
+    /// `if not exists` is not serialised against a concurrent create: two
+    /// callers can both pass its check and the loser gets `42P07 relation
+    /// already exists`, or `23505` on `pg_type_typname_nsp_index`. That is
+    /// documented PostgreSQL behaviour, and it was measured here: ten of eleven
+    /// tests failed the first time a suite booted against an empty database.
+    /// Indexes that already exist are accepted the same way.
+    pub async fn create_if_missing(&self, table: &str, define: impl FnOnce(&mut Table)) -> Result<()> {
+        let dialect = self.db.dialect();
+        let mut statements = create_statements(dialect, table, define)?;
+        let create = statements.remove(0);
+
+        let create = match dialect.supports_if_not_exists_table() {
+            true => create.replacen("create table ", "create table if not exists ", 1),
+            false => create,
+        };
+        match self.db.run(&create).await {
+            Ok(_) => {}
+            Err(error) if is_already_exists(&error) => return Ok(()),
+            Err(error) => return Err(error),
+        }
+
+        for statement in statements {
+            if let Err(error) = self.db.run(&statement).await
+                && !is_already_exists(&error)
+            {
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+
     /// Add or drop columns on an existing table.
     pub async fn alter(&self, table: &str, define: impl FnOnce(&mut Table)) -> Result<()> {
         for statement in alter_statements(self.db.dialect(), table, define)? {
@@ -437,6 +476,18 @@ pub fn create_statements(
     let mut statements = vec![format!("create table {quoted} (\n  {}\n)", lines.join(",\n  "))];
     statements.extend(index_statements(dialect, table, &definition)?);
     Ok(statements)
+}
+
+/// Whether an error is a database saying the object already exists — the
+/// three engines say it three ways.
+fn is_already_exists(error: &rustlavel_core::Error) -> bool {
+    let text = error.to_string().to_ascii_lowercase();
+    text.contains("already exists")
+        || text.contains("42p07")
+        // PostgreSQL losing a concurrent `create table if not exists` race
+        // reports it as a duplicate in the type catalogue, not as 42P07.
+        || text.contains("pg_type_typname_nsp_index")
+        || text.contains("there is already an object")
 }
 
 /// The statements an `alter` produces.

@@ -20,6 +20,7 @@
 //! }
 //! ```
 
+use crate::progress::JobContext;
 use rustlavel_core::{Error, Json, Result};
 use std::collections::HashMap;
 use std::future::Future;
@@ -77,6 +78,17 @@ pub trait Job: Send + Sync + 'static {
     /// compiler can see the body, so it can prove the `Send` this demands.
     fn handle(&self) -> impl Future<Output = Result<()>> + Send;
 
+    /// Do the work, with somewhere to say how far along it is.
+    ///
+    /// The default calls [`Job::handle`] and reports nothing, so a job that
+    /// takes a second need not care. A job that takes a minute overrides this
+    /// and calls `ctx.progress(percent, "stage")` as it goes; a request
+    /// handler in the web process reads it back from the same store.
+    fn handle_with(&self, ctx: &JobContext) -> impl Future<Output = Result<()>> + Send {
+        let _ = ctx;
+        self.handle()
+    }
+
     /// How many attempts this job gets before it is dead-lettered.
     fn tries(&self) -> u32 {
         DEFAULT_TRIES
@@ -102,6 +114,8 @@ pub trait Job: Send + Sync + 'static {
             max_tries: self.tries().max(1),
             retry_after: self.retry_after(),
             delay: Duration::ZERO,
+            chain: None,
+            then: Vec::new(),
         }
     }
 }
@@ -119,6 +133,11 @@ pub struct QueuedJob {
     pub retry_after: Duration,
     /// How long after being pushed the job becomes visible to a worker.
     pub delay: Duration,
+    /// The chain this job is a step of, when it is one. See [`crate::Chain`].
+    pub chain: Option<String>,
+    /// The steps to run after this one succeeds, in order. Empty for a job
+    /// that stands alone.
+    pub then: Vec<QueuedJob>,
 }
 
 impl QueuedJob {
@@ -132,7 +151,75 @@ impl QueuedJob {
             max_tries: DEFAULT_TRIES,
             retry_after: DEFAULT_RETRY_AFTER,
             delay: Duration::ZERO,
+            chain: None,
+            then: Vec::new(),
         }
+    }
+
+    /// The payload as it is stored, with the chain folded in.
+    ///
+    /// A chain rides inside the payload column rather than in columns of its
+    /// own, so a `jobs` table created by 0.7 needs no migration to carry one.
+    /// A job with no chain is stored exactly as before, so every row already in
+    /// a table reads back unchanged. The keys start with `$` so they cannot
+    /// collide with a payload's own.
+    pub fn stored_payload(&self) -> Json {
+        if self.chain.is_none() && self.then.is_empty() {
+            return self.payload.clone();
+        }
+        Json::object([
+            ("$payload", self.payload.clone()),
+            ("$chain", self.chain.as_deref().map_or(Json::Null, Json::from)),
+            ("$then", Json::Array(self.then.iter().map(QueuedJob::to_json).collect())),
+        ])
+    }
+
+    /// The inverse of [`stored_payload`](Self::stored_payload): a job read back
+    /// from storage, with the chain unfolded and the payload restored.
+    pub fn with_stored_payload(mut self, stored: Json) -> QueuedJob {
+        let is_envelope = stored.get("$payload").is_some() && stored.get("$then").is_some();
+        if !is_envelope {
+            self.payload = stored;
+            return self;
+        }
+        self.chain = stored.get("$chain").and_then(Json::as_str).map(str::to_string);
+        self.then = stored
+            .get("$then")
+            .and_then(Json::as_array)
+            .map(|steps| steps.iter().filter_map(QueuedJob::from_json).collect())
+            .unwrap_or_default();
+        self.payload = stored.get("$payload").cloned().unwrap_or(Json::Null);
+        self
+    }
+
+    /// The whole envelope as JSON, for a chain's remaining steps.
+    pub fn to_json(&self) -> Json {
+        Json::object([
+            ("name", Json::from(self.name.as_str())),
+            ("payload", self.payload.clone()),
+            ("queue", Json::from(self.queue.as_str())),
+            ("max_tries", Json::from(self.max_tries as i64)),
+            ("retry_after", Json::from(self.retry_after.as_secs() as i64)),
+            ("delay", Json::from(self.delay.as_secs() as i64)),
+            ("then", Json::Array(self.then.iter().map(QueuedJob::to_json).collect())),
+        ])
+    }
+
+    pub fn from_json(json: &Json) -> Option<QueuedJob> {
+        Some(QueuedJob {
+            name: json.get("name")?.as_str()?.to_string(),
+            payload: json.get("payload").cloned().unwrap_or(Json::Null),
+            queue: json.get("queue").and_then(Json::as_str).unwrap_or(DEFAULT_QUEUE).to_string(),
+            max_tries: json.get("max_tries").and_then(Json::as_i64).unwrap_or(DEFAULT_TRIES as i64).max(1) as u32,
+            retry_after: Duration::from_secs(json.get("retry_after").and_then(Json::as_i64).unwrap_or(60).max(0) as u64),
+            delay: Duration::from_secs(json.get("delay").and_then(Json::as_i64).unwrap_or(0).max(0) as u64),
+            chain: None,
+            then: json
+                .get("then")
+                .and_then(Json::as_array)
+                .map(|steps| steps.iter().filter_map(QueuedJob::from_json).collect())
+                .unwrap_or_default(),
+        })
     }
 
     pub fn on_queue(mut self, queue: impl Into<String>) -> Self {
@@ -207,7 +294,7 @@ impl FailedJob {
 }
 
 /// What the registry stores: a payload in, a running job out.
-type Handler = Arc<dyn Fn(Json) -> BoxFuture<'static, Result<()>> + Send + Sync>;
+type Handler = Arc<dyn Fn(Json, JobContext) -> BoxFuture<'static, Result<()>> + Send + Sync>;
 
 /// The map from a stored job name back to code that can run it.
 ///
@@ -241,13 +328,13 @@ impl JobRegistry {
     /// Registering the same name twice replaces the handler, so a test can
     /// substitute a job without rebuilding the registry.
     pub fn register<J: Job>(&mut self) -> &mut Self {
-        self.register_fn(J::NAME, |payload| {
+        self.register_fn_with(J::NAME, |payload, ctx| {
             Box::pin(async move {
                 // Rebuilding happens inside the future so a bad payload fails
                 // the job the same way a bad `handle` does, with the same
                 // retries and the same dead-letter entry.
                 let job = J::from_payload(&payload)?;
-                job.handle().await
+                job.handle_with(&ctx).await
             })
         })
     }
@@ -257,6 +344,15 @@ impl JobRegistry {
     pub fn register_fn<F>(&mut self, name: &str, handler: F) -> &mut Self
     where
         F: Fn(Json) -> BoxFuture<'static, Result<()>> + Send + Sync + 'static,
+    {
+        let handler = Arc::new(handler);
+        self.register_fn_with(name, move |payload, _ctx| handler(payload))
+    }
+
+    /// [`register_fn`](Self::register_fn), for a handler that reports progress.
+    pub fn register_fn_with<F>(&mut self, name: &str, handler: F) -> &mut Self
+    where
+        F: Fn(Json, JobContext) -> BoxFuture<'static, Result<()>> + Send + Sync + 'static,
     {
         self.handlers.insert(name.to_string(), Arc::new(handler));
         self
@@ -293,8 +389,13 @@ impl JobRegistry {
     /// leaves the reader guessing whether they misspelled the job or forgot
     /// the registration line.
     pub fn run(&self, name: &str, payload: Json) -> BoxFuture<'static, Result<()>> {
+        self.run_with(name, payload, JobContext::detached())
+    }
+
+    /// [`run`](Self::run), with the context the worker hands a real job.
+    pub fn run_with(&self, name: &str, payload: Json, ctx: JobContext) -> BoxFuture<'static, Result<()>> {
         match self.handler(name) {
-            Some(handler) => handler(payload),
+            Some(handler) => handler(payload, ctx),
             None => {
                 let message = format!(
                     "no handler is registered for the job `{name}`. Add \

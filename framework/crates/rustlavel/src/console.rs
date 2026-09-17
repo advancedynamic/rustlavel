@@ -218,7 +218,17 @@ async fn work(app: &App, args: &[String]) -> Result<()> {
     shutdown.on_ctrl_c();
 
     rustlavel_core::info!("Processing jobs with {workers} worker(s). Ctrl-C to stop.");
-    let worker = Worker::new(queue, registry);
+    let mut worker = Worker::new(queue, registry);
+
+    // Progress goes to the database when there is one, because this process
+    // is not the one that will read it: the web process is, and a store in
+    // this worker's memory is a store the web process cannot see. Without a
+    // database, jobs still run and their reports go nowhere.
+    #[cfg(feature = "db")]
+    if let Some(db) = app.registered::<rustlavel_db::Database>() {
+        worker = worker.reporting_to(std::sync::Arc::new(rustlavel_queue::DatabaseProgress::new(db.clone())));
+    }
+
     run_pool(worker, workers, shutdown).await?;
 
     rustlavel_core::info!("Workers stopped.");

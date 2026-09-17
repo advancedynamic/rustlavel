@@ -267,6 +267,26 @@ next.
   one is still offered — and the caller's own retries cover the second. A cache
   that expired would turn a registry outage into a total outage on a timer.
 
+- **Job progress, readable from outside the worker, and job chains.**
+  `handle_with(&self, ctx)` — a default that calls `handle`, so nothing
+  existing changes — gives a job `ctx.progress(percent, "stage")`, and a
+  request handler in another process reads it back through `ProgressStore`.
+  `queue:work` reports to the database automatically when there is one. The
+  worker closes the record itself on success or final failure, because a job
+  that crashed at 40% is not at 40%. `Chain::new(a).then(b).then(c)` runs steps
+  in order, advancing only on success and keeping the unrun steps in the
+  dead-letter entry; the chain rides inside the `payload` column so a 0.7 jobs
+  table needs no migration.
+
+- **`Schema::create_if_missing`**, because `has_table` then `create` is a race
+  two processes booting at once lose — and so, it turns out, is PostgreSQL's
+  own `create table if not exists`, which is not serialised against a
+  concurrent create: the loser gets `42P07`, or `23505` on the type catalogue.
+  Measured, not read about: the queue's own suite booting against an empty
+  database passed 1 of 11 tests the first time, 8 the second, 6 the third. The
+  loser's error is now accepted on every dialect; five runs from empty, 13 of
+  13 each.
+
 - **Server-Sent Events.** `Response::events(receiver)` is a `200` that stays
   open and writes each `SseEvent` as it arrives — a job's progress to a UI, one
   direction, with the browser's `EventSource` reconnecting on its own and
