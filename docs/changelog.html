@@ -31,8 +31,12 @@
 <a href="guide.html#upgrading">a separate step</a> from bumping the dependency &mdash;
 <code>rustlavel upgrade</code> merges them rather than overwriting what you wrote.</p>
 
-<h2 id="unreleased">Unreleased</h2>
-<p>Two additions for applications built as several services — and a dozen fixes found by running the result rather than testing it.</p>
+<h2 id="0-8-0">0.8.0 — 2026-09-19</h2>
+<p>The minor number rather than the patch, and deliberately: for a <code>0.x</code> version Cargo treats the minor as the major, so <code>rustlavel = "0.7"</code> would have picked this up on its own and one signature below would not compile. Four new packages, two additions for applications built as several services, and a dozen fixes found by running the result rather than testing it.</p>
+<h3>Breaking</h3>
+<ul>
+<li><strong><code>Claims::subject</code> is now <code>Option&lt;String&gt;</code>.</strong> A <code>client_credentials</code> token has no resource owner behind it, and <code>rustlavel-oauth-provider</code> omits <code>sub</code> for that grant on purpose — the absence is how a resource server tells a machine's token from a person's. The reader required <code>sub</code>, so the framework's two halves disagreed and machine-to-machine authentication could not work at all. Code that read <code>claims.subject</code> as a <code>String</code> now calls <code>claims.owner()</code> for the person, or <code>claims.is_service()</code> to ask whether there is one. It is deliberately <strong>not</strong> defaulted to the client id: a <em>user's</em> token whose <code>sub</code> went missing would then be attributed to the client, and every user of that client would share one identity.</li>
+</ul>
 <h3>Fixed</h3>
 <p>Everything in this section was found by scaffolding the microservices kit, starting its four services against a real PostgreSQL, and asking for a token. None of it was visible from the test suite, which passed throughout.</p>
 <ul>

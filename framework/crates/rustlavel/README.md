@@ -61,7 +61,7 @@ Everything optional is a feature flag, and what you do not enable is never compi
 
 ```toml
 [dependencies]
-rustlavel = { version = "0.7", features = ["db", "view", "auth"] }
+rustlavel = { version = "0.8", features = ["db", "view", "auth"] }
 ```
 
 ## Databases

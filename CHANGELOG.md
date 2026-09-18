@@ -3,10 +3,26 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
-## Unreleased
+## 0.8.0 — 2026-09-19
 
-Two additions for applications built as several services — and a dozen fixes
-found by running the result rather than testing it.
+The minor number rather than the patch, and deliberately: for a `0.x` version
+Cargo treats the minor as the major, so `rustlavel = "0.7"` would have picked
+this up on its own and one signature below would not compile. Four new
+packages, two additions for applications built as several services, and a
+dozen fixes found by running the result rather than testing it.
+
+### Breaking
+
+- **`Claims::subject` is now `Option<String>`.** A `client_credentials` token
+  has no resource owner behind it, and `rustlavel-oauth-provider` omits `sub`
+  for that grant on purpose — the absence is how a resource server tells a
+  machine's token from a person's. The reader required `sub`, so the
+  framework's two halves disagreed and machine-to-machine authentication could
+  not work at all. Code that read `claims.subject` as a `String` now calls
+  `claims.owner()` for the person, or `claims.is_service()` to ask whether
+  there is one. It is deliberately **not** defaulted to the client id: a
+  *user's* token whose `sub` went missing would then be attributed to the
+  client, and every user of that client would share one identity.
 
 ### Fixed
 

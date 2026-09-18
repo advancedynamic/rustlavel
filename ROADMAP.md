@@ -452,7 +452,7 @@ plumbing above. Resolution is where applications differ most, and a framework
 that guesses wrong there is one every application works around. The plumbing is
 what they all need.
 
-## Phase 1.6 — Microservices (in progress)
+## Phase 1.6 — Microservices ✅ done
 
 A second starter kit: a gateway, an authorization server and a resource server,
 scaffolded as a cargo workspace of three crates plus one for the types that
