@@ -14,13 +14,36 @@ use rustlavel_db::Database;
 use rustlavel_payment::database::{DatabaseWebhookLog, drop_schema, schema};
 use rustlavel_payment::{EventKind, WebhookEvent, WebhookLog};
 
-async fn database() -> Option<Database> {
+/// Every test drops and recreates the same tables, so they take turns: the
+/// lock is taken before the schema is touched and held until the test ends.
+/// Sharing one URL is what makes them *not* serial on their own — ten tests
+/// truncate each other's rows mid-assertion — and the contention each test
+/// sets up deliberately is the thing being measured.
+static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// A database on a schema this test owns until it returns. Derefs to the
+/// handle, so a test reads as though it held one.
+struct Fixture {
+    db: Database,
+    _guard: tokio::sync::MutexGuard<'static, ()>,
+}
+
+impl std::ops::Deref for Fixture {
+    type Target = Database;
+
+    fn deref(&self) -> &Database {
+        &self.db
+    }
+}
+
+async fn database() -> Option<Fixture> {
     let url = std::env::var("PAYMENT_TEST_DATABASE_URL").ok()?;
+    let guard = SERIAL.lock().await;
     let db = Database::connect(&url).await.expect("the test database is reachable");
     let builder = rustlavel_db::Schema::new(&db);
     let _ = drop_schema(&builder).await;
     schema(&builder).await.expect("the schema is created");
-    Some(db)
+    Some(Fixture { db, _guard: guard })
 }
 
 fn event(id: &str) -> WebhookEvent {
@@ -39,7 +62,7 @@ async fn an_event_is_recorded_once_and_its_body_kept() {
         println!("skipped: set PAYMENT_TEST_DATABASE_URL to run the database log tests");
         return;
     };
-    let log = DatabaseWebhookLog::new(db, "fake");
+    let log = DatabaseWebhookLog::new(db.clone(), "fake");
 
     let e = event("evt_1");
     assert!(log.record(&e).await.unwrap());
@@ -57,7 +80,7 @@ async fn only_one_of_many_simultaneous_deliveries_is_first() {
         println!("skipped: set PAYMENT_TEST_DATABASE_URL to run the database log tests");
         return;
     };
-    let log = Arc::new(DatabaseWebhookLog::new(db, "fake"));
+    let log = Arc::new(DatabaseWebhookLog::new(db.clone(), "fake"));
 
     let mut racing = Vec::new();
     for _ in 0..16 {

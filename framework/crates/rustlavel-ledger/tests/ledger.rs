@@ -10,13 +10,36 @@ use rustlavel_ledger::{
     drop_tables,
 };
 
-async fn ledger() -> Option<Ledger> {
+/// Every test drops and recreates the same five tables, so they take turns:
+/// the lock is taken before the schema is touched and held until the test
+/// ends. Without it, ten tests share one schema and truncate each other's
+/// rows mid-assertion — and the concurrency *inside* a test, which is the
+/// thing being measured, would be measuring the wrong contention.
+static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// A ledger on a schema this test owns until it returns. Derefs to the
+/// ledger, so a test reads as though it held one.
+struct Fixture {
+    ledger: Ledger,
+    _guard: tokio::sync::MutexGuard<'static, ()>,
+}
+
+impl std::ops::Deref for Fixture {
+    type Target = Ledger;
+
+    fn deref(&self) -> &Ledger {
+        &self.ledger
+    }
+}
+
+async fn ledger() -> Option<Fixture> {
     let url = std::env::var("LEDGER_TEST_DATABASE_URL").ok()?;
+    let guard = SERIAL.lock().await;
     let db = Database::connect(&url).await.expect("the test database is reachable");
     let schema = Schema::new(&db);
     let _ = drop_tables(&schema).await;
     create_tables(&schema).await.expect("the ledger tables");
-    Some(Ledger::new(db, "credits"))
+    Some(Fixture { ledger: Ledger::new(db, "credits"), _guard: guard })
 }
 
 macro_rules! ledger_or_skip {
@@ -31,8 +54,6 @@ macro_rules! ledger_or_skip {
     };
 }
 
-/// Every test runs alone against a fresh schema, so they are serialised by
-/// the harness; concurrency inside a test is the thing being measured.
 #[tokio::test]
 async fn a_top_up_is_double_entry_and_idempotent() {
     let ledger = ledger_or_skip!();

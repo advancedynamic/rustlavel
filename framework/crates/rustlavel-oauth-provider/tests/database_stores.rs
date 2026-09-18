@@ -27,15 +27,38 @@ use rustlavel_oauth_provider::{Client, ClientStore, Scopes};
 
 /// A database with the four tables, or `None` when there is nothing to connect
 /// to. Each test gets its own schema-free copy by dropping and recreating, and
-/// the tables are name-spaced by nothing — so these run serially by sharing one
-/// URL and cleaning up after themselves.
-async fn database() -> Option<Database> {
+/// the tables are name-spaced by nothing — so these take turns on one URL,
+/// serialised by the lock below, and clean up after themselves.
+/// Every test drops and recreates the same tables, so they take turns: the
+/// lock is taken before the schema is touched and held until the test ends.
+/// Sharing one URL is what makes them *not* serial on their own — ten tests
+/// truncate each other's rows mid-assertion — and the contention each test
+/// sets up deliberately is the thing being measured.
+static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// A database on a schema this test owns until it returns. Derefs to the
+/// handle, so a test reads as though it held one.
+struct Fixture {
+    db: Database,
+    _guard: tokio::sync::MutexGuard<'static, ()>,
+}
+
+impl std::ops::Deref for Fixture {
+    type Target = Database;
+
+    fn deref(&self) -> &Database {
+        &self.db
+    }
+}
+
+async fn database() -> Option<Fixture> {
     let url = std::env::var("OAUTH_TEST_DATABASE_URL").ok()?;
+    let guard = SERIAL.lock().await;
     let db = Database::connect(&url).await.expect("the test database is reachable");
     let builder = rustlavel_db::Schema::new(&db);
     let _ = drop_schema(&builder).await;
     schema(&builder).await.expect("the schema is created");
-    Some(db)
+    Some(Fixture { db, _guard: guard })
 }
 
 macro_rules! db_or_skip {
