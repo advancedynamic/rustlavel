@@ -1562,6 +1562,48 @@ mod tests {
     /// A kit is a hundred-odd lines the CLI never compiles — they are
     /// `include_str!` strings — so nothing but these guards and a real scaffold
     /// sees them at all.
+    /// **No template may be named `Cargo.toml`.**
+    ///
+    /// Cargo treats any directory holding a `Cargo.toml` as a nested package
+    /// and leaves it out of the parent's `.crate` file entirely. The
+    /// microservices kit had six, so all twenty of its files were dropped from
+    /// the published crate and `include_str!` failed to build it — caught by
+    /// `cargo publish`'s verification step, on the last crate of a release, and
+    /// invisible to every test and to `cargo install --path`, which reads the
+    /// working tree rather than the tarball.
+    ///
+    /// The auth kit never tripped it only because none of its 121 files is a
+    /// manifest. Templates are therefore stored as `Cargo.toml.template` and
+    /// written out under their real name.
+    #[test]
+    fn no_template_is_named_cargo_toml_because_cargo_would_drop_its_whole_directory() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates");
+
+        let mut offenders = Vec::new();
+        fn walk(dir: &std::path::Path, root: &std::path::Path, offenders: &mut Vec<String>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, root, offenders);
+                } else if path.file_name().is_some_and(|name| name == "Cargo.toml")
+                    && let Ok(relative) = path.strip_prefix(root)
+                {
+                    offenders.push(relative.to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+        walk(&root, &root, &mut offenders);
+        offenders.sort();
+
+        assert!(
+            offenders.is_empty(),
+            "these templates are named `Cargo.toml`, so cargo will treat each one's directory as \
+             a nested package and drop it from the published crate — rename them to \
+             `Cargo.toml.template` and keep the real name in the file manifest: {offenders:?}"
+        );
+    }
+
     #[test]
     fn the_microservices_kit_is_whole() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1583,6 +1625,13 @@ mod tests {
         }
         walk(&root, &root, &mut on_disk);
         on_disk.sort();
+
+        // A template manifest is stored as `Cargo.toml.template` and written
+        // out as `Cargo.toml`; see the guard below for why.
+        let on_disk: Vec<String> = on_disk
+            .iter()
+            .map(|path| path.trim_end_matches(".template").to_string())
+            .collect();
 
         let manifested: Vec<&str> =
             crate::microservices_kit::FILES.iter().map(|(path, _)| *path).collect();

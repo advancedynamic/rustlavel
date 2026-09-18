@@ -25,12 +25,12 @@ pub const FILES: &[(&str, &str)] = &[
     // services, two databases and three setup steps is too much to leave to the
     // comments in a .env nobody opens first.
     ("README.md", include_str!("../templates/microservices-kit/README.md")),
-    ("Cargo.toml", include_str!("../templates/microservices-kit/Cargo.toml")),
-    ("shared/Cargo.toml", include_str!("../templates/microservices-kit/shared/Cargo.toml")),
+    ("Cargo.toml", include_str!("../templates/microservices-kit/Cargo.toml.template")),
+    ("shared/Cargo.toml", include_str!("../templates/microservices-kit/shared/Cargo.toml.template")),
     ("shared/src/lib.rs", include_str!("../templates/microservices-kit/shared/src/lib.rs")),
     (
         "services/gateway/Cargo.toml",
-        include_str!("../templates/microservices-kit/services/gateway/Cargo.toml"),
+        include_str!("../templates/microservices-kit/services/gateway/Cargo.toml.template"),
     ),
     (
         "services/gateway/src/main.rs",
@@ -38,7 +38,7 @@ pub const FILES: &[(&str, &str)] = &[
     ),
     (
         "services/auth/Cargo.toml",
-        include_str!("../templates/microservices-kit/services/auth/Cargo.toml"),
+        include_str!("../templates/microservices-kit/services/auth/Cargo.toml.template"),
     ),
     (
         "services/auth/src/main.rs",
@@ -46,7 +46,7 @@ pub const FILES: &[(&str, &str)] = &[
     ),
     (
         "services/api/Cargo.toml",
-        include_str!("../templates/microservices-kit/services/api/Cargo.toml"),
+        include_str!("../templates/microservices-kit/services/api/Cargo.toml.template"),
     ),
     (
         "services/api/src/main.rs",
@@ -82,7 +82,7 @@ pub const FILES: &[(&str, &str)] = &[
     ),
     (
         "services/registry/Cargo.toml",
-        include_str!("../templates/microservices-kit/services/registry/Cargo.toml"),
+        include_str!("../templates/microservices-kit/services/registry/Cargo.toml.template"),
     ),
     (
         "services/registry/src/main.rs",
