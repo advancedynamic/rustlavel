@@ -3,6 +3,36 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## Unreleased
+
+- **`rustlavel-chart`** — charts, drawn in the browser, described in Rust. A
+  typed builder (`Chart::line`, `bar`, `horizontal_bar`, `doughnut`, `pie`,
+  `scatter`, with `Series`, `Axis` and a `Palette`) produces the configuration
+  Chart.js reads; the `Charts` plugin serves the library and a small init
+  script from the application's own origin.
+
+  **It vendors somebody else's library, which is unusual here and deliberate.**
+  Chart.js is 69 KB gzipped; writing an axis scaler, tick formatter, legend
+  layout and hit-tester from scratch would still leave no hover, tooltips or
+  zoom. The copy carries its own MIT licence and copyright banner, and a test
+  fails if either goes missing or the version drifts from the constant.
+
+  The configuration travels in an *escaped* `data-chart` attribute, so there is
+  no inline `<script>` and no CDN: both are refused by `default-src 'self'`,
+  the policy the auth kit ships, and a policy with `unsafe-inline` does not
+  stop injected script. Measured against that exact policy in a browser: four
+  charts drawn, no violations, and a label reading `a" onmouseover="alert(1)`
+  arriving in Chart.js as that string. The same run found that the policy
+  blocks an inline `<style>` just as firmly, so the theme hook's CSS custom
+  properties must come from an external stylesheet — now documented rather
+  than discovered.
+
+  Three defaults differ from Chart.js's, each because the default lies: the
+  value axis begins at zero, lines are straight rather than curved through
+  points nobody measured, and a `None` reading breaks the line instead of being
+  drawn as zero. `Chart::problems()` reports a series shorter than its labels
+  or a doughnut given several series, which Chart.js draws silently.
+
 ## 0.8.0 — 2026-09-19
 
 The minor number rather than the patch, and deliberately: for a `0.x` version

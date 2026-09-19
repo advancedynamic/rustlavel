@@ -52,6 +52,10 @@ pub use rustlavel_ledger::Ledger;
 pub use rustlavel_billing as billing;
 #[cfg(feature = "billing")]
 pub use rustlavel_billing::Billing;
+#[cfg(feature = "chart")]
+pub use rustlavel_chart as chart;
+#[cfg(feature = "chart")]
+pub use rustlavel_chart::{Chart, Charts, Series};
 #[cfg(feature = "discovery")]
 pub use rustlavel_discovery::{Discovery, Instance, Peers, Registrar, Registry, RegistryServer};
 #[cfg(feature = "i18n")]

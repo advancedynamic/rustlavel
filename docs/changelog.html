@@ -31,6 +31,10 @@
 <a href="guide.html#upgrading">a separate step</a> from bumping the dependency &mdash;
 <code>rustlavel upgrade</code> merges them rather than overwriting what you wrote.</p>
 
+<h2 id="unreleased">Unreleased</h2>
+<ul>
+<li><strong><code>rustlavel-chart</code></strong> — charts, drawn in the browser, described in Rust. A typed builder (<code>Chart::line</code>, <code>bar</code>, <code>horizontal_bar</code>, <code>doughnut</code>, <code>pie</code>, <code>scatter</code>) produces the configuration Chart.js reads; the <code>Charts</code> plugin serves the library and a small init script from the application's own origin. It vendors Chart.js — unusual here and deliberate: 69 KB gzipped against writing an axis scaler, tick formatter, legend layout and hit-tester that would still have no hover or zoom. The configuration travels in an <em>escaped</em> <code>data-chart</code> attribute, so there is no inline <code>&lt;script&gt;</code> and no CDN, both of which <code>default-src 'self'</code> refuses. Measured against that policy in a browser: four charts drawn, no violations, and a label reading <code>a" onmouseover="alert(1)</code> arriving as that string. Three defaults differ from Chart.js's because the default lies — the value axis begins at zero, lines are straight, and a missing reading breaks the line rather than being drawn as zero.</li>
+</ul>
 <h2 id="0-8-0">0.8.0 — 2026-09-19</h2>
 <p>The minor number rather than the patch, and deliberately: for a <code>0.x</code> version Cargo treats the minor as the major, so <code>rustlavel = "0.7"</code> would have picked this up on its own and one signature below would not compile. Four new packages, two additions for applications built as several services, and a dozen fixes found by running the result rather than testing it.</p>
 <h3>Breaking</h3>

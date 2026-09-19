@@ -22,6 +22,7 @@ const PACKAGES: &[(&str, &[&str])] = &[
     ("auth-kit", &["storage/sessions", "resources/views", "public/css", "public/js"]),
     ("billing", &["database/migrations"]),
     ("cache", &["storage/cache"]),
+    ("chart", &[]),
     ("client", &[]),
     ("db", &["database/migrations", "database/seeders"]),
     ("debugbar", &[]),
@@ -538,6 +539,7 @@ const NEEDS_WIRING: &[(&str, &str)] = &[
     // is not.
     ("i18n", "Translator::new() — load_dir(\"lang\"), then .state(it) and .views(engine.with_translator(...))"),
     ("mcp", "Mcp::new(server)"),
+    ("chart", "Charts::default() — then add the two <script> tags the plugin serves to your layout"),
     // A receiver needs the gateway the application chose and the handler
     // that credits the customer — neither of which a scaffold can invent.
     ("ledger", "Ledger::new(db.clone(), \"credits\") — then .state(it); register CreateLedgerTables in the migrations"),

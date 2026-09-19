@@ -128,6 +128,7 @@ App::new()?
 | `rustlavel-discovery` | A service registry and the client that uses it — register, resolve, replicate; Eureka-compatible |
 | `rustlavel-payment` | Payment gateways behind one trait — VA, QRIS, e-wallet, retail, transfers — and a webhook receiver that verifies and deduplicates |
 | `rustlavel-ledger` | A double-entry ledger for credits — atomic debit and credit, holds, expiry by batch, a history that adds up |
+| `rustlavel-chart` | Charts drawn by a vendored Chart.js — a typed builder in Rust, served from your own origin, no inline script |
 | `rustlavel-billing` | Subscriptions paid by invoice — a charge each cycle, access extended when the callback says paid, grace, reminders to send |
 | `rustlavel-ai` | Anthropic, OpenAI and Ollama through one API; speech to text with word timestamps and speakers over Whisper (incl. self-hosted) or Deepgram |
 | `rustlavel-mcp` | Model Context Protocol, server and client |

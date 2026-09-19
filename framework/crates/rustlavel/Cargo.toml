@@ -42,6 +42,7 @@ rustlavel-discovery = { workspace = true, optional = true }
 rustlavel-payment = { workspace = true, optional = true }
 rustlavel-ledger = { workspace = true, optional = true }
 rustlavel-billing = { workspace = true, optional = true }
+rustlavel-chart = { workspace = true, optional = true }
 rustlavel-rbac = { workspace = true, optional = true }
 rustlavel-queue = { workspace = true, optional = true }
 rustlavel-storage = { workspace = true, optional = true }
@@ -125,6 +126,9 @@ ledger = ["dep:rustlavel-ledger", "db"]
 # Plans and subscriptions paid by invoice rather than auto-debit: a charge each
 # cycle through `payment`, credits each cycle through `ledger`.
 billing = ["dep:rustlavel-billing", "payment", "ledger"]
+# Charts. Draws in the browser through a vendored Chart.js, so it needs the
+# HTTP crate to serve it and nothing else.
+chart = ["dep:rustlavel-chart"]
 model-cache = ["dep:rustlavel-model-cache", "db", "cache"]
 rbac = ["dep:rustlavel-rbac", "db", "auth"]
 queue = ["dep:rustlavel-queue", "db"]
@@ -143,6 +147,7 @@ full = [
     "auth",
     "billing",
     "cache",
+    "chart",
     "client",
     "db",
     "debugbar",

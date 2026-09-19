@@ -1,0 +1,14 @@
+[package]
+name = "rustlavel-chart"
+description = "Charts for Rustlavel: a typed builder that produces a Chart.js configuration, and the vendored library to draw it — no CDN, no inline script"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+readme = "README.md"
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rustlavel-core.workspace = true
+rustlavel-http.workspace = true

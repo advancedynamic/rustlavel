@@ -59,6 +59,7 @@ rustlavel-discovery = { path = "crates/rustlavel-discovery", version = "0.8.0" }
 rustlavel-payment = { path = "crates/rustlavel-payment", version = "0.8.0" }
 rustlavel-ledger = { path = "crates/rustlavel-ledger", version = "0.8.0" }
 rustlavel-billing = { path = "crates/rustlavel-billing", version = "0.8.0" }
+rustlavel-chart = { path = "crates/rustlavel-chart", version = "0.8.0" }
 rustlavel-flags = { path = "crates/rustlavel-flags", version = "0.8.0" }
 rustlavel-rbac = { path = "crates/rustlavel-rbac", version = "0.8.0" }
 rustlavel-queue = { path = "crates/rustlavel-queue", version = "0.8.0" }

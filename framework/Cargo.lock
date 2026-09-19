@@ -656,6 +656,7 @@ dependencies = [
  "rustlavel-auth",
  "rustlavel-billing",
  "rustlavel-cache",
+ "rustlavel-chart",
  "rustlavel-client",
  "rustlavel-core",
  "rustlavel-db",
@@ -745,6 +746,14 @@ dependencies = [
  "rustlavel-core",
  "rustlavel-http",
  "tokio",
+]
+
+[[package]]
+name = "rustlavel-chart"
+version = "0.8.0"
+dependencies = [
+ "rustlavel-core",
+ "rustlavel-http",
 ]
 
 [[package]]
