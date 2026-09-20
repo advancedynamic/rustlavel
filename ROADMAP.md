@@ -142,13 +142,19 @@ Publishing model: one repository, many crates — the way `laravel/framework` ho
 - [x] MySQL driver, written from scratch on the client/server protocol; both authentication plugins, prepared statements
 - [x] SQL Server driver, written from scratch on the published MS-TDS specification
 - [x] A conformance suite that runs the *generated* SQL against every configured server — the dialect tests assert what the strings look like, these assert that they work
-- [ ] **SQLite — not supported today, and the reason is the opposite of Oracle's.** Oracle is excluded because its protocol is secret; SQLite is absent because it *has* no protocol. It is not a server — it is a C library that reads a file in the calling process, so there is no wire format to write here and no socket to open. The only ways in are to link `libsqlite3`, which would be this tree's first C dependency, or to reimplement a database engine and its on-disk format, which is not a driver.
+- [x] **SQLite, behind the `sqlite` feature — and the one dependency on C.** The exclusion written here two days earlier is now spent; what stays true is the reasoning that made it a decision rather than an oversight.
 
-      Nothing about the layering stops it: `Dialect` and `Driver` are already separate, and a SQLite `Dialect` is a small piece of work. What has to be decided is whether linking C is acceptable — and so far it has not had to be, because every driver here speaks over a socket.
+      Oracle is excluded because its protocol is secret. SQLite was absent because it *has* no protocol: it is a C library reading a file in this process, so there is nothing to write from scratch in the sense the other three drivers are written. That left only the question of whose binding, and a hand-written one would have owned `unsafe` without removing a single line of C. `rusqlite` with `bundled` compiles SQLite from the vendored amalgamation, so a contributor's laptop and CI run the identical engine — which matters, because the reason to want it is fixtures.
 
-      **The one case that would justify revisiting is testing.** Every database-backed test in the workspace needs a PostgreSQL container today, and twice in one week the suite failed for no reason but a stopped Docker daemon. An in-memory SQLite would make the query builder, schema builder, migrator and ORM testable with nothing running. That is a real benefit and it is worth weighing against the C dependency — but it is a *developer* convenience, so if it is ever added it belongs behind a feature flag, documented as being for tests and small local tools, and never listed beside the three drivers as though it were an equal production target.
+      Off by default. A build that does not ask for `sqlite` compiles no C and needs no C compiler.
 
-      Until that is decided, `sqlite://` is refused by `DatabaseConfig::from_url` with a message naming the three schemes that work. An application that needs SQLite on the device — a point-of-sale till, an offline-first client — is not served by a driver here anyway: that code runs on the device, in the device's own language, and what connects it to the server is a sync protocol, not a shared driver.
+      Two behaviours are load-bearing and were found by running it, not by reading:
+
+      * **Foreign keys are switched on for every connection.** SQLite leaves them off — a compatibility promise from 2005 it cannot take back — and the other three enforce them. Without this, a migration proved against SQLite behaves differently the moment it reaches a server, which is the one thing a test fixture must never do.
+      * **`:memory:` is a shared-cache URI with a keepalive connection, not `open_in_memory()`.** The obvious call gives every connection its own blank database, and the pool opens more than one: `PooledConnection::drop` returns a connection through `tokio::spawn` but releases its permit immediately, so the next caller can win the permit, find the idle queue not yet refilled, and open a second. Against a server that race is invisible. Against `open_in_memory` it means the table you just created is intermittently not there. The keepalive exists because a shared in-memory database is destroyed when its last connection closes, and an idle pool legitimately reaches zero.
+
+      What it is *not*: an equal production target. It is for tests that need no container, for small local tools, and for an application that genuinely wants a file. The three server drivers remain the ones the framework is shaped around.
+
 - [ ] **Oracle — not supported, and not planned.** Oracle has never published its network protocol. Every driver in existence either wraps OCI, a proprietary C library that has to be installed on every machine, or is a multi-year reverse-engineering effort maintained by Oracle themselves. Neither fits a framework whose premise is that the protocols are written here. If Oracle is ever needed, the honest shape is a separate `rustlavel-db-oracle` package that links OCI and says plainly that it breaks the rule.
 
 ## Phase 0.8 — OAuth 2.1 and API tokens ✅ done
@@ -620,7 +626,7 @@ them up rather than writing them.
 |---|---|
 | Reference | Laravel 13 (the slim 11+ structure, AI SDK, passkeys) |
 | Foundation | From scratch; only Tokio plus cryptography crates (argon2, sha2, hmac, aes-gcm, rustls) |
-| Databases | PostgreSQL, MySQL, SQL Server — each wire protocol written here, TLS included. Oracle deliberately excluded; SQLite absent because it has no wire protocol to write. |
+| Databases | PostgreSQL, MySQL, SQL Server — each wire protocol written here, TLS included. SQLite behind a feature flag, the one link to C. Oracle deliberately excluded. |
 | Distribution | The `rustlavel` meta-crate with feature flags; one crate per feature |
 | Enabling a package | Explicit `.plugin(...)`; no runtime auto-discovery |
 | Transactions | A guard (`begin`/`commit`), not a closure — a closure returning a future that borrows its argument cannot express the lifetime it needs |

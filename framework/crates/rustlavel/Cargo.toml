@@ -78,6 +78,10 @@ client = ["dep:rustlavel-client"]
 # Without the `?` every application with a database would drag the OAuth
 # provider in.
 db = ["dep:rustlavel-db", "rustlavel-oauth-provider?/db", "rustlavel-payment?/db"]
+# SQLite, for tests that need no container and for small local tools. The one
+# feature here that compiles C; off unless asked for, and never on in `full`
+# for that reason.
+sqlite = ["db", "rustlavel-db/sqlite"]
 # The development overlay. Off in production unless said so in full.
 debugbar = ["dep:rustlavel-debugbar"]
 i18n = ["dep:rustlavel-i18n"]

@@ -21,6 +21,10 @@ pub mod postgres;
 pub mod random;
 pub mod row;
 pub mod schema;
+/// SQLite. Behind the `sqlite` feature, because it is the one driver here
+/// that links a C library; a build that does not ask for it compiles none.
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
 pub mod sqlserver;
 pub mod tls;
 pub mod value;
@@ -38,6 +42,8 @@ pub use postgres::connection::{log_bindings, set_log_bindings};
 pub use pool::{Pool, PooledConnection};
 pub use schema::{Schema, Table};
 pub use sqlserver::{SqlServerConnection, SqlServerDriver};
+#[cfg(feature = "sqlite")]
+pub use sqlite::{SqliteConnection, SqliteDriver};
 pub use row::{Row, rows_to_json};
 pub use value::{FromValue, Value};
 
@@ -53,6 +59,17 @@ fn driver_for(config: DatabaseConfig) -> Result<Arc<dyn Driver>> {
         "postgres" => Ok(Arc::new(postgres::PostgresDriver::new(config))),
         "mysql" => Ok(Arc::new(mysql::MySqlDriver::new(config))),
         "sqlserver" => Ok(Arc::new(sqlserver::SqlServerDriver::new(config))),
+        #[cfg(feature = "sqlite")]
+        "sqlite" => Ok(Arc::new(sqlite::SqliteDriver::new(config))),
+        // Named separately from the catch-all so the message says *why* it is
+        // missing. "sqlite is not available in this build" sends somebody
+        // looking for a typo; this sends them to the feature flag.
+        #[cfg(not(feature = "sqlite"))]
+        "sqlite" => Err(Error::msg(
+            "this build has no SQLite support. Enable the `sqlite` feature on rustlavel-db, \
+             or `sqlite` on the rustlavel meta-crate. It is off by default because it is the \
+             one driver that links a C library.",
+        )),
         other => Err(Error::msg(format!(
             "the `{other}` driver is not available in this build. \
              Point DATABASE_URL at a database this build supports."

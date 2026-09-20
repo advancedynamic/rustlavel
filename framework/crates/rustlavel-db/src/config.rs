@@ -3,6 +3,13 @@
 use rustlavel_core::{Config, Error, Result};
 use std::time::Duration;
 
+/// The SQLite path meaning "a private database in memory, gone at exit".
+///
+/// Declared here rather than in the driver because the driver is behind a
+/// feature flag and a URL is parsed whether or not it was compiled in — a
+/// build without SQLite still has to recognise the scheme in order to say so.
+pub const SQLITE_IN_MEMORY: &str = ":memory:";
+
 #[derive(Debug, Clone)]
 pub struct DatabaseConfig {
     /// Which database this points at: `postgres`, `mysql`, `sqlserver`.
@@ -52,16 +59,53 @@ impl Default for DatabaseConfig {
 }
 
 impl DatabaseConfig {
+    /// A SQLite database at a path.
+    ///
+    /// Everything a server needs — host, port, user, password, TLS — is
+    /// meaningless for a file, so none of it is filled in. What a file *does*
+    /// have is a busy timeout, which reuses `connect_timeout`: both answer
+    /// "how long to wait to be let in".
+    ///
+    /// Three forms, and the difference between the last two is one slash:
+    ///
+    /// | URL | Means |
+    /// |---|---|
+    /// | `sqlite://:memory:` | a private database in memory, gone at exit |
+    /// | `sqlite://data/app.db` | `data/app.db`, relative to the process |
+    /// | `sqlite:///var/lib/app.db` | the absolute path `/var/lib/app.db` |
+    pub fn sqlite(path: &str) -> DatabaseConfig {
+        // The query string is not a connection string here; a path may legally
+        // contain `?` on Unix, but accepting one would make `?mode=ro` silently
+        // part of a filename. Splitting it off is the lesser surprise.
+        let path = path.split('?').next().unwrap_or(path);
+        let path = if path.is_empty() { SQLITE_IN_MEMORY } else { path };
+
+        DatabaseConfig {
+            driver: "sqlite".into(),
+            host: String::new(),
+            port: 0,
+            user: String::new(),
+            password: String::new(),
+            database: path.to_string(),
+            // One is not a default here, it is a requirement for `:memory:` —
+            // see `SqliteDriver::max_connections`, which enforces it whatever
+            // this says.
+            max_connections: 4,
+            tls_mode: crate::tls::TlsMode::Disable,
+            ..DatabaseConfig::default()
+        }
+    }
+
     /// Parse a database URL.
     ///
-    /// The scheme chooses the driver: `postgres://`, `mysql://` or
-    /// `sqlserver://`. User, password and database are percent-decoded, so a
+    /// The scheme chooses the driver: `postgres://`, `mysql://`,
+    /// `sqlserver://` or `sqlite://`. User, password and database are percent-decoded, so a
     /// password with an `@` or `/` in it works without escaping anything twice.
     pub fn from_url(url: &str) -> Result<Self> {
         let (scheme, rest) = url.split_once("://").ok_or_else(|| {
             Error::msg(format!(
                 "`{url}` has no scheme. Expected postgres://, mysql:// or sqlserver:// \
-                 followed by user:password@host:port/database"
+                 followed by user:password@host:port/database, or sqlite:// followed by a path"
             ))
         })?;
 
@@ -71,10 +115,13 @@ impl DatabaseConfig {
             "postgres" | "postgresql" | "pgsql" => ("postgres", 5432),
             "mysql" | "mariadb" => ("mysql", 3306),
             "sqlserver" | "mssql" => ("sqlserver", 1433),
+            // SQLite is a file, not a host, so it leaves before any of the
+            // host parsing below — none of which means anything for it.
+            "sqlite" | "sqlite3" => return Ok(DatabaseConfig::sqlite(rest)),
             other => {
                 return Err(Error::msg(format!(
                     "`{other}` is not a database this framework speaks. \
-                     Available schemes: postgres, mysql, sqlserver."
+                     Available schemes: postgres, mysql, sqlserver, sqlite."
                 )));
             }
         };

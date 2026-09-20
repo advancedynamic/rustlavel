@@ -54,6 +54,7 @@ const PACKAGES: &[(&str, &[&str])] = &[
     // `main.rs`, which is why it is in `NEEDS_WIRING` too.
     ("redis-sessions", &[]),
     ("search", &[]),
+    ("sqlite", &["database/migrations"]),
     ("storage", &["storage/app"]),
     ("telescope", &[]),
     ("validation", &[]),
@@ -2005,10 +2006,30 @@ mod tests {
             .filter(|name| !name.is_empty() && *name != "default" && *name != "full")
             .collect();
 
-        let missing: Vec<&&str> = packages.iter().filter(|p| !full.contains(p)).collect();
+        // `full` means "everything, for trying it out", and it has exactly one
+        // deliberate hole. `sqlite` compiles a C library, so putting it in
+        // `full` would make `cargo build --features full` fail on a machine
+        // with no C compiler — for somebody whose only intent was to look at
+        // the framework. Listed here rather than skipped silently, so adding a
+        // second exception is a decision somebody has to write down.
+        const NOT_IN_FULL: [&str; 1] = ["sqlite"];
+
+        let missing: Vec<&&str> = packages
+            .iter()
+            .filter(|p| !full.contains(p) && !NOT_IN_FULL.contains(p))
+            .collect();
         assert!(
             missing.is_empty(),
             "these packages exist but `full` does not turn them on: {missing:?}"
+        );
+
+        // And the hole stays a hole: if `sqlite` is ever added to `full`, this
+        // fails and sends the reader to the comment above.
+        let wrongly_included: Vec<&&str> =
+            NOT_IN_FULL.iter().filter(|p| full.contains(p)).collect();
+        assert!(
+            wrongly_included.is_empty(),
+            "`full` now turns on {wrongly_included:?}, which makes it need a C compiler"
         );
     }
 

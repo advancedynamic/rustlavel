@@ -40,3 +40,24 @@ rustls = { version = "0.23", default-features = false, features = [
     "tls12",
 ] }
 webpki-roots = "0.26"
+
+# SQLite, and the only C dependency in this workspace.
+#
+# Every other driver here speaks a wire protocol written from scratch, because
+# the database is at the other end of a socket. SQLite has no socket: the
+# library *is* the database, so there is no protocol to write — the choice is
+# only whose binding to use, and a hand-written one would own `unsafe` without
+# removing any C.
+#
+# `bundled` compiles SQLite from the vendored amalgamation rather than linking
+# whatever the machine happens to have. That is the point: the reason to want
+# SQLite here is tests that need no container, and a fixture is worthless if
+# the engine differs between a contributor's laptop and CI.
+#
+# Optional, and off by default. A build that does not ask for `sqlite`
+# compiles no C at all and needs no C compiler.
+rusqlite = { version = "0.37", features = ["bundled"], optional = true }
+
+[features]
+default = []
+sqlite = ["dep:rusqlite"]

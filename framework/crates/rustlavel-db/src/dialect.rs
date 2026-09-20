@@ -167,6 +167,26 @@ pub trait Dialect: Send + Sync + std::fmt::Debug + 'static {
         format!("rollback to savepoint {name}")
     }
 
+    /// How a `select` claims the row it picks so no other worker takes it,
+    /// as `(hint after the table, clause before the limit)`.
+    ///
+    /// A queue needs exactly this primitive and nothing weaker: a plain
+    /// `select` then `update` is a read-then-write race that runs a job twice,
+    /// and a lock without *skip* serialises every worker behind one row
+    /// instead of letting them take the rows after it.
+    ///
+    /// **Two positions, because SQL Server's form is not a suffix.**
+    /// PostgreSQL and MySQL append `for update skip locked` at the end;
+    /// SQL Server says `with (updlock, readpast, rowlock)` immediately after
+    /// the table name, and putting it at the end is a syntax error. Returning
+    /// one string would have made the caller guess.
+    ///
+    /// The default is no locking at all, which is right only for a database
+    /// that serialises writers by itself — see SQLite below.
+    fn skip_locked(&self) -> (&'static str, &'static str) {
+        ("", "")
+    }
+
     /// The expression naming the schema this connection is working in.
     ///
     /// `information_schema` is standard; the way you ask "which schema am I in"
@@ -295,6 +315,10 @@ impl Dialect for Postgres {
         true
     }
 
+    fn skip_locked(&self) -> (&'static str, &'static str) {
+        ("", " for update skip locked")
+    }
+
     fn current_schema_expression(&self) -> &'static str {
         "current_schema()"
     }
@@ -307,6 +331,167 @@ impl Dialect for Postgres {
         // `cascade` also removes the foreign keys pointing at it, which is why
         // PostgreSQL needs no enforcement switch.
         format!("drop table if exists {} cascade", self.quote(table))
+    }
+}
+
+// --- SQLite ---
+
+/// SQLite's SQL.
+///
+/// **This dialect compiles unconditionally; the driver beside it does not.**
+/// A dialect is string formatting with no dependency at all, so the generated
+/// SQL can be asserted in a build that cannot open a SQLite file — which is
+/// how the other three are tested too.
+///
+/// SQLite is not a server and its SQL reflects that. Three differences are
+/// load-bearing:
+///
+/// * **Types are advisory.** A column has a *type affinity*, not a type, and
+///   a `varchar(255)` accepts a megabyte. The affinities below are the ones
+///   the framework's [`ColumnType`]s map onto; the lengths are kept in the SQL
+///   because they document intent and cost nothing.
+/// * **`integer primary key` is the row id itself**, and auto-increments with
+///   no keyword. `autoincrement` exists but only stops row ids being reused
+///   after a delete, at the cost of a second table — which is not what the
+///   other three do, so it is not asked for here.
+/// * **Foreign keys are off unless switched on per connection.** That is a
+///   SQLite default, not a choice this dialect can make; the driver turns them
+///   on for every connection it opens.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Sqlite;
+
+impl Dialect for Sqlite {
+    fn name(&self) -> &'static str {
+        "sqlite"
+    }
+
+    fn quote(&self, identifier: &str) -> String {
+        format!("\"{identifier}\"")
+    }
+
+    fn placeholder(&self, _position: usize) -> String {
+        "?".into()
+    }
+
+    fn column_type(&self, kind: &ColumnType) -> String {
+        match kind {
+            // No `autoincrement`: `integer primary key` *is* the row id, and
+            // it increments on its own. The schema builder appends the
+            // `primary key`, which is what makes this the row id rather than
+            // an ordinary integer column.
+            ColumnType::Id => "integer".into(),
+            ColumnType::SmallInteger | ColumnType::Integer | ColumnType::BigInteger => {
+                "integer".into()
+            }
+            ColumnType::Float => "real".into(),
+            // Affinity `numeric`, which keeps the value exact when it is
+            // written as a string. SQLite has no true decimal; money in a
+            // SQLite database belongs in an integer of minor units, the way
+            // `rustlavel-ledger` stores it.
+            ColumnType::Decimal { precision, scale } => format!("numeric({precision}, {scale})"),
+            // SQLite has no boolean. 0 and 1, which is why
+            // `booleans_are_integers` is true below.
+            ColumnType::Boolean => "integer".into(),
+            ColumnType::String { length } => format!("varchar({length})"),
+            ColumnType::Text | ColumnType::Json => "text".into(),
+            ColumnType::UuidId | ColumnType::Uuid => "text".into(),
+            ColumnType::Date | ColumnType::Time | ColumnType::Timestamp => "text".into(),
+            ColumnType::Binary => "blob".into(),
+            ColumnType::Raw(sql) => sql.clone(),
+        }
+    }
+
+    fn now(&self) -> &'static str {
+        "current_timestamp"
+    }
+
+    fn uuid_default(&self) -> Option<&'static str> {
+        // SQLite has no uuid function, and inventing one out of `randomblob`
+        // would produce something that looks like a UUID without being one.
+        // The application generates the id.
+        None
+    }
+
+    fn returning(&self) -> ReturningStyle {
+        // SQLite has had `returning` since 3.35, but the row id is what the
+        // framework wants and `last_insert_rowid()` has always been there —
+        // so this works against an old system SQLite as well as a new one.
+        ReturningStyle::SeparateQuery("select last_insert_rowid()")
+    }
+
+    fn limit_offset(&self, limit: Option<i64>, offset: Option<i64>, _ordered: bool) -> String {
+        let mut out = String::new();
+        if let Some(limit) = limit {
+            out.push_str(&format!(" limit {}", limit.max(0)));
+        }
+        if let Some(offset) = offset {
+            // SQLite rejects `offset` without `limit`, which the other three
+            // accept. -1 is its documented "no limit".
+            if limit.is_none() {
+                out.push_str(" limit -1");
+            }
+            out.push_str(&format!(" offset {}", offset.max(0)));
+        }
+        out
+    }
+
+    fn supports_if_not_exists_index(&self) -> bool {
+        true
+    }
+
+    fn booleans_are_integers(&self) -> bool {
+        true
+    }
+
+    fn max_identifier_length(&self) -> usize {
+        // SQLite imposes no limit worth the name. Kept at PostgreSQL's 63 so a
+        // schema that works here works there — the point of developing against
+        // SQLite is that the result runs on a server afterwards.
+        63
+    }
+
+    fn current_schema_expression(&self) -> &'static str {
+        "'main'"
+    }
+
+    /// **Nothing, and here that is correct rather than missing.** SQLite has
+    /// no row locks — a write transaction locks the whole database — so two
+    /// workers cannot both claim one job however the `select` is written. What
+    /// makes it safe is `begin immediate` below, not a clause here.
+    fn skip_locked(&self) -> (&'static str, &'static str) {
+        ("", "")
+    }
+
+    /// `begin immediate`, not the bare `begin` the other three use.
+    ///
+    /// SQLite's default transaction is *deferred*: it takes a read lock on the
+    /// first `select` and only tries to upgrade at the first write. Two
+    /// transactions that both read and then both try to upgrade deadlock, and
+    /// SQLite breaks the tie by failing one with `SQLITE_BUSY` immediately —
+    /// without waiting for `busy_timeout`, because waiting cannot help. Two
+    /// queue workers are exactly that shape.
+    ///
+    /// `begin immediate` takes the write lock up front, so the second worker
+    /// waits its turn instead of failing.
+    fn begin_sql(&self) -> &'static str {
+        "begin immediate"
+    }
+
+    fn list_tables_sql(&self) -> &'static str {
+        // `sqlite_%` is reserved for SQLite's own bookkeeping, and dropping one
+        // is an error rather than a no-op.
+        "select name from sqlite_master where type = 'table' and name not like 'sqlite_%'"
+    }
+
+    fn disable_foreign_keys_sql(&self) -> Option<&'static str> {
+        // Not a statement SQLite will honour inside a transaction — it is
+        // silently ignored there. `migrate:fresh` drops outside one, which is
+        // where it works.
+        Some("pragma foreign_keys = off")
+    }
+
+    fn enable_foreign_keys_sql(&self) -> Option<&'static str> {
+        Some("pragma foreign_keys = on")
     }
 }
 
@@ -404,6 +589,14 @@ impl Dialect for MySql {
         // MySQL has no schemas separate from databases; the current database is
         // the schema.
         "database()"
+    }
+
+    /// The same words PostgreSQL uses, and **MySQL 8.0 or newer**.
+    /// `skip locked` arrived in 8.0; on 5.7 this is a syntax error rather than
+    /// a silent fallback, which is the better failure — a queue that quietly
+    /// dropped the `skip` would run jobs twice.
+    fn skip_locked(&self) -> (&'static str, &'static str) {
+        ("", " for update skip locked")
     }
 
     fn list_tables_sql(&self) -> &'static str {
@@ -543,6 +736,14 @@ impl Dialect for SqlServer {
 
     fn current_schema_expression(&self) -> &'static str {
         "schema_name()"
+    }
+
+    /// A table hint, which is why this returns two pieces rather than one.
+    /// `updlock` takes the update lock the row is about to need, `readpast` is
+    /// T-SQL's `skip locked`, and `rowlock` stops the engine escalating to a
+    /// page or table lock and serialising every worker.
+    fn skip_locked(&self) -> (&'static str, &'static str) {
+        (" with (updlock, readpast, rowlock)", "")
     }
 
     fn list_tables_sql(&self) -> &'static str {
@@ -738,8 +939,37 @@ mod tests {
         assert_eq!(Postgres.rollback_to_savepoint_sql("sp1"), "rollback to savepoint sp1");
     }
 
+    /// The clause a queue uses to claim a row, per database.
+    ///
+    /// Written as a table because the shapes genuinely differ: two of them
+    /// append a clause, SQL Server puts a hint after the table name, and
+    /// SQLite has no row locks at all. A queue that assumed one shape is what
+    /// this test exists to stop.
     #[test]
-    fn every_dialect_can_name_the_schema_it_is_in() {
+    fn each_database_claims_a_row_in_its_own_way() {
+        assert_eq!(Postgres.skip_locked(), ("", " for update skip locked"));
+        assert_eq!(MySql.skip_locked(), ("", " for update skip locked"));
+        assert_eq!(SqlServer.skip_locked(), (" with (updlock, readpast, rowlock)", ""));
+        // No clause — SQLite locks the whole database for a writer, so the
+        // guarantee comes from `begin immediate` instead.
+        assert_eq!(Sqlite.skip_locked(), ("", ""));
+        assert_eq!(Sqlite.begin_sql(), "begin immediate");
+
+        // The hint and the clause are never both set: a statement builder
+        // appends both, and a database wanting two locks would be a mistake in
+        // one of the rows above.
+        for dialect in [&Postgres as &dyn Dialect, &MySql, &SqlServer, &Sqlite] {
+            let (hint, clause) = dialect.skip_locked();
+            assert!(
+                hint.is_empty() || clause.is_empty(),
+                "{} sets both a hint and a clause",
+                dialect.name()
+            );
+        }
+    }
+
+    #[test]
+    fn schema_expressions_are_what_each_database_calls_them() {
         assert_eq!(Postgres.current_schema_expression(), "current_schema()");
         assert_eq!(MySql.current_schema_expression(), "database()");
         assert_eq!(SqlServer.current_schema_expression(), "schema_name()");

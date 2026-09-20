@@ -320,6 +320,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fallible-iterator"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
+
+[[package]]
+name = "fallible-streaming-iterator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
+
+[[package]]
 name = "ff"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -340,6 +352,12 @@ name = "find-msvc-tools"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890"
+
+[[package]]
+name = "foldhash"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
 name = "fs_extra"
@@ -402,6 +420,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "hashbrown"
+version = "0.15.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
+dependencies = [
+ "foldhash",
+]
+
+[[package]]
+name = "hashlink"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7382cf6263419f2d8df38c55d7da83da5c18aef87fc7a7fc1fb1e344edfe14c1"
+dependencies = [
+ "hashbrown",
+]
+
+[[package]]
 name = "hmac"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -434,6 +470,17 @@ name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+
+[[package]]
+name = "libsqlite3-sys"
+version = "0.35.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "133c182a6a2c87864fe97778797e46c7e999672690dc9fa3ee8e241aa4a9c13f"
+dependencies = [
+ "cc",
+ "pkg-config",
+ "vcpkg",
+]
 
 [[package]]
 name = "lock_api"
@@ -639,6 +686,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusqlite"
+version = "0.37.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "165ca6e57b20e1351573e3729b958bc62f0e48025386970b6e4d29e7a7e71f3f"
+dependencies = [
+ "bitflags",
+ "fallible-iterator",
+ "fallible-streaming-iterator",
+ "hashlink",
+ "libsqlite3-sys",
+ "smallvec",
+]
+
+[[package]]
 name = "rustc_version"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -649,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-ai",
  "rustlavel-audit",
@@ -693,7 +754,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-ai"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -703,7 +764,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-audit"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-auth",
  "rustlavel-core",
@@ -714,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-auth"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -730,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-billing"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-db",
@@ -741,7 +802,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-cache"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -750,7 +811,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-chart"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -758,7 +819,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-cli"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-view",
@@ -766,7 +827,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-client"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -778,14 +839,15 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-core"
-version = "0.8.0"
+version = "0.8.1"
 
 [[package]]
 name = "rustlavel-db"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "hmac",
  "md-5",
+ "rusqlite",
  "rustlavel-core",
  "rustlavel-macros",
  "rustls",
@@ -798,7 +860,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-debugbar"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -807,7 +869,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-discovery"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -818,7 +880,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-flags"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-auth",
  "rustlavel-core",
@@ -828,7 +890,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-gateway"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -838,7 +900,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-http"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
  "tokio",
@@ -846,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-i18n"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -856,7 +918,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-ldap"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-auth",
  "rustlavel-core",
@@ -868,7 +930,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-ledger"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-db",
@@ -877,11 +939,11 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-macros"
-version = "0.8.0"
+version = "0.8.1"
 
 [[package]]
 name = "rustlavel-mail"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -894,7 +956,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-mcp"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -904,7 +966,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-metrics"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -913,7 +975,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-model-cache"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-cache",
  "rustlavel-core",
@@ -923,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-oauth"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "p256",
  "rustlavel-auth",
@@ -936,7 +998,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-oauth-provider"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-auth",
  "rustlavel-core",
@@ -949,7 +1011,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-openapi"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -958,7 +1020,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-otel"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -968,7 +1030,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-payment"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "hmac",
  "rustlavel-client",
@@ -981,7 +1043,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-queue"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-db",
@@ -991,7 +1053,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-rbac"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-auth",
  "rustlavel-core",
@@ -1002,7 +1064,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-search"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -1012,7 +1074,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-storage"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "hmac",
  "md-5",
@@ -1025,7 +1087,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-telescope"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -1034,7 +1096,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-validation"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-auth",
  "rustlavel-core",
@@ -1044,7 +1106,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-vault"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -1055,14 +1117,14 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-view"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
 ]
 
 [[package]]
 name = "rustlavel-webauthn"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "ed25519-dalek",
  "p256",
@@ -1075,7 +1137,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-ws"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -1341,6 +1403,12 @@ name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
+
+[[package]]
+name = "vcpkg"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "version_check"
