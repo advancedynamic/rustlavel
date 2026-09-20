@@ -3,7 +3,55 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
-## Unreleased
+## 0.8.1 — 2026-09-20
+
+A fourth database and a charts package, both additive: `rustlavel = "0.8"` picks
+them up on its own and nothing below needs a person to read it first.
+
+- **The queue only ever worked on PostgreSQL, and nothing said so.** Every
+  statement in `DatabaseQueue` wrote `$1` literally — PostgreSQL's spelling,
+  where MySQL, SQL Server and SQLite all want `?` or `@P1` — claimed its rows
+  with `for update skip locked`, which SQL Server spells as a table hint and
+  SQLite does not have at all, and ended with `limit 1`, which SQL Server has
+  no word for. The table names were quoted `"like this"`, which MySQL reads as
+  a string rather than a table. Four independent reasons the one package that
+  needs a row lock could not run on three of the four databases the framework
+  supports.
+
+  It survived because the only integration test was against PostgreSQL, so the
+  assumption tested itself. `Dialect` grew `skip_locked()`, which returns a
+  table hint *and* a suffix because SQL Server's form is not a suffix, and
+  SQLite grew `begin immediate` — its deferred transactions deadlock two
+  workers outright, and no clause on the `select` can fix that. The claiming
+  statement is now built by a function whose output is asserted whole for all
+  four databases, so a wrong *position* is caught as well as a wrong word, and
+  PostgreSQL's statement is byte for byte what it was. Two guards fail if a
+  placeholder or a lock clause is ever written by hand again.
+
+- **SQLite, behind the `sqlite` feature.** A fourth database, and the only
+  dependency on C in the workspace. It is not a wire protocol like the other
+  three — SQLite is a library that reads a file in this process, so there was
+  nothing to write from scratch and the only question was whose binding.
+  `rusqlite` with `bundled` compiles SQLite from the vendored amalgamation, so
+  every machine and CI run the identical engine. Off by default: a build that
+  does not enable it compiles no C and needs no C compiler.
+
+  The dialect compiles unconditionally, so the generated SQL is asserted in
+  builds that cannot open a database — the same way the other three are tested.
+
+  Two behaviours were found by running it rather than reading it. **Foreign
+  keys are switched on for every connection**, because SQLite leaves them off
+  and the other three do not, so a migration proved against SQLite would
+  otherwise behave differently the moment it reached a server. And **`:memory:`
+  is opened through a shared-cache URI with a keepalive connection**, not
+  `open_in_memory()`: the obvious call gives each connection its own blank
+  database, and the pool opens more than one, because `PooledConnection::drop`
+  returns a connection through `tokio::spawn` while releasing its permit
+  immediately — so the next caller can win the permit, find the idle queue not
+  yet refilled, and open a second. Against a server that race is invisible;
+  against `open_in_memory` the table you just created is intermittently not
+  there.
+
 
 - **`rustlavel-chart`** — charts, drawn in the browser, described in Rust. A
   typed builder (`Chart::line`, `bar`, `horizontal_bar`, `doughnut`, `pie`,

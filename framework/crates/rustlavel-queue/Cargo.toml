@@ -14,3 +14,10 @@ rustlavel-core.workspace = true
 rustlavel-db.workspace = true
 rustlavel-http.workspace = true
 tokio.workspace = true
+
+[features]
+default = []
+# Run the queue against SQLite. Only the tests need this — the driver itself is
+# chosen at runtime by the URL — but the integration test has to be able to
+# open one, and `rustlavel-db`'s SQLite support is off by default.
+sqlite = ["rustlavel-db/sqlite"]

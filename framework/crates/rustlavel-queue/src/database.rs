@@ -12,7 +12,8 @@ use crate::queue::{Queue, record_pushed};
 use crate::time::unix_now;
 use rustlavel_core::{Error, Json, Result};
 use rustlavel_db::schema::{Schema, Table};
-use rustlavel_db::{Database, Value, quote_identifier};
+use rustlavel_db::dialect::quote_qualified;
+use rustlavel_db::{Database, Value};
 use std::time::Duration;
 
 /// The conventional table names, matching Laravel's.
@@ -184,6 +185,32 @@ pub struct DatabaseQueue {
     failed_sql: String,
 }
 
+/// The statement that claims one job, built for whichever database this is
+/// talking to.
+///
+/// A free function so its shape can be asserted without opening a database.
+/// Four things here are database-specific and none may be written literally:
+/// the **table name's quoting**, the **placeholders** (`$1` on PostgreSQL,
+/// `?` elsewhere), the **row-claiming clause** (a suffix on PostgreSQL and
+/// MySQL, a table hint on SQL Server, nothing at all on SQLite), and
+/// **`limit`**, which SQL Server spells `offset … fetch next … rows only`.
+///
+/// Every one of those was once written the PostgreSQL way, which made this
+/// the only package in the workspace that could not run on the other
+/// databases the framework claims to support.
+fn reserve_sql(jobs_sql: &str, dialect: &dyn rustlavel_db::Dialect) -> String {
+    let (hint, lock) = dialect.skip_locked();
+    format!(
+        "select id, name, payload, attempts, max_tries, retry_after \
+         from {jobs_sql}{hint} \
+         where queue = {} and reserved_at is null and available_at <= {} \
+         order by id{lock}{}",
+        dialect.placeholder(1),
+        dialect.placeholder(2),
+        dialect.limit_offset(Some(1), None, true)
+    )
+}
+
 impl DatabaseQueue {
     /// Use the conventional `jobs` and `failed_jobs` tables.
     pub fn new(db: Database) -> Self {
@@ -191,12 +218,15 @@ impl DatabaseQueue {
             .expect("the built-in table names are valid identifiers")
     }
 
-    /// Use table names of your own. Validated here, once, rather than on every
-    /// statement.
+    /// Use table names of your own. Validated and quoted here, once, for the
+    /// database this queue is talking to — `"jobs"` on PostgreSQL and SQLite,
+    /// `` `jobs` `` on MySQL, `[jobs]` on SQL Server. The shared
+    /// `quote_identifier` helper always writes double quotes, which MySQL
+    /// reads as a string literal rather than a table.
     pub fn with_tables(db: Database, jobs: &str, failed: &str) -> Result<Self> {
         Ok(DatabaseQueue {
-            jobs_sql: quote_identifier(jobs)?,
-            failed_sql: quote_identifier(failed)?,
+            jobs_sql: quote_qualified(db.dialect(), jobs)?,
+            failed_sql: quote_qualified(db.dialect(), failed)?,
             jobs: jobs.to_string(),
             failed: failed.to_string(),
             db,
@@ -246,24 +276,26 @@ impl DatabaseQueue {
     /// The select and the update are in one transaction for exactly that
     /// reason: the lock only lasts as long as the transaction does, so the row
     /// must be marked reserved before it is released.
+    /// The statement that claims one job, built for whichever database this
+    /// is talking to.
+    ///
+    /// Split out from [`DatabaseQueue::reserve`] so its shape can be asserted
+    /// without a server. Three things here are database-specific and none may
+    /// be written literally: the **placeholders** (`$1` on PostgreSQL, `?`
+    /// everywhere else), the **row-claiming clause** (a suffix on PostgreSQL
+    /// and MySQL, a table hint on SQL Server, nothing at all on SQLite), and
+    /// **`limit`**, which SQL Server spells `offset … fetch next … rows only`.
+    ///
+    /// Every one of those was once written the PostgreSQL way, which made this
+    /// the only package in the workspace that could not run on the other
+    /// databases the framework supports.
     async fn reserve(&self, queue: &str) -> Result<Option<ReservedJob>> {
         let now = unix_now();
         let mut tx = self.db.begin().await?;
 
-        let row = tx
-            .select_one(
-                &format!(
-                    "select id, name, payload, attempts, max_tries, retry_after \
-                     from {} \
-                     where queue = $1 and reserved_at is null and available_at <= $2 \
-                     order by id \
-                     for update skip locked \
-                     limit 1",
-                    self.jobs_sql
-                ),
-                &[Value::from(queue), Value::from(now)],
-            )
-            .await?;
+        let dialect = self.db.dialect();
+        let sql = reserve_sql(&self.jobs_sql, dialect);
+        let row = tx.select_one(&sql, &[Value::from(queue), Value::from(now)]).await?;
 
         let Some(row) = row else {
             // Nothing to do, but the transaction still has to end — an open one
@@ -278,8 +310,11 @@ impl DatabaseQueue {
 
         tx.execute(
             &format!(
-                "update {} set attempts = $1, reserved_at = $2 where id = $3",
-                self.jobs_sql
+                "update {} set attempts = {}, reserved_at = {} where id = {}",
+                self.jobs_sql,
+                dialect.placeholder(1),
+                dialect.placeholder(2),
+                dialect.placeholder(3)
             ),
             &[Value::from(attempts), Value::from(now), Value::from(id)],
         )
@@ -323,9 +358,12 @@ impl DatabaseQueue {
         self.db
             .execute(
                 &format!(
-                    "update {} set reserved_at = null, available_at = $1 \
-                     where queue = $2 and reserved_at is not null and reserved_at + retry_after < $3",
-                    self.jobs_sql
+                    "update {} set reserved_at = null, available_at = {} \
+                     where queue = {} and reserved_at is not null and reserved_at + retry_after < {}",
+                    self.jobs_sql,
+                    self.db.dialect().placeholder(1),
+                    self.db.dialect().placeholder(2),
+                    self.db.dialect().placeholder(3)
                 ),
                 &[Value::from(now), Value::from(queue), Value::from(now)],
             )
@@ -449,8 +487,14 @@ impl Queue for DatabaseQueue {
             tx.execute(
                 &format!(
                     "insert into {} (queue, name, payload, attempts, error, failed_at) \
-                     values ($1, $2, $3, $4, $5, $6)",
-                    self.failed_sql
+                     values ({}, {}, {}, {}, {}, {})",
+                    self.failed_sql,
+                    self.db.dialect().placeholder(1),
+                    self.db.dialect().placeholder(2),
+                    self.db.dialect().placeholder(3),
+                    self.db.dialect().placeholder(4),
+                    self.db.dialect().placeholder(5),
+                    self.db.dialect().placeholder(6)
                 ),
                 &[
                     Value::from(job.job.queue.as_str()),
@@ -466,8 +510,15 @@ impl Queue for DatabaseQueue {
             )
             .await?;
 
-            tx.execute(&format!("delete from {} where id = $1", self.jobs_sql), &[Value::from(id)])
-                .await?;
+            tx.execute(
+                &format!(
+                    "delete from {} where id = {}",
+                    self.jobs_sql,
+                    self.db.dialect().placeholder(1)
+                ),
+                &[Value::from(id)],
+            )
+            .await?;
 
             tx.commit().await
         })
@@ -487,6 +538,122 @@ impl Queue for DatabaseQueue {
         Box::pin(async move {
             self.db.table(&self.jobs).filter("queue", queue).delete(&self.db).await
         })
+    }
+}
+
+#[cfg(test)]
+mod portability {
+    /// **No statement in this file may write a placeholder literally.**
+    ///
+    /// `$1` is PostgreSQL's spelling. MySQL and SQL Server use `?`, SQLite
+    /// uses `?` too, and a query carrying `$1` is a syntax error on three of
+    /// the four databases this framework claims to support. Every statement
+    /// here went through `dialect.placeholder(n)` — this fails if one stops.
+    ///
+    /// It was not hypothetical: until this guard existed, the queue was the
+    /// only package in the workspace that could not run anywhere but
+    /// PostgreSQL, and nothing said so.
+    #[test]
+    fn no_statement_writes_a_placeholder_literally() {
+        let source = include_str!("database.rs");
+        let offenders: Vec<(usize, &str)> = source
+            .lines()
+            .enumerate()
+            .map(|(number, line)| (number + 1, line))
+            // Everything *before* this module. `skip_while` was the bug: it
+            // kept only the guard itself, whose own strings name the very
+            // things it forbids, so it failed on its own explanation.
+            .take_while(|(_, line)| !line.contains("mod portability"))
+            .filter(|(_, line)| !line.trim_start().starts_with("///"))
+            .filter(|(_, line)| {
+                ["$1", "$2", "$3", "$4", "$5", "$6"].iter().any(|p| line.contains(p))
+            })
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "these lines write a PostgreSQL placeholder literally; use \
+             `dialect.placeholder(n)`: {offenders:?}"
+        );
+    }
+
+    /// The statement each database actually receives.
+    ///
+    /// Asserted as whole strings rather than by searching for fragments: a
+    /// clause in the wrong *position* is still present, and SQL Server's hint
+    /// belongs after the table while PostgreSQL's belongs at the end.
+    #[test]
+    fn the_claiming_statement_is_built_for_each_database() {
+        use rustlavel_db::dialect::{MySql, Postgres, Sqlite, SqlServer};
+
+        use rustlavel_db::dialect::quote_qualified;
+
+        let sql = |dialect: &dyn rustlavel_db::Dialect| {
+            super::reserve_sql(&quote_qualified(dialect, "jobs").unwrap(), dialect)
+        };
+
+        // **Byte for byte what the PostgreSQL-only version produced.** The
+        // literal it replaced was
+        //
+        //   "… from {} where queue = $1 and reserved_at is null and
+        //    available_at <= $2 order by id for update skip locked limit 1"
+        //
+        // so this assertion is the no-regression check as well as the shape
+        // check: PostgreSQL receives exactly the statement it always did, and
+        // if a refactor ever changes that, this says so without a server.
+        assert_eq!(
+            sql(&Postgres),
+            "select id, name, payload, attempts, max_tries, retry_after \
+             from \"jobs\" \
+             where queue = $1 and reserved_at is null and available_at <= $2 \
+             order by id for update skip locked limit 1"
+        );
+
+        assert_eq!(
+            sql(&MySql),
+            "select id, name, payload, attempts, max_tries, retry_after \
+             from `jobs` \
+             where queue = ? and reserved_at is null and available_at <= ? \
+             order by id for update skip locked limit 1"
+        );
+
+        // Brackets, `@P1` rather than `?`, the hint after the table, and no
+        // `limit` anywhere — four differences in one statement, which is the
+        // whole reason none of them may be written by hand.
+        assert_eq!(
+            sql(&SqlServer),
+            "select id, name, payload, attempts, max_tries, retry_after \
+             from [jobs] with (updlock, readpast, rowlock) \
+             where queue = @P1 and reserved_at is null and available_at <= @P2 \
+             order by id offset 0 rows fetch next 1 rows only"
+        );
+
+        // No locking clause at all: SQLite's `begin immediate` is what stops
+        // two workers reading the same row.
+        assert_eq!(
+            sql(&Sqlite),
+            "select id, name, payload, attempts, max_tries, retry_after \
+             from \"jobs\" \
+             where queue = ? and reserved_at is null and available_at <= ? \
+             order by id limit 1"
+        );
+    }
+
+    /// The row-claiming clause is the dialect's too, for the same reason:
+    /// SQL Server spells it as a table hint and SQLite has no such thing.
+    #[test]
+    fn the_row_lock_is_asked_of_the_dialect_not_written_here() {
+        let source = include_str!("database.rs");
+        let written_literally = source
+            .lines()
+            .take_while(|line| !line.contains("mod portability"))
+            .any(|line| {
+                !line.trim_start().starts_with("///") && line.contains("for update skip locked")
+            });
+        assert!(
+            !written_literally,
+            "`for update skip locked` is written into a statement here; ask \
+             `dialect.skip_locked()` instead — SQL Server needs a table hint"
+        );
     }
 }
 
