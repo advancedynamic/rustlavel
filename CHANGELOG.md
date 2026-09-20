@@ -28,6 +28,12 @@ them up on its own and nothing below needs a person to read it first.
   PostgreSQL's statement is byte for byte what it was. Two guards fail if a
   placeholder or a lock clause is ever written by hand again.
 
+  Checked against a live PostgreSQL as well as by assertion — including
+  `many_workers_racing_for_the_same_jobs_each_run_exactly_once` and
+  `only_one_reservation_can_win_a_single_row`, the two that prove no row is
+  ever handed out twice — and against SQLite, which now has a queue
+  integration test that needs no container at all.
+
 - **SQLite, behind the `sqlite` feature.** A fourth database, and the only
   dependency on C in the workspace. It is not a wire protocol like the other
   three — SQLite is a library that reads a file in this process, so there was
