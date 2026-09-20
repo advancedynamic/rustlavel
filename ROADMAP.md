@@ -142,6 +142,13 @@ Publishing model: one repository, many crates — the way `laravel/framework` ho
 - [x] MySQL driver, written from scratch on the client/server protocol; both authentication plugins, prepared statements
 - [x] SQL Server driver, written from scratch on the published MS-TDS specification
 - [x] A conformance suite that runs the *generated* SQL against every configured server — the dialect tests assert what the strings look like, these assert that they work
+- [ ] **SQLite — not supported today, and the reason is the opposite of Oracle's.** Oracle is excluded because its protocol is secret; SQLite is absent because it *has* no protocol. It is not a server — it is a C library that reads a file in the calling process, so there is no wire format to write here and no socket to open. The only ways in are to link `libsqlite3`, which would be this tree's first C dependency, or to reimplement a database engine and its on-disk format, which is not a driver.
+
+      Nothing about the layering stops it: `Dialect` and `Driver` are already separate, and a SQLite `Dialect` is a small piece of work. What has to be decided is whether linking C is acceptable — and so far it has not had to be, because every driver here speaks over a socket.
+
+      **The one case that would justify revisiting is testing.** Every database-backed test in the workspace needs a PostgreSQL container today, and twice in one week the suite failed for no reason but a stopped Docker daemon. An in-memory SQLite would make the query builder, schema builder, migrator and ORM testable with nothing running. That is a real benefit and it is worth weighing against the C dependency — but it is a *developer* convenience, so if it is ever added it belongs behind a feature flag, documented as being for tests and small local tools, and never listed beside the three drivers as though it were an equal production target.
+
+      Until that is decided, `sqlite://` is refused by `DatabaseConfig::from_url` with a message naming the three schemes that work. An application that needs SQLite on the device — a point-of-sale till, an offline-first client — is not served by a driver here anyway: that code runs on the device, in the device's own language, and what connects it to the server is a sync protocol, not a shared driver.
 - [ ] **Oracle — not supported, and not planned.** Oracle has never published its network protocol. Every driver in existence either wraps OCI, a proprietary C library that has to be installed on every machine, or is a multi-year reverse-engineering effort maintained by Oracle themselves. Neither fits a framework whose premise is that the protocols are written here. If Oracle is ever needed, the honest shape is a separate `rustlavel-db-oracle` package that links OCI and says plainly that it breaks the rule.
 
 ## Phase 0.8 — OAuth 2.1 and API tokens ✅ done
@@ -613,7 +620,7 @@ them up rather than writing them.
 |---|---|
 | Reference | Laravel 13 (the slim 11+ structure, AI SDK, passkeys) |
 | Foundation | From scratch; only Tokio plus cryptography crates (argon2, sha2, hmac, aes-gcm, rustls) |
-| Databases | PostgreSQL, MySQL, SQL Server — each wire protocol written here, TLS included. Oracle deliberately excluded. |
+| Databases | PostgreSQL, MySQL, SQL Server — each wire protocol written here, TLS included. Oracle deliberately excluded; SQLite absent because it has no wire protocol to write. |
 | Distribution | The `rustlavel` meta-crate with feature flags; one crate per feature |
 | Enabling a package | Explicit `.plugin(...)`; no runtime auto-discovery |
 | Transactions | A guard (`begin`/`commit`), not a closure — a closure returning a future that borrows its argument cannot express the lifetime it needs |
