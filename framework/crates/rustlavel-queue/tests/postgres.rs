@@ -459,7 +459,12 @@ async fn a_job_orphaned_by_a_dead_worker_is_reclaimed() {
     queue
         .database()
         .execute(
-            "update q_orphan set reserved_at = reserved_at - 3600 where id = $1",
+            // The placeholder from the dialect, like the queue itself: this
+            // suite runs against every database, not only the one it is named for.
+            &format!(
+                "update q_orphan set reserved_at = reserved_at - 3600 where id = {}",
+                queue.database().dialect().placeholder(1)
+            ),
             &[rustlavel_db::Value::from(reserved.id.parse::<i64>().unwrap())],
         )
         .await
@@ -476,7 +481,12 @@ async fn a_job_orphaned_by_a_dead_worker_is_reclaimed() {
     queue
         .database()
         .execute(
-            "update q_orphan set reserved_at = reserved_at - 3600 where id = $1",
+            // The placeholder from the dialect, like the queue itself: this
+            // suite runs against every database, not only the one it is named for.
+            &format!(
+                "update q_orphan set reserved_at = reserved_at - 3600 where id = {}",
+                queue.database().dialect().placeholder(1)
+            ),
             &[rustlavel_db::Value::from(reclaimed.id.parse::<i64>().unwrap())],
         )
         .await

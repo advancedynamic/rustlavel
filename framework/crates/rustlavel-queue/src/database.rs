@@ -200,11 +200,14 @@ pub struct DatabaseQueue {
 /// databases the framework claims to support.
 fn reserve_sql(jobs_sql: &str, dialect: &dyn rustlavel_db::Dialect) -> String {
     let (hint, lock) = dialect.skip_locked();
+    // `limit` before the lock clause. MySQL requires that order and rejects
+    // the other with a syntax error; PostgreSQL accepts both, which is how the
+    // wrong order survived — it was only ever run against PostgreSQL.
     format!(
         "select id, name, payload, attempts, max_tries, retry_after \
          from {jobs_sql}{hint} \
          where queue = {} and reserved_at is null and available_at <= {} \
-         order by id{lock}{}",
+         order by id{}{lock}",
         dialect.placeholder(1),
         dialect.placeholder(2),
         dialect.limit_offset(Some(1), None, true)
@@ -591,21 +594,23 @@ mod portability {
             super::reserve_sql(&quote_qualified(dialect, "jobs").unwrap(), dialect)
         };
 
-        // **Byte for byte what the PostgreSQL-only version produced.** The
-        // literal it replaced was
+        // **These strings are only as right as the belief they encode.** They
+        // once asserted `… for update skip locked limit 1` for PostgreSQL *and*
+        // MySQL, and passed — because that was what the code produced and what
+        // its author thought correct. MySQL rejects it: `limit` must come
+        // first. PostgreSQL accepts either order, so a suite run only against
+        // PostgreSQL could never have said so.
         //
-        //   "… from {} where queue = $1 and reserved_at is null and
-        //    available_at <= $2 order by id for update skip locked limit 1"
-        //
-        // so this assertion is the no-regression check as well as the shape
-        // check: PostgreSQL receives exactly the statement it always did, and
-        // if a refactor ever changes that, this says so without a server.
+        // What caught it was running the queue's integration tests against a
+        // live MySQL. So these assertions pin the shape, and the live suites
+        // (`tests/postgres.rs`, pointed at each database in turn) prove it is
+        // accepted. Neither is enough alone.
         assert_eq!(
             sql(&Postgres),
             "select id, name, payload, attempts, max_tries, retry_after \
              from \"jobs\" \
              where queue = $1 and reserved_at is null and available_at <= $2 \
-             order by id for update skip locked limit 1"
+             order by id limit 1 for update skip locked"
         );
 
         assert_eq!(
@@ -613,7 +618,7 @@ mod portability {
             "select id, name, payload, attempts, max_tries, retry_after \
              from `jobs` \
              where queue = ? and reserved_at is null and available_at <= ? \
-             order by id for update skip locked limit 1"
+             order by id limit 1 for update skip locked"
         );
 
         // Brackets, `@P1` rather than `?`, the hint after the table, and no

@@ -3,6 +3,48 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## Unreleased
+
+### Fixed
+
+- **0.8.1 said the queue runs on all four databases. On MySQL it did not run
+  at all.** Every job reservation failed with a syntax error: the claiming
+  statement put `for update skip locked` before `limit 1`, and MySQL requires
+  the opposite order. PostgreSQL accepts either, SQL Server spells the lock as
+  a table hint, SQLite has none — so the one database that cares was the one
+  never run. The 0.8.1 fix had been *asserted* for MySQL and SQL Server, not
+  executed, and the assertion encoded the same wrong order, so it passed.
+
+  Now executed. The queue's integration suite — the same eleven tests,
+  including the two that prove no row is ever handed to two workers — passes
+  against a live PostgreSQL 16, MySQL 8.4 and SQL Server 2022, and SQLite's
+  suite passes too. The suite had one literal `$1` of its own, in a helper that
+  backdates a reservation; it now asks the dialect like the queue does, so it
+  can be pointed at any database. The whole-statement assertions stay, with a
+  comment saying what they cannot do: pin a shape somebody believed, which is
+  not the same as a shape a database accepts.
+
+- **A pool could open more connections than it was allowed**, on every
+  database. `PooledConnection`'s `Drop` handed its connection back through
+  `tokio::spawn`, but the permit was released as soon as `drop` returned — so
+  the next caller could win it, find the idle queue not yet refilled, and open
+  another connection, which then joined an idle queue with no bound. Measured:
+  a pool allowed two opened four and five, three runs out of three, none of
+  them closed.
+
+  Against a server this is waste until enough pools overshoot at once to reach
+  the server's own `max_connections`, which then refuses whoever asks next. It
+  was first seen as SQLite's `:memory:` losing tables, because there a second
+  connection is a second, empty database — and 0.8.1 worked around it in the
+  SQLite driver rather than fixing the pool.
+
+  Fixed in the pool. The idle queue is guarded by a synchronous lock, so `Drop`
+  pushes the connection back itself, before the permit goes; closing — the one
+  slow step — happens outside any lock. A test hammers a pool of two with
+  sixteen tasks and 3,200 borrows and fails if it ever opens a third; putting
+  the old ordering back makes it fail again. Every driver suite passes against
+  a live server with the change, as does the conformance suite on all three.
+
 ## 0.8.1 — 2026-09-20
 
 A fourth database and a charts package, both additive: `rustlavel = "0.8"` picks

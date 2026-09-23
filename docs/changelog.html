@@ -31,6 +31,12 @@
 <a href="guide.html#upgrading">a separate step</a> from bumping the dependency &mdash;
 <code>rustlavel upgrade</code> merges them rather than overwriting what you wrote.</p>
 
+<h2 id="unreleased">Unreleased</h2>
+<h3>Fixed</h3>
+<ul>
+<li><strong>0.8.1 said the queue runs on all four databases. On MySQL it did not run at all.</strong> Every job reservation failed with a syntax error: the claiming statement put <code>for update skip locked</code> before <code>limit 1</code>, and MySQL requires the opposite order. PostgreSQL accepts either, so the one database that cares was the one never run — the 0.8.1 fix had been asserted for MySQL and SQL Server, not executed, and the assertion encoded the same wrong order. Now executed: the queue's eleven integration tests, including the two that prove no row is handed to two workers, pass against a live PostgreSQL 16, MySQL 8.4 and SQL Server 2022, and SQLite's suite passes too.</li>
+<li><strong>A pool could open more connections than it was allowed</strong>, on every database. <code>PooledConnection</code>'s <code>Drop</code> handed its connection back through <code>tokio::spawn</code> after releasing the permit, so the next caller could win it, find the idle queue not yet refilled, and open another. Measured: a pool allowed two opened four and five. 0.8.1 worked around this in the SQLite driver instead of fixing the pool. Now fixed in the pool — the connection goes back before the permit is released — with a test that fails if the old order returns.</li>
+</ul>
 <h2 id="0-8-1">0.8.1 — 2026-09-20</h2>
 <p>A fourth database and a charts package, both additive: <code>rustlavel = "0.8"</code> picks them up on its own.</p>
 <ul>
