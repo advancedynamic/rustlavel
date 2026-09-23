@@ -331,7 +331,15 @@ async fn a_mutation_invalidates_the_cache_and_a_cache_hit_avoids_the_database() 
 #[tokio::test]
 async fn an_expired_entry_is_reloaded() {
     let url = database_url!();
-    let store = fresh(&url, "_ttl").await.cache_ttl(Duration::from_millis(50));
+    // Half a second, not the 50 ms this once used. The "still inside the TTL"
+    // assertion below depends on a database write finishing inside the TTL,
+    // and 50 ms is less than a write takes on a machine running several
+    // database servers at once: it failed once in a full workspace run and
+    // could not be reproduced in 130 runs afterwards, on either the old pool
+    // or the new one. What is being proved — cached within the TTL, reloaded
+    // after it — does not depend on the TTL being short, only on the two
+    // checks sitting on the right sides of it.
+    let store = fresh(&url, "_ttl").await.cache_ttl(Duration::from_millis(500));
 
     store.create_role("editor").await.unwrap();
     store.create_permission("posts.create").await.unwrap();
@@ -343,7 +351,7 @@ async fn an_expired_entry_is_reloaded() {
     other_handle(&store).remove_role(41, "editor").await.unwrap();
     assert!(store.has_permission(41, "posts.create").await.unwrap(), "still inside the TTL");
 
-    tokio::time::sleep(Duration::from_millis(80)).await;
+    tokio::time::sleep(Duration::from_millis(700)).await;
 
     assert!(
         !store.has_permission(41, "posts.create").await.unwrap(),
