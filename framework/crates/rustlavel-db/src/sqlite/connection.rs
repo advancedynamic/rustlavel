@@ -121,18 +121,21 @@ impl Driver for SqliteDriver {
 /// A URI naming one shared in-memory database, unique to this driver.
 ///
 /// **`Connection::open_in_memory()` would be the obvious call and it is the
-/// wrong one.** It gives each connection its own private blank database, and
-/// the pool opens more than one: `PooledConnection::drop` hands a connection
-/// back through `tokio::spawn`, but releases its permit straight away, so the
-/// next caller can win the permit, find the idle list not yet refilled, and
-/// open a second connection. Against a server that is invisible. Against
-/// `open_in_memory` it means the table you just created is not there —
-/// intermittently, depending on which side of that race you land.
+/// wrong one.** It gives each connection its own private blank database, so the
+/// moment a pool holds two connections, a table created on one is missing on
+/// the other.
 ///
-/// `mode=memory&cache=shared` makes every connection in this process address
-/// the *same* database, so the race stops mattering. The name is unique per
-/// driver so two in-memory databases in one process — two tests — cannot see
-/// each other's tables.
+/// This was first found as a real failure: the pool used to open more
+/// connections than it was allowed, because `PooledConnection`'s `Drop` handed
+/// a connection back through `tokio::spawn` after releasing its permit. That
+/// race is fixed in `pool.rs`, and the pool now holds its ceiling. This stays
+/// regardless, because the rule it protects does not depend on the pool being
+/// right: `mode=memory&cache=shared` makes every connection in this process
+/// address the *same* database, so correctness here never again rests on how
+/// many connections some other piece of code decides to open.
+///
+/// The name is unique per driver so two in-memory databases in one process —
+/// two tests — cannot see each other's tables.
 fn shared_memory_uri() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);

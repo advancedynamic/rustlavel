@@ -13,7 +13,8 @@ use crate::driver::{Driver, DriverConnection};
 use rustlavel_core::{Error, Result};
 use std::collections::VecDeque;
 use std::sync::Arc;
-use tokio::sync::{Mutex, Semaphore};
+use std::sync::{Mutex, MutexGuard};
+use tokio::sync::Semaphore;
 
 struct Inner {
     driver: Arc<dyn Driver>,
@@ -28,6 +29,29 @@ struct Inner {
 #[derive(Clone)]
 pub struct Pool {
     inner: Arc<Inner>,
+}
+
+impl Inner {
+    /// The idle queue.
+    ///
+    /// **A synchronous lock, and that is the fix, not a detail.** Handing a
+    /// connection back has to finish before its permit is released, and the
+    /// hand-back happens in `Drop`, which cannot `await`. With an async lock
+    /// the only option was `tokio::spawn`, which let the next caller win the
+    /// permit, find this queue not yet refilled, and open another connection —
+    /// measured at four and five connections from a pool allowed two.
+    ///
+    /// No lock here is ever held across an `await`: every critical section is
+    /// a push, a pop or a drain, and anything slow — closing a connection —
+    /// happens after the guard is gone.
+    ///
+    /// A poisoned lock is recovered rather than propagated. Poisoning means a
+    /// thread panicked while holding it, and none of these sections can panic;
+    /// taking the whole pool down over somebody else's panic would turn one
+    /// failed request into every request failing.
+    fn idle(&self) -> MutexGuard<'_, VecDeque<(u64, Box<dyn DriverConnection>)>> {
+        self.idle.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
 }
 
 impl Pool {
@@ -69,7 +93,7 @@ impl Pool {
         // be dropped deliberately: left alone it would keep an access granted
         // by a revoked account alive for as long as the process runs.
         loop {
-            let Some((opened_under, connection)) = self.inner.idle.lock().await.pop_front() else {
+            let Some((opened_under, connection)) = self.inner.idle().pop_front() else {
                 break;
             };
 
@@ -96,7 +120,7 @@ impl Pool {
 
     /// How many connections are currently idle. Used by tests and diagnostics.
     pub async fn idle_count(&self) -> usize {
-        self.inner.idle.lock().await.len()
+        self.inner.idle().len()
     }
 
     /// How many sockets this pool is holding open: idle plus borrowed.
@@ -116,7 +140,7 @@ impl Pool {
             .max_connections()
             .max(1)
             .saturating_sub(self.inner.permits.available_permits());
-        self.inner.idle.lock().await.len() + borrowed
+        self.inner.idle().len() + borrowed
     }
 
     /// Close up to `limit` idle connections, returning how many went.
@@ -128,7 +152,7 @@ impl Pool {
     pub async fn close_idle(&self, limit: usize) -> usize {
         let mut closed = 0;
         while closed < limit {
-            let Some((_, connection)) = self.inner.idle.lock().await.pop_front() else { break };
+            let Some((_, connection)) = self.inner.idle().pop_front() else { break };
             connection.close().await;
             closed += 1;
         }
@@ -137,8 +161,10 @@ impl Pool {
 
     /// Close every idle connection.
     pub async fn close(&self) {
-        let mut idle = self.inner.idle.lock().await;
-        while let Some((_, connection)) = idle.pop_front() {
+        // Taken out first and closed afterwards: closing is network I/O, and
+        // nothing that slow may happen while the idle queue is locked.
+        let drained: Vec<_> = self.inner.idle().drain(..).collect();
+        for (_, connection) in drained {
             connection.close().await;
         }
     }
@@ -155,21 +181,27 @@ impl Pool {
     /// Returns how many were closed.
     pub async fn retire_superseded(&self) -> usize {
         let generation = self.inner.driver.generation();
-        let mut idle = self.inner.idle.lock().await;
 
-        let mut keeping = VecDeque::with_capacity(idle.len());
-        let mut closed = 0;
-
-        while let Some((opened_under, connection)) = idle.pop_front() {
-            if opened_under == generation {
-                keeping.push_back((opened_under, connection));
-            } else {
-                connection.close().await;
-                closed += 1;
+        // Sorted under the lock, closed outside it.
+        let superseded: Vec<_> = {
+            let mut idle = self.inner.idle();
+            let mut superseded = Vec::new();
+            let mut keeping = VecDeque::with_capacity(idle.len());
+            for entry in idle.drain(..) {
+                if entry.0 == generation {
+                    keeping.push_back(entry);
+                } else {
+                    superseded.push(entry);
+                }
             }
-        }
+            *idle = keeping;
+            superseded
+        };
 
-        *idle = keeping;
+        let closed = superseded.len();
+        for (_, connection) in superseded {
+            connection.close().await;
+        }
         closed
     }
 }
@@ -211,16 +243,18 @@ impl Drop for PooledConnection {
 
         // A connection opened under a credential that has since been replaced
         // is closed rather than returned: this is the "busy connections go when
-        // their borrower is finished" half of the rotation.
-        let pool = Arc::clone(&self.pool);
-        let generation = self.generation;
-        tokio::spawn(async move {
-            if generation != pool.driver.generation() {
-                connection.close().await;
-                return;
-            }
-            pool.idle.lock().await.push_back((generation, connection));
-        });
+        // their borrower is finished" half of the rotation. Closing is the only
+        // part that needs a task — nothing is waiting on it.
+        if self.generation != self.pool.driver.generation() {
+            tokio::spawn(async move { connection.close().await });
+            return;
+        }
+
+        // **Back in the queue before this function returns**, and so before
+        // `_permit` is dropped with the rest of the fields. That ordering is
+        // the whole fix: the next caller cannot win this permit without also
+        // finding this connection waiting for it.
+        self.pool.idle().push_back((self.generation, connection));
     }
 }
 
@@ -288,6 +322,94 @@ mod tests {
         fn generation(&self) -> u64 {
             self.generation.load(std::sync::atomic::Ordering::Acquire)
         }
+    }
+
+    /// Counts connections like `Counting`, with a ceiling small enough that
+    /// exceeding it is unmistakable.
+    struct Capped {
+        opened: Arc<std::sync::atomic::AtomicUsize>,
+        closed: Arc<std::sync::atomic::AtomicUsize>,
+        max: usize,
+    }
+
+    impl Driver for Capped {
+        fn dialect(&self) -> Arc<dyn Dialect> {
+            Arc::new(Postgres)
+        }
+
+        fn connect(&self) -> BoxFuture<'_, Result<Box<dyn DriverConnection>>> {
+            self.opened.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let closed = Arc::clone(&self.closed);
+            Box::pin(async move { Ok(Box::new(Nothing(closed)) as Box<dyn DriverConnection>) })
+        }
+
+        fn describe(&self) -> String {
+            "test://capped".into()
+        }
+
+        fn max_connections(&self) -> usize {
+            self.max
+        }
+    }
+
+    /// **The pool may never hold more connections than it was allowed.**
+    ///
+    /// Every connection here is healthy and outside any transaction, so each
+    /// one handed back must be reused rather than joined by a new one. On a
+    /// correct pool the number ever opened therefore cannot pass the ceiling,
+    /// however hard it is hammered.
+    ///
+    /// It did. `PooledConnection`'s `Drop` returned the connection through
+    /// `tokio::spawn`, but the permit — a field — was released as soon as
+    /// `drop` returned. The next caller could win that permit, find the idle
+    /// queue not yet refilled, and open another connection; the spawned task
+    /// then added the original to an idle queue with no bound. The permit
+    /// counted *borrowed* connections, and nothing counted the open ones.
+    ///
+    /// Invisible in any single test, and against a server merely wasteful —
+    /// until enough pools overshoot at once to reach the server's own
+    /// `max_connections`, which refuses whoever asks next. Found because
+    /// SQLite's `:memory:` makes a second connection a second, empty database.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+    async fn a_pool_never_opens_more_connections_than_it_is_allowed() {
+        const CEILING: usize = 2;
+        let opened = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let closed = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let pool = Pool::new(Arc::new(Capped {
+            opened: Arc::clone(&opened),
+            closed: Arc::clone(&closed),
+            max: CEILING,
+        }));
+
+        let mut workers = Vec::new();
+        for _ in 0..16 {
+            let pool = pool.clone();
+            workers.push(tokio::spawn(async move {
+                for _ in 0..200 {
+                    let connection = pool.acquire().await.expect("a connection");
+                    // Give the scheduler a chance to interleave the drop with
+                    // another task's acquire — the window the bug lives in.
+                    tokio::task::yield_now().await;
+                    drop(connection);
+                }
+            }));
+        }
+        for worker in workers {
+            worker.await.unwrap();
+        }
+
+        let opened = opened.load(std::sync::atomic::Ordering::SeqCst);
+        let closed = closed.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(
+            opened <= CEILING,
+            "a pool allowed {CEILING} connections opened {opened} ({closed} closed) \
+             across 3,200 borrows"
+        );
+        assert!(
+            pool.open_count().await <= CEILING,
+            "{} connections are open in a pool allowed {CEILING}",
+            pool.open_count().await
+        );
     }
 
     fn counting() -> (Pool, Arc<std::sync::atomic::AtomicUsize>, Arc<std::sync::atomic::AtomicUsize>, Arc<std::sync::atomic::AtomicU64>) {
