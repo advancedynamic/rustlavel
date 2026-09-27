@@ -24,6 +24,15 @@ workspace shares one number.
   comment saying what they cannot do: pin a shape somebody believed, which is
   not the same as a shape a database accepts.
 
+- **`rustlavel-ws` accepted and echoed back close code 1004**, which RFC 6455
+  §7.4.1 reserves. It sat inside the `1000..=1014` range that `is_sendable`
+  treated as legal, so a peer sending it was answered in kind rather than with
+  1002. Found by the Autobahn TestSuite — case 7.9.3, the one failure out of
+  298 cases run against a rustlavel-ws echo server by a project using it.
+  1012–1014 stay sendable: IANA registered them after the RFC. The tests now
+  take their lists from Autobahn's own 7.9.x (invalid) and 7.7.x (valid)
+  cases rather than from a range that looked right.
+
 - **A pool could open more connections than it was allowed**, on every
   database. `PooledConnection`'s `Drop` handed its connection back through
   `tokio::spawn`, but the permit was released as soon as `drop` returned — so

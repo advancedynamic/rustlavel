@@ -104,11 +104,22 @@ impl CloseCode {
 
     /// Whether this code is one a peer is allowed to put in a close frame.
     ///
-    /// 1005, 1006 and 1015 describe how a connection ended locally; sending one
-    /// is a protocol violation, and clients do occasionally try.
+    /// Two different reasons a code in 1000–1015 may not be sent:
+    ///
+    /// * **1005, 1006 and 1015 describe how a connection ended locally** — no
+    ///   status given, closed abnormally, TLS failed. They exist for an API to
+    ///   report, and a peer putting one on the wire is lying about what
+    ///   happened. Clients do occasionally try.
+    /// * **1004 is reserved** (RFC 6455 §7.4.1). It has no meaning, so a peer
+    ///   sending it is sending nothing we can act on. It used to fall inside
+    ///   `1000..=1014` and was accepted and echoed back; the Autobahn
+    ///   TestSuite's case 7.9.3 caught it.
+    ///
+    /// 1012, 1013 and 1014 stay sendable: IANA registered them after the RFC —
+    /// service restart, try again later, bad gateway.
     pub fn is_sendable(self) -> bool {
         match self.0 {
-            1005 | 1006 | 1015 => false,
+            1004 | 1005 | 1006 | 1015 => false,
             1000..=1014 => true,
             3000..=4999 => true,
             _ => false,
@@ -529,6 +540,31 @@ mod tests {
         assert_eq!(CloseFrame::parse(&payload).unwrap(), Some(close));
         // An empty payload is legal: the peer closed without saying why.
         assert_eq!(CloseFrame::parse(&[]).unwrap(), None);
+    }
+
+    /// Exactly the codes the Autobahn TestSuite sends in cases 7.9.1–7.9.9 and
+    /// expects refused with 1002. Taken from the suite rather than reasoned
+    /// out, because reasoning is what let 1004 through: it sat inside a range
+    /// that looked right.
+    #[test]
+    fn every_close_code_autobahn_calls_invalid_is_refused() {
+        for code in [0u16, 999, 1004, 1005, 1006, 1016, 1100, 2000, 2999] {
+            let payload = code.to_be_bytes();
+            assert!(CloseFrame::parse(&payload).is_err(), "{code} should be refused");
+        }
+    }
+
+    /// And the ones it calls valid (cases 7.7.x), plus the three IANA added
+    /// after the RFC — so a future tidy-up of the range cannot take them out.
+    #[test]
+    fn every_registered_close_code_is_accepted() {
+        for code in [1000u16, 1001, 1002, 1003, 1007, 1008, 1009, 1010, 1011, 1012, 1013, 1014, 3000, 3999, 4000, 4999] {
+            let payload = code.to_be_bytes();
+            assert!(
+                CloseFrame::parse(&payload).is_ok(),
+                "{code} is a registered close code and was refused"
+            );
+        }
     }
 
     #[test]
