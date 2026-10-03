@@ -3,7 +3,11 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
-## Unreleased
+## 0.8.2 — 2026-10-03
+
+Five fixes, one of them to a claim 0.8.1 made that was not true. Nothing here
+changes an API: `rustlavel = "0.8"` picks it up on its own. Anybody running the
+queue on MySQL should take it now — on 0.8.1 it does not run at all.
 
 ### Fixed
 
@@ -32,6 +36,45 @@ workspace shares one number.
   1012–1014 stay sendable: IANA registered them after the RFC. The tests now
   take their lists from Autobahn's own 7.9.x (invalid) and 7.7.x (valid)
   cases rather than from a range that looked right.
+
+- **The queue's own orphan-reclaim query deadlocked against its workers on
+  MySQL**, so even after the syntax fix above the race test failed seven runs
+  in fifteen with error 1213. `reclaim_expired` was one `update … where
+  reserved_at + retry_after < ?`, and an InnoDB update locks every row it
+  *scans*, not only the ones it changes — while each worker held its own row
+  under `for update skip locked`. Two transactions each holding what the other
+  wanted; MySQL killed one.
+
+  It is now a `select … for update skip locked` followed by an update of just
+  those ids, in one transaction, so every locking read in the queue steps over
+  rows somebody holds instead of waiting for them, and a transaction that never
+  waits cannot be in a cycle. A row skipped is not an orphan anyway: somebody
+  holds it right now. Bounded at 500 per pass, because the update names each id
+  and SQL Server refuses more than 2,100 parameters; a bigger backlog clears
+  over a few polls.
+
+  Measured on the same machine against the same live MySQL: the old query
+  failed 6 runs in 20, the new one 0 in 40. It passes the full eleven-test
+  suite on PostgreSQL 16, MySQL 8.4 and SQL Server 2022, and SQLite's.
+
+- **A queue worker exited the moment its database blinked.** `Worker::run`
+  returned any error from the queue straight out of its loop, and `run_pool`
+  joined its tasks with `?`, so one deadlock on one poll ended that worker and
+  the first worker to hit it ended the whole `queue:work` process, with jobs
+  still waiting. A *job* failing was always handled; the *queue* failing was
+  not — until the reclaim deadlock above put one in front of a worker.
+
+  A failure to reach the queue is now logged and retried with a pause that
+  starts at the poll interval, doubles, resets the first time the queue
+  answers, and stops at **30 seconds** — not at the job backoff cap, which is an
+  hour, because a failed job is waiting on something of its own while a database
+  that deadlocked is back in seconds. Shutdown ends the pause at once, so a
+  worker whose database is down does not hang a deploy.
+
+  **This is a behaviour change.** A worker whose database is gone for good used
+  to exit and let a supervisor restart it; it now keeps retrying, logging at
+  error level, until somebody notices. The signature is unchanged, but `run` no
+  longer returns `Err` for anything the queue did.
 
 - **A pool could open more connections than it was allowed**, on every
   database. `PooledConnection`'s `Drop` handed its connection back through

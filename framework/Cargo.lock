@@ -710,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-ai",
  "rustlavel-audit",
@@ -754,7 +754,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-ai"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -764,7 +764,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-audit"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-auth",
  "rustlavel-core",
@@ -775,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-auth"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -791,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-billing"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
  "rustlavel-db",
@@ -802,7 +802,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-cache"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -811,7 +811,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-chart"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -819,7 +819,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-cli"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
  "rustlavel-view",
@@ -827,7 +827,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-client"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -839,11 +839,11 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-core"
-version = "0.8.1"
+version = "0.8.2"
 
 [[package]]
 name = "rustlavel-db"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "hmac",
  "md-5",
@@ -860,7 +860,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-debugbar"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -869,7 +869,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-discovery"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -880,7 +880,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-flags"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-auth",
  "rustlavel-core",
@@ -890,7 +890,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-gateway"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -900,7 +900,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-http"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
  "tokio",
@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-i18n"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -918,7 +918,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-ldap"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-auth",
  "rustlavel-core",
@@ -930,7 +930,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-ledger"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
  "rustlavel-db",
@@ -939,11 +939,11 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-macros"
-version = "0.8.1"
+version = "0.8.2"
 
 [[package]]
 name = "rustlavel-mail"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -956,7 +956,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-mcp"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -966,7 +966,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-metrics"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -975,7 +975,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-model-cache"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-cache",
  "rustlavel-core",
@@ -985,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-oauth"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "p256",
  "rustlavel-auth",
@@ -998,7 +998,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-oauth-provider"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-auth",
  "rustlavel-core",
@@ -1011,7 +1011,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-openapi"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -1020,7 +1020,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-otel"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -1030,7 +1030,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-payment"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "hmac",
  "rustlavel-client",
@@ -1043,7 +1043,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-queue"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
  "rustlavel-db",
@@ -1053,7 +1053,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-rbac"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-auth",
  "rustlavel-core",
@@ -1064,7 +1064,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-search"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -1074,7 +1074,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-storage"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "hmac",
  "md-5",
@@ -1087,7 +1087,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-telescope"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
@@ -1096,7 +1096,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-validation"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-auth",
  "rustlavel-core",
@@ -1106,7 +1106,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-vault"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-client",
  "rustlavel-core",
@@ -1117,14 +1117,14 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-view"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
 ]
 
 [[package]]
 name = "rustlavel-webauthn"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "ed25519-dalek",
  "p256",
@@ -1137,7 +1137,7 @@ dependencies = [
 
 [[package]]
 name = "rustlavel-ws"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "rustlavel-core",
  "rustlavel-http",
