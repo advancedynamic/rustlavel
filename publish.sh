@@ -26,7 +26,13 @@
 #            'import sys,json; print(json.load(sys.stdin)["crate"]["max_version"])')"
 #   done
 
-set -e
+# No `set -e`, and that is deliberate. This script's whole job is to look at a
+# failing `cargo publish` and decide what it means — already published, rate
+# limited, or a real failure — and `set -e` exits on the failing command before
+# that decision is ever reached. It did exactly that: a 429 from crates.io
+# killed a release at crate 37 of 39 with no message, and the retry logic below
+# that exists for precisely this case never ran. A dry run cannot see it,
+# because a dry run never fails.
 cd "${0:A:h}" || exit 1
 
 DRY_RUN=0
@@ -79,16 +85,30 @@ for crate in $ORDER; do
       break
     fi
 
-    # crates.io rate-limits new crates harder than new versions. Waiting is the
-    # correct response to a 429; failing the release is not.
+    # crates.io rate-limits updates to existing crates, and says exactly when to
+    # come back: "Please try again after Sat, 03 Oct 2026 14:32:27 GMT". Wait
+    # until then rather than guessing — a guess that is too short is refused
+    # again, and one that is too long wastes the release.
     if echo "$out" | grep -qi "429\|too many requests\|rate limit"; then
       if [ $attempt -ge 8 ]; then
         echo "RATE LIMITED past patience on $crate" >&2
         echo "$out" | tail -20 >&2
         exit 1
       fi
-      wait=$((attempt * 120))
-      echo "rate limited on $crate; waiting ${wait}s (attempt $attempt)"
+      until=$(echo "$out" | sed -n 's/.*try again after \([A-Za-z]*, [0-9]* [A-Za-z]* [0-9]* [0-9:]* GMT\).*/\1/p' | head -1)
+      wait=$(python3 - "$until" "$attempt" <<'PY'
+import sys, time, email.utils
+until, attempt = sys.argv[1], int(sys.argv[2])
+try:
+    seconds = email.utils.parsedate_to_datetime(until).timestamp() - time.time()
+    # A few seconds past the stated time, so a clock a little behind the
+    # server's is not refused a second time.
+    print(max(5, int(seconds) + 10))
+except Exception:
+    print(attempt * 120)
+PY
+)
+      echo "rate limited on $crate; waiting ${wait}s${until:+ (server said: after $until)} (attempt $attempt)"
       sleep $wait
       continue
     fi
