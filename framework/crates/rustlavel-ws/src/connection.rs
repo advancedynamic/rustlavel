@@ -131,8 +131,15 @@ pub struct WebSocket {
     buffer: Vec<u8>,
     outgoing: Sender,
     config: WebSocketConfig,
-    /// The opcode and bytes of a message still arriving in fragments.
-    partial: Option<(OpCode, Vec<u8>)>,
+    /// A message still arriving in fragments: its opcode, the bytes so far, and
+    /// how many of those bytes have already been checked as UTF-8.
+    ///
+    /// The count is what keeps validation linear. Re-validating the whole
+    /// buffer on every fragment would be quadratic — a peer sending a message
+    /// one byte at a time would cost the server n² work — so each byte is
+    /// looked at once, and only an unfinished character at the very end is
+    /// looked at again, with the fragment that completes it.
+    partial: Option<(OpCode, Vec<u8>, usize)>,
     awaiting_pong: bool,
     closed: bool,
     close_frame: Option<CloseFrame>,
@@ -277,10 +284,17 @@ impl WebSocket {
                     if frame.fin {
                         return self.deliver(frame.opcode, frame.payload).await;
                     }
-                    self.partial = Some((frame.opcode, frame.payload));
+                    let mut checked = 0;
+                    if frame.opcode == OpCode::Text
+                        && !text_so_far_is_valid(&frame.payload, &mut checked)
+                    {
+                        self.fail(WsError::InvalidUtf8).await;
+                        return None;
+                    }
+                    self.partial = Some((frame.opcode, frame.payload, checked));
                 }
                 OpCode::Continuation => {
-                    let Some((opcode, mut assembled)) = self.partial.take() else {
+                    let Some((opcode, mut assembled, mut checked)) = self.partial.take() else {
                         self.fail(WsError::protocol(
                             "a continuation frame arrived with no message to continue",
                         ))
@@ -302,9 +316,20 @@ impl WebSocket {
 
                     assembled.extend_from_slice(&frame.payload);
                     if frame.fin {
+                        // The whole message is validated once more on its way
+                        // out, by `Message::from_data` — which is what refuses
+                        // one that ends in the middle of a character.
                         return self.deliver(opcode, assembled).await;
                     }
-                    self.partial = Some((opcode, assembled));
+                    // **Fail fast.** Not waiting for the last fragment is the
+                    // strict reading of RFC 6455 §8.1, and the cheaper one: a
+                    // message already known to be invalid is not worth buffering
+                    // the rest of.
+                    if opcode == OpCode::Text && !text_so_far_is_valid(&assembled, &mut checked) {
+                        self.fail(WsError::InvalidUtf8).await;
+                        return None;
+                    }
+                    self.partial = Some((opcode, assembled, checked));
                 }
             }
         }
@@ -474,6 +499,34 @@ async fn write_loop(
     let _ = writer.shutdown().await;
 }
 
+/// Whether the text received so far could still become valid UTF-8, advancing
+/// `checked` past what has been confirmed.
+///
+/// `false` only when the bytes are *definitely* invalid — a byte that can never
+/// appear, an overlong form, a continuation with no start. An unfinished
+/// character at the end is **not** a failure: the next fragment may complete
+/// it, because a character is allowed to be cut anywhere. `from_utf8`
+/// distinguishes the two itself — `error_len()` is `None` exactly when the
+/// input ran out in the middle of a sequence.
+///
+/// Only the bytes after `checked` are examined, so a message of any number of
+/// fragments is validated in time linear in its length.
+fn text_so_far_is_valid(bytes: &[u8], checked: &mut usize) -> bool {
+    match std::str::from_utf8(&bytes[*checked..]) {
+        Ok(_) => {
+            *checked = bytes.len();
+            true
+        }
+        Err(error) if error.error_len().is_none() => {
+            // Valid up to an unfinished character; remember where it starts so
+            // the next fragment is checked from there.
+            *checked += error.valid_up_to();
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -629,6 +682,134 @@ mod tests {
         assert!(socket.recv().await.is_none());
         assert_eq!(close_from_server(&mut peer).await.code, CloseCode::INVALID_PAYLOAD);
         assert_eq!(socket.close_frame().unwrap().code, CloseCode::INVALID_PAYLOAD);
+    }
+
+    /// The pointer is the whole point of the helper: it advances over what is
+    /// confirmed and stops at the start of an unfinished character, so the next
+    /// fragment re-examines at most three bytes rather than the whole message.
+    #[test]
+    fn the_checked_pointer_stops_at_an_unfinished_character_and_moves_on_when_it_is_finished() {
+        let mut checked = 0;
+
+        // "caf" is whole; the C3 is the start of "é" and must be looked at again.
+        let mut bytes = vec![b'c', b'a', b'f', 0xc3];
+        assert!(text_so_far_is_valid(&bytes, &mut checked));
+        assert_eq!(checked, 3, "the unfinished character was counted as checked");
+
+        // Its second byte arrives; now it is whole and everything is confirmed.
+        bytes.push(0xa9);
+        assert!(text_so_far_is_valid(&bytes, &mut checked));
+        assert_eq!(checked, 5);
+
+        // Bytes already confirmed are never examined again: corrupt one behind
+        // the pointer and the check does not notice. (Nothing real can do this —
+        // the buffer is append-only — but it pins that the work is incremental.)
+        bytes[0] = 0xff;
+        bytes.push(b'!');
+        assert!(text_so_far_is_valid(&bytes, &mut checked));
+        assert_eq!(checked, 6);
+    }
+
+    #[test]
+    fn bytes_that_can_never_become_valid_utf8_are_refused_at_once() {
+        for bad in [&[0xffu8][..], &[0xc0, 0xaf], &[0x80], &[0xed, 0xa0, 0x80], &[0xf4, 0x90, 0x80, 0x80]] {
+            let mut checked = 0;
+            assert!(!text_so_far_is_valid(bad, &mut checked), "{bad:02x?} was accepted");
+        }
+        // A start byte whose only continuations would be overlong is already
+        // doomed after one more byte, not after the message.
+        let mut checked = 0;
+        assert!(text_so_far_is_valid(&[0xe0], &mut checked));
+        assert!(!text_so_far_is_valid(&[0xe0, 0x80], &mut checked));
+    }
+
+    /// **A bad fragment ends the message at once, not when it completes.**
+    ///
+    /// RFC 6455 lets a server wait for the final fragment before validating, so
+    /// this used to be allowed — and Autobahn cases 6.4.1–6.4.4 mark it
+    /// NON-STRICT. Waiting is the worse choice anyway: a peer sending an
+    /// invalid first fragment and then a megabyte of continuations makes the
+    /// server buffer all of it for a message it can already know is doomed.
+    ///
+    /// The final fragment is deliberately never sent. If the server only
+    /// closed after seeing it, `recv` would be stuck waiting and this would
+    /// hang rather than pass — which is how it proves the close is early.
+    #[tokio::test]
+    async fn an_invalid_first_fragment_closes_with_1007_before_the_message_ends() {
+        let (mut socket, mut peer) = pair(WebSocketConfig::default());
+
+        // 0xff can never appear in UTF-8.
+        peer.send_fragment(OpCode::Text, &[b'o', b'k', 0xff], false).await;
+
+        let closed = tokio::time::timeout(Duration::from_secs(2), socket.recv())
+            .await
+            .expect("the server waited for a final fragment that was never coming");
+        assert!(closed.is_none());
+        assert_eq!(close_from_server(&mut peer).await.code, CloseCode::INVALID_PAYLOAD);
+    }
+
+    #[tokio::test]
+    async fn an_invalid_later_fragment_closes_with_1007_when_it_arrives() {
+        let (mut socket, mut peer) = pair(WebSocketConfig::default());
+
+        peer.send_fragment(OpCode::Text, b"fine so far ", false).await;
+        peer.send_fragment(OpCode::Continuation, b"still fine", false).await;
+        peer.send_fragment(OpCode::Continuation, &[0xc0, 0xaf], false).await; // overlong
+
+        let closed = tokio::time::timeout(Duration::from_secs(2), socket.recv())
+            .await
+            .expect("the server waited for a final fragment that was never coming");
+        assert!(closed.is_none());
+        assert_eq!(close_from_server(&mut peer).await.code, CloseCode::INVALID_PAYLOAD);
+    }
+
+    /// The reason this cannot be "validate each fragment on its own": a
+    /// character is allowed to be cut anywhere, and the pieces are not valid
+    /// UTF-8 until they are put back together. Rejecting these would break
+    /// every client that streams text in arbitrary chunks.
+    #[tokio::test]
+    async fn a_character_split_across_fragments_is_not_an_error() {
+        let (mut socket, mut peer) = pair(WebSocketConfig::default());
+
+        // "é" is C3 A9; "😀" is F0 9F 98 80, cut into three pieces.
+        peer.send_fragment(OpCode::Text, &[b'c', b'a', b'f', 0xc3], false).await;
+        peer.send_fragment(OpCode::Continuation, &[0xa9, b' ', 0xf0], false).await;
+        peer.send_fragment(OpCode::Continuation, &[0x9f, 0x98], false).await;
+        peer.send_fragment(OpCode::Continuation, &[0x80], true).await;
+
+        match socket.recv().await {
+            Some(Message::Text(text)) => assert_eq!(text, "café 😀"),
+            other => panic!("a valid message cut mid-character was refused: {other:?}"),
+        }
+    }
+
+    /// Cut mid-character and never finished: not fail-fast territory — the
+    /// bytes so far are a valid *prefix* — but the final frame must still be
+    /// refused when the message ends with the character incomplete.
+    #[tokio::test]
+    async fn a_message_that_ends_mid_character_is_still_refused() {
+        let (mut socket, mut peer) = pair(WebSocketConfig::default());
+
+        peer.send_fragment(OpCode::Text, b"caf", false).await;
+        peer.send_fragment(OpCode::Continuation, &[0xc3], true).await;
+
+        assert!(socket.recv().await.is_none());
+        assert_eq!(close_from_server(&mut peer).await.code, CloseCode::INVALID_PAYLOAD);
+    }
+
+    /// Binary is bytes. Only text is validated, so a fragmented binary message
+    /// full of 0xff arrives intact.
+    #[tokio::test]
+    async fn a_fragmented_binary_message_is_never_validated_as_text() {
+        let (mut socket, mut peer) = pair(WebSocketConfig::default());
+
+        peer.send_fragment(OpCode::Binary, &[0xff, 0xfe], false).await;
+        peer.send_fragment(OpCode::Continuation, &[0xc0, 0xaf], true).await;
+
+        match socket.recv().await {
+            Some(Message::Binary(bytes)) => assert_eq!(bytes, vec![0xff, 0xfe, 0xc0, 0xaf]),
+            other => panic!("binary was validated as if it were text: {other:?}"),
+        }
     }
 
     #[tokio::test]

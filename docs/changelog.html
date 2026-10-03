@@ -31,6 +31,11 @@
 <a href="guide.html#upgrading">a separate step</a> from bumping the dependency &mdash;
 <code>rustlavel upgrade</code> merges them rather than overwriting what you wrote.</p>
 
+<h2 id="unreleased">Unreleased</h2>
+<h3>Changed</h3>
+<ul>
+<li><strong><code>rustlavel-ws</code> rejects invalid UTF-8 in a fragmented text message as soon as the bad fragment arrives</strong>, instead of when the message completes. RFC 6455 allows waiting and Autobahn graded it NON-STRICT (6.4.1, 6.4.2), but waiting meant buffering the rest of a message already known to be doomed. Validation is incremental — each byte checked once — and a character cut across fragments is not an error, only bytes that can never become valid. Autobahn, 301 cases: 6.4.1 and 6.4.2 move to OK and nothing regresses. 6.4.3 and 6.4.4 stay NON-STRICT: they send one <em>frame</em> in three TCP packets, which needs validation inside a frame still arriving.</li>
+</ul>
 <h2 id="0-8-2">0.8.2 — 2026-10-03</h2>
 <p>Five fixes, one of them to a claim 0.8.1 made that was not true. Nothing here changes an API. Anybody running the queue on MySQL should take it now — on 0.8.1 it does not run at all.</p>
 <h3>Fixed</h3>

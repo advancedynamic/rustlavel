@@ -3,6 +3,35 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## Unreleased
+
+### Changed
+
+- **`rustlavel-ws` rejects invalid UTF-8 in a fragmented text message as soon
+  as the bad fragment arrives**, instead of when the message completes. RFC
+  6455 allows waiting, so this was never a bug and the Autobahn TestSuite
+  graded it NON-STRICT (cases 6.4.1 and 6.4.2) — but waiting meant buffering
+  the rest of a message the server could already know was doomed, up to the
+  size limit, for a peer that had sent one bad byte.
+
+  Validation is incremental: each byte is checked once, behind a marker for
+  how far the message has been confirmed, so a message of any number of
+  fragments costs time linear in its length rather than quadratic. The
+  difficulty is that a character may be cut anywhere — "é" can arrive as two
+  fragments of one byte each, and neither is valid UTF-8 alone — so an
+  unfinished character at the end is *not* a failure. Only bytes that can never
+  become valid are, and `from_utf8` says which is which. A message that ends in
+  the middle of a character is still refused when it ends.
+
+  Run through the full Autobahn suite (301 cases, permessage-deflate cases
+  excluded) against the previous report: 6.4.1 and 6.4.2 move from NON-STRICT
+  to OK, nothing else moves except 7.9.3, fixed in 0.8.2. **6.4.3 and 6.4.4
+  stay NON-STRICT**, and they are a different thing from what 6.4.1 and 6.4.2
+  test: one *frame* arriving in three TCP packets, not three frames. Failing
+  those early means validating a payload while the frame is still arriving,
+  which is a deeper change to the read path for a strictness the suite itself
+  accepts.
+
 ## 0.8.2 — 2026-10-03
 
 Five fixes, one of them to a claim 0.8.1 made that was not true. Nothing here
