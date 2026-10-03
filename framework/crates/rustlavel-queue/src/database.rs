@@ -185,6 +185,31 @@ pub struct DatabaseQueue {
     failed_sql: String,
 }
 
+/// How many orphans one reclaim releases.
+///
+/// Bounded because the release names each row: SQL Server refuses a statement
+/// with more than 2,100 parameters, and a crash that orphaned thousands of jobs
+/// would otherwise produce exactly that. Reclaim runs whenever the queue looks
+/// empty, so a larger backlog is cleared over a few polls rather than in one.
+const RECLAIM_BATCH: i64 = 500;
+
+/// The statement that finds orphaned reservations, built for this database.
+///
+/// The same three dialect pieces as [`reserve_sql`], in the same order —
+/// `limit` before the lock clause, which MySQL insists on — so the two locking
+/// reads in the queue cannot disagree about how a row is claimed.
+fn reclaim_sql(jobs_sql: &str, dialect: &dyn rustlavel_db::Dialect) -> String {
+    let (hint, lock) = dialect.skip_locked();
+    format!(
+        "select id from {jobs_sql}{hint} \
+         where queue = {} and reserved_at is not null and reserved_at + retry_after < {} \
+         order by id{}{lock}",
+        dialect.placeholder(1),
+        dialect.placeholder(2),
+        dialect.limit_offset(Some(RECLAIM_BATCH), None, true)
+    )
+}
+
 /// The statement that claims one job, built for whichever database this is
 /// talking to.
 ///
@@ -357,20 +382,50 @@ impl DatabaseQueue {
     /// picking up one of many waiting jobs — pays nothing for it.
     pub async fn reclaim_expired(&self, queue: &str) -> Result<u64> {
         let now = unix_now();
+        let dialect = self.db.dialect();
 
-        self.db
+        // **Two statements, not one, and the first skips locked rows.** This
+        // was a single `update … where reserved_at + retry_after < ?`, and on
+        // MySQL it deadlocked against the workers it runs beside: an InnoDB
+        // update locks every row it *scans*, not just the ones it changes,
+        // while each worker holds its own row under `for update skip locked`.
+        // Two transactions each holding what the other wanted — MySQL killed
+        // one with error 1213, seven runs in fifteen of the queue's race test.
+        //
+        // Selecting with the same skip-locked clause the reservation uses
+        // means reclaim steps over a row somebody holds instead of waiting for
+        // it, and every locking read in the queue now does that. A transaction
+        // that never waits cannot be part of a cycle. A row skipped here is
+        // not an orphan anyway: somebody holds it right now.
+        let mut tx = self.db.begin().await?;
+        let rows = tx
+            .select(&reclaim_sql(&self.jobs_sql, dialect), &[Value::from(queue), Value::from(now)])
+            .await?;
+        let ids: Vec<i64> =
+            rows.iter().map(|row| row.get::<i64>("id")).collect::<Result<_>>()?;
+        if ids.is_empty() {
+            tx.rollback().await?;
+            return Ok(0);
+        }
+
+        let placeholders: Vec<String> =
+            (0..ids.len()).map(|n| dialect.placeholder(n + 2)).collect();
+        let mut params = Vec::with_capacity(ids.len() + 1);
+        params.push(Value::from(now));
+        params.extend(ids.iter().map(|id| Value::from(*id)));
+        let changed = tx
             .execute(
                 &format!(
-                    "update {} set reserved_at = null, available_at = {} \
-                     where queue = {} and reserved_at is not null and reserved_at + retry_after < {}",
+                    "update {} set reserved_at = null, available_at = {} where id in ({})",
                     self.jobs_sql,
-                    self.db.dialect().placeholder(1),
-                    self.db.dialect().placeholder(2),
-                    self.db.dialect().placeholder(3)
+                    dialect.placeholder(1),
+                    placeholders.join(", ")
                 ),
-                &[Value::from(now), Value::from(queue), Value::from(now)],
+                &params,
             )
-            .await
+            .await?;
+        tx.commit().await?;
+        Ok(changed)
     }
 
     fn row_to_failed(row: &rustlavel_db::Row) -> Result<FailedJob> {
@@ -643,6 +698,45 @@ mod portability {
         );
     }
 
+    /// The reclaim statement locks rows the same way the reservation does —
+    /// that is the whole fix: both locking reads skip what somebody holds, so
+    /// neither can wait on the other. These pin the shape; the deadlock itself
+    /// is only visible against a live MySQL (`many_workers_racing…`, which
+    /// failed seven runs in fifteen before this).
+    #[test]
+    fn the_reclaim_select_claims_rows_like_the_reservation_does() {
+        use rustlavel_db::dialect::{MySql, Postgres, SqlServer, Sqlite, quote_qualified};
+
+        let sql = |dialect: &dyn rustlavel_db::Dialect| {
+            super::reclaim_sql(&quote_qualified(dialect, "jobs").unwrap(), dialect)
+        };
+
+        assert_eq!(
+            sql(&Postgres),
+            "select id from \"jobs\" \
+             where queue = $1 and reserved_at is not null and reserved_at + retry_after < $2 \
+             order by id limit 500 for update skip locked"
+        );
+        assert_eq!(
+            sql(&MySql),
+            "select id from `jobs` \
+             where queue = ? and reserved_at is not null and reserved_at + retry_after < ? \
+             order by id limit 500 for update skip locked"
+        );
+        assert_eq!(
+            sql(&SqlServer),
+            "select id from [jobs] with (updlock, readpast, rowlock) \
+             where queue = @P1 and reserved_at is not null and reserved_at + retry_after < @P2 \
+             order by id offset 0 rows fetch next 500 rows only"
+        );
+        assert_eq!(
+            sql(&Sqlite),
+            "select id from \"jobs\" \
+             where queue = ? and reserved_at is not null and reserved_at + retry_after < ? \
+             order by id limit 500"
+        );
+    }
+
     /// The row-claiming clause is the dialect's too, for the same reason:
     /// SQL Server spells it as a table hint and SQLite has no such thing.
     #[test]
@@ -652,7 +746,11 @@ mod portability {
             .lines()
             .take_while(|line| !line.contains("mod portability"))
             .any(|line| {
-                !line.trim_start().starts_with("///") && line.contains("for update skip locked")
+                // Comments of either kind may name the phrase — explaining why
+                // it is not written here is the point of half of them. Only a
+                // line of code can be a statement.
+                let code = line.trim_start();
+                !code.starts_with("//") && line.contains("for update skip locked")
             });
         assert!(
             !written_literally,
