@@ -21,6 +21,17 @@ pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(500);
 /// attempt would be scheduled a year out and never seen again.
 pub const DEFAULT_BACKOFF_CAP: Duration = Duration::from_secs(3600);
 
+/// The longest a worker waits between attempts when the *queue itself* is
+/// failing — not a job.
+///
+/// Its own constant, and far shorter than [`DEFAULT_BACKOFF_CAP`], because the
+/// two answer different questions. A job that failed is waiting on something
+/// of its own, and an hour is a reasonable thing to wait for it. A database
+/// that deadlocked, dropped a connection or failed over is back in seconds,
+/// and a worker that slept an hour afterwards would leave a healthy queue
+/// unattended for an hour.
+pub const MAX_QUEUE_ERROR_BACKOFF: Duration = Duration::from_secs(30);
+
 /// What happened to one job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -204,8 +215,24 @@ impl Worker {
     /// the entire graceful-shutdown guarantee: a job already reserved is always
     /// run to completion, because there is no point at which the loop can
     /// abandon one.
+    ///
+    /// **An error from the queue is not an error from the worker.** This is a
+    /// long-running process and keeping going is the only thing it is for, so
+    /// a failure to reach the queue — a deadlock, a dropped connection, a
+    /// failover — is logged and retried with a growing pause, and the loop
+    /// carries on. It used to propagate straight out: one deadlock on one poll
+    /// ended the worker, and [`run_pool`] joining its tasks with `?` ended the
+    /// whole `queue:work` process, mid-queue, with jobs still waiting.
+    ///
+    /// The pause starts at the poll interval, doubles, and is capped at
+    /// [`MAX_QUEUE_ERROR_BACKOFF`]; it resets the first time the queue answers.
+    /// It is cut short by shutdown, like every other wait here.
+    ///
+    /// The `Result` stays in the signature so callers do not change, but this
+    /// no longer returns `Err` for anything the queue did.
     pub async fn run(&self, shutdown: Shutdown) -> Result<WorkerStats> {
         let mut stats = WorkerStats::default();
+        let mut failures: u32 = 0;
 
         loop {
             if shutdown.is_signalled() {
@@ -215,10 +242,33 @@ impl Worker {
                 break;
             }
 
-            if let Some(outcome) = self.run_once().await? {
-                stats.record(outcome);
-            } else if shutdown.wait_for(self.options.poll_interval).await {
-                break;
+            match self.run_once().await {
+                Ok(Some(outcome)) => {
+                    failures = 0;
+                    stats.record(outcome);
+                }
+                Ok(None) => {
+                    failures = 0;
+                    if shutdown.wait_for(self.options.poll_interval).await {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    failures = failures.saturating_add(1);
+                    let pause = backoff(
+                        self.options.poll_interval,
+                        failures,
+                        MAX_QUEUE_ERROR_BACKOFF,
+                    );
+                    rustlavel_core::error!(
+                        "queue `{}` failed (attempt {failures} in a row); retrying in {}ms: {error}",
+                        self.options.queue,
+                        pause.as_millis()
+                    );
+                    if shutdown.wait_for(pause).await {
+                        break;
+                    }
+                }
             }
         }
 
@@ -575,6 +625,173 @@ mod tests {
         assert_eq!(stats.processed, 2);
         assert_eq!(tally.runs(), 2);
         assert_eq!(queue.size("default").await.unwrap(), 3, "the rest are still waiting");
+    }
+
+    /// A queue whose database goes away for a moment: the first `pop`s fail,
+    /// then it recovers. Every other call goes straight to the real queue.
+    ///
+    /// This is what a MySQL deadlock (error 1213), a dropped connection or a
+    /// failover looks like from the worker's side — and every one of them is
+    /// documented by the database as "try again".
+    struct Flaky {
+        inner: MemoryQueue,
+        pops_to_fail: std::sync::atomic::AtomicUsize,
+        pops_seen: std::sync::atomic::AtomicUsize,
+    }
+
+    impl Flaky {
+        fn failing_first(n: usize) -> Arc<Flaky> {
+            Arc::new(Flaky {
+                inner: MemoryQueue::new(),
+                pops_to_fail: std::sync::atomic::AtomicUsize::new(n),
+                pops_seen: std::sync::atomic::AtomicUsize::new(0),
+            })
+        }
+    }
+
+    impl crate::queue::Queue for Flaky {
+        fn driver(&self) -> &'static str {
+            "flaky"
+        }
+
+        fn push(&self, job: QueuedJob) -> crate::job::BoxFuture<'_, Result<String>> {
+            self.inner.push(job)
+        }
+
+        fn pop<'a>(
+            &'a self,
+            queue: &'a str,
+        ) -> crate::job::BoxFuture<'a, Result<Option<crate::job::ReservedJob>>> {
+            use std::sync::atomic::Ordering::SeqCst;
+            self.pops_seen.fetch_add(1, SeqCst);
+            let failing = self
+                .pops_to_fail
+                .fetch_update(SeqCst, SeqCst, |n| n.checked_sub(1))
+                .is_ok();
+            if failing {
+                return Box::pin(async {
+                    Err(rustlavel_core::Error::msg("deadlock found when trying to get lock"))
+                });
+            }
+            self.inner.pop(queue)
+        }
+
+        fn size<'a>(&'a self, queue: &'a str) -> crate::job::BoxFuture<'a, Result<u64>> {
+            self.inner.size(queue)
+        }
+
+        fn delete<'a>(&'a self, job: &'a crate::job::ReservedJob) -> crate::job::BoxFuture<'a, Result<()>> {
+            self.inner.delete(job)
+        }
+
+        fn release<'a>(
+            &'a self,
+            job: &'a crate::job::ReservedJob,
+            delay: Duration,
+        ) -> crate::job::BoxFuture<'a, Result<()>> {
+            self.inner.release(job, delay)
+        }
+
+        fn fail<'a>(
+            &'a self,
+            job: &'a crate::job::ReservedJob,
+            error: &'a str,
+        ) -> crate::job::BoxFuture<'a, Result<()>> {
+            self.inner.fail(job, error)
+        }
+
+        fn failed_jobs(&self) -> crate::job::BoxFuture<'_, Result<Vec<crate::job::FailedJob>>> {
+            self.inner.failed_jobs()
+        }
+
+        fn clear<'a>(&'a self, queue: &'a str) -> crate::job::BoxFuture<'a, Result<u64>> {
+            self.inner.clear(queue)
+        }
+    }
+
+    /// **A worker outlives a database that blinks.**
+    ///
+    /// `queue:work` is a long-running process, and the only thing it exists to
+    /// do is keep going. It used to propagate any error from the queue straight
+    /// out of `run`, so one deadlock on one poll ended the worker — and
+    /// `run_pool`, joining its tasks with `??`, ended the whole process. Found
+    /// the day a MySQL deadlock in the queue's own reclaim query reached it.
+    ///
+    /// A *job* failing was always handled; this is the queue itself failing.
+    #[tokio::test]
+    async fn a_worker_survives_the_queue_failing_and_then_recovering() {
+        let queue = Flaky::failing_first(3);
+        let tally = counter();
+        queue.inner.dispatch(&CountingJob::new(tally, 7)).await.unwrap();
+
+        let worker = Worker::new(queue.clone(), Arc::new(registry()))
+            .poll_interval(Duration::from_millis(5));
+
+        let shutdown = Shutdown::new();
+        let signal = shutdown.clone();
+        // `Counter` is `Copy`, so the task takes its own copy and `tally` stays
+        // usable for the assertions below.
+        let watcher = tokio::spawn(async move {
+            for _ in 0..400 {
+                if tally.runs() == 1 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            signal.signal();
+        });
+
+        let stats = worker.run(shutdown).await.expect("the worker must not exit on a queue error");
+        watcher.await.unwrap();
+
+        assert_eq!(tally.runs(), 1, "the job waiting behind the failures never ran");
+        assert_eq!(stats.processed, 1);
+        assert!(
+            queue.pops_seen.load(std::sync::atomic::Ordering::SeqCst) >= 4,
+            "the worker gave up instead of polling again"
+        );
+    }
+
+    /// A queue that never recovers must not make the worker deaf to shutdown.
+    /// The pause is a `wait_for`, so a signal ends it at once — without that,
+    /// stopping a worker whose database is down would take up to
+    /// `MAX_QUEUE_ERROR_BACKOFF`, and a deploy would hang on it.
+    #[tokio::test]
+    async fn shutdown_ends_the_pause_after_a_queue_error() {
+        let queue = Flaky::failing_first(usize::MAX);
+        let worker = Worker::new(queue.clone(), Arc::new(registry()))
+            // Long enough that only a signal can finish the test in time.
+            .poll_interval(Duration::from_secs(20));
+
+        let shutdown = Shutdown::new();
+        let signal = shutdown.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            signal.signal();
+        });
+
+        let started = Instant::now();
+        worker.run(shutdown).await.expect("a queue error is not a worker error");
+
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "the worker sat out its backoff instead of stopping: {:?}",
+            started.elapsed()
+        );
+        assert_eq!(queue.pops_seen.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    /// The pause grows, but not without limit: a database that comes back
+    /// after an hour must find a worker still polling, not asleep.
+    #[test]
+    fn the_pause_after_a_queue_error_is_capped_in_seconds_not_hours() {
+        let poll = Duration::from_millis(500);
+        assert_eq!(backoff(poll, 1, MAX_QUEUE_ERROR_BACKOFF), Duration::from_millis(500));
+        assert_eq!(backoff(poll, 2, MAX_QUEUE_ERROR_BACKOFF), Duration::from_secs(1));
+        assert_eq!(backoff(poll, 3, MAX_QUEUE_ERROR_BACKOFF), Duration::from_secs(2));
+        // Hundreds of failures in a row, and still only the cap.
+        assert_eq!(backoff(poll, 500, MAX_QUEUE_ERROR_BACKOFF), MAX_QUEUE_ERROR_BACKOFF);
+        assert!(MAX_QUEUE_ERROR_BACKOFF < DEFAULT_BACKOFF_CAP, "this must not inherit the job cap");
     }
 
     #[tokio::test]
