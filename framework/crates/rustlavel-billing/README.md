@@ -35,7 +35,7 @@ for reminder in tick.reminders {
 
 ## Paying
 
-`on_paid` is idempotent twice over. The credits are a ledger top-up under the invoice's id, so a retried webhook finds them already there; the invoice flips `open → paid` with the status in the `WHERE`, so the second webhook changes nothing and is told `Already`. Sixteen deliveries of one "paid" webhook at once — measured against PostgreSQL — extend once and credit once.
+`on_paid` is idempotent twice over. The credits are a ledger top-up under the invoice's id, so a retried webhook finds them already there; the invoice flips `open → paid` with the status in the `WHERE`, so the second webhook changes nothing and is told `Already`. Sixteen deliveries of one "paid" webhook at once — measured against PostgreSQL, MySQL, SQL Server and SQLite — extend once and credit once.
 
 Where the new period starts is a policy, and it is this one: a renewal paid early or **in grace starts where the last period ended** — the customer was served throughout, and grace days are not charged twice. A first payment, or one that ends a suspension, starts **now** — nothing was served before it.
 

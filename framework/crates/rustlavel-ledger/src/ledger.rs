@@ -44,10 +44,10 @@ impl Ledger {
 
     /// The owner's account, created if this is the first time it is asked for.
     pub async fn account(&self, owner: &str) -> Result<Account> {
-        let mut tx = self.db.begin().await?;
-        let account = self.account_in(&mut tx, owner).await?;
-        tx.commit().await?;
-        Ok(account)
+        self.ensure_account(owner).await?;
+        self.find_account(owner)
+            .await?
+            .ok_or_else(|| Error::msg(format!("could not create or find the account for {owner}")))
     }
 
     pub async fn balance(&self, owner: &str) -> Result<Balance> {
@@ -102,6 +102,9 @@ impl Ledger {
         if let Some(existing) = self.transfer(reference).await? {
             return Ok(existing);
         }
+
+        self.ensure_account(owner).await?;
+        self.ensure_account(SYSTEM_TOPUP).await?;
 
         let mut tx = self.db.begin().await?;
         let to = self.account_in(&mut tx, owner).await?;
@@ -166,6 +169,9 @@ impl Ledger {
             return Ok(existing);
         }
 
+        self.ensure_account(owner).await?;
+        self.ensure_account(SYSTEM_CONSUMPTION).await?;
+
         let mut tx = self.db.begin().await?;
         let from = self.account_in(&mut tx, owner).await?;
         let to = self.account_in(&mut tx, SYSTEM_CONSUMPTION).await?;
@@ -202,6 +208,8 @@ impl Ledger {
         if let Some(existing) = self.hold_by_reference(reference).await? {
             return Ok(existing);
         }
+
+        self.ensure_account(owner).await?;
 
         let mut tx = self.db.begin().await?;
         let account = self.account_in(&mut tx, owner).await?;
@@ -258,6 +266,8 @@ impl Ledger {
     /// Spend a hold. Exactly once: a second capture of the same hold is an
     /// error, not a second charge.
     pub async fn capture(&self, hold_id: &str) -> Result<Transfer> {
+        self.ensure_account(SYSTEM_CONSUMPTION).await?;
+
         let mut tx = self.db.begin().await?;
 
         // The compare-and-set. One row means this call moved it from `held`;
@@ -336,6 +346,8 @@ impl Ledger {
     /// credits went; an expired hold is released and nothing is written, as
     /// with any release.
     pub async fn sweep(&self) -> Result<Sweep> {
+        self.ensure_account(SYSTEM_EXPIRY).await?;
+
         let now = now();
         let mut sweep = Sweep::default();
 
@@ -462,67 +474,99 @@ impl Ledger {
     // Internals
     // ------------------------------------------------------------------
 
+    /// The account, read inside the caller's transaction.
+    ///
+    /// **It does not create it, and that is the point.** Creating an account
+    /// inside the transaction that is about to use it is a create-or-find under
+    /// concurrency, and the two databases that disagree about it disagree in
+    /// opposite directions. PostgreSQL aborts the whole transaction on the
+    /// duplicate-key error, which a savepoint papered over. MySQL does something
+    /// worse: a transaction's first read fixes its snapshot, so after losing the
+    /// insert the re-read cannot see the row the winner just committed, however
+    /// plainly the unique index says it exists — and InnoDB can deadlock the
+    /// competing inserts, which rolls the *entire* transaction back and takes
+    /// the savepoint with it.
+    ///
+    /// So every operation calls [`Ledger::ensure_account`] *before* it begins,
+    /// where a failure ends one statement and nothing else, and by the time the
+    /// transaction takes its snapshot the row is committed and visible.
     async fn account_in(&self, tx: &mut Transaction, owner: &str) -> Result<Account> {
-        if let Some(row) = self
-            .db
+        self.db
             .table(ACCOUNTS)
             .filter("owner", owner)
             .filter("unit", self.unit.as_str())
             .first_in(tx)
             .await?
-        {
-            return account_from(&row);
+            .map(|row| account_from(&row))
+            .transpose()?
+            .ok_or_else(|| {
+                Error::msg(format!(
+                    "the account for {owner} does not exist inside the transaction; \
+                     `ensure_account` must run before it begins"
+                ))
+            })
+    }
+
+    /// Make sure the owner has an account, committed, before any transaction
+    /// that will use it begins.
+    ///
+    /// Not inside a transaction on purpose — see [`Ledger::account_in`]. Each
+    /// statement here stands alone, so losing the race to insert (a duplicate
+    /// key, or a deadlock between racing inserts on MySQL) ends that statement
+    /// and nothing else; the winner's row is then a committed fact that a fresh
+    /// statement can read.
+    ///
+    /// A few attempts, not one: the loser of a deadlock can read before the
+    /// winner has committed, and the honest answer to "not there yet" is to ask
+    /// again in a moment rather than to report a failure that the next read
+    /// would have disproved.
+    async fn ensure_account(&self, owner: &str) -> Result<()> {
+        let mut last_error = None;
+
+        for attempt in 0..5u64 {
+            if self.find_account(owner).await?.is_some() {
+                return Ok(());
+            }
+
+            let created = now();
+            let inserted = self
+                .db
+                .table(ACCOUNTS)
+                .insert(
+                    &self.db,
+                    &[
+                        ("account_id", id("acc").as_str().into()),
+                        ("owner", owner.into()),
+                        ("unit", self.unit.as_str().into()),
+                        ("balance", 0.into()),
+                        ("held", 0.into()),
+                        ("created_at", (created as i64).into()),
+                    ],
+                )
+                .await;
+
+            match inserted {
+                Ok(_) => return Ok(()),
+                Err(error) => last_error = Some(error),
+            }
+            tokio::time::sleep(Duration::from_millis(5 * (attempt + 1))).await;
         }
 
-        let account = Account {
-            id: id("acc"),
-            owner: owner.to_string(),
-            unit: self.unit.clone(),
-            balance: 0,
-            held: 0,
-            created_at: now(),
-        };
-        // Inside a savepoint, because PostgreSQL aborts the *whole*
-        // transaction on any error — including the unique-index violation this
-        // is about to court on purpose — and every statement after it fails
-        // with `25P02` until the transaction ends. Rolling back to the
-        // savepoint undoes only the failed insert and leaves the transaction
-        // usable. MySQL would have carried on regardless; this is written for
-        // the strictest of the three, and it was found by racing eight
-        // first-time callers.
-        tx.savepoint("account").await?;
-        let inserted = self
-            .db
+        // Five reads and five inserts, and still no row: this is not a race.
+        Err(last_error.unwrap_or_else(|| {
+            Error::msg(format!("could not create or find the account for {owner}"))
+        }))
+    }
+
+    async fn find_account(&self, owner: &str) -> Result<Option<Account>> {
+        self.db
             .table(ACCOUNTS)
-            .insert_in(
-                tx,
-                &[
-                    ("account_id", account.id.as_str().into()),
-                    ("owner", owner.into()),
-                    ("unit", self.unit.as_str().into()),
-                    ("balance", 0.into()),
-                    ("held", 0.into()),
-                    ("created_at", (account.created_at as i64).into()),
-                ],
-            )
-            .await;
-        match inserted {
-            Ok(_) => Ok(account),
-            // Two first-time callers racing: the unique index on (owner, unit)
-            // let one through. Undo ours and read theirs.
-            Err(_) => {
-                tx.rollback_to("account").await?;
-                self.db
-                .table(ACCOUNTS)
-                .filter("owner", owner)
-                .filter("unit", self.unit.as_str())
-                .first_in(tx)
-                .await?
-                .map(|row| account_from(&row))
-                .transpose()?
-                .ok_or_else(|| Error::msg(format!("could not create or find the account for {owner}")))
-            }
-        }
+            .filter("owner", owner)
+            .filter("unit", self.unit.as_str())
+            .first(&self.db)
+            .await?
+            .map(|row| account_from(&row))
+            .transpose()
     }
 
     /// Write the transfer and its two entries. `None` if the reference is
