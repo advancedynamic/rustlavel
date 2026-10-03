@@ -1,20 +1,33 @@
-//! Integration tests for the database driver, against a real PostgreSQL server.
+//! The queue's integration tests, against a real database — **any** the
+//! framework supports, chosen by the scheme of `DATABASE_URL`.
+//!
+//! The file was named for PostgreSQL because that was the only database it
+//! ever ran against, and that is exactly how the queue came to work on nothing
+//! else: every statement wrote PostgreSQL's placeholders and locking clause
+//! literally, MySQL rejected the order of two clauses, and then MySQL's own
+//! locking deadlocked the reclaim query. The tests were database-agnostic all
+//! along; nobody pointed them anywhere else. They are now run against all
+//! four, and the name says so.
 //!
 //! They run only when `DATABASE_URL` is set, so `cargo test` stays green on a
-//! machine with no database. Start one with:
+//! machine with no database. One URL per run, so run it once per database:
 //!
 //! ```text
-//! docker run -d --name rustlavel-pg -e POSTGRES_PASSWORD=secret \
-//!   -e POSTGRES_USER=rustlavel -e POSTGRES_DB=rustlavel_test \
-//!   -p 55432:5432 postgres:16
-//! export DATABASE_URL=postgres://rustlavel:secret@127.0.0.1:55432/rustlavel_test
+//! DATABASE_URL=postgres://rustlavel:secret@127.0.0.1:55432/rustlavel_test
+//! DATABASE_URL=mysql://root:secret@127.0.0.1:53306/rustlavel_test
+//! DATABASE_URL='sqlserver://sa:Rustlavel!2026@127.0.0.1:51433/rustlavel_test'
 //! ```
+//!
+//! SQLite has its own file, `sqlite.rs`, because it needs no server and so
+//! needs no variable.
 //!
 //! The one that matters most is
 //! `many_workers_racing_for_the_same_jobs_each_run_exactly_once`: everything
 //! else in this crate can be checked in memory, but "two workers never get the
-//! same row" is a claim about PostgreSQL's locking, and only PostgreSQL can
-//! settle it.
+//! same row" is a claim about each database's own locking, and only that
+//! database can settle it. PostgreSQL and MySQL do it with `for update skip
+//! locked`, SQL Server with a table hint, and SQLite with `begin immediate` —
+//! four mechanisms behind one promise.
 
 use rustlavel_db::Database;
 use rustlavel_queue::prelude::*;

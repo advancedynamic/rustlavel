@@ -5,6 +5,41 @@ workspace shares one number.
 
 ## Unreleased
 
+### Fixed
+
+- **The ledger failed on MySQL when two first-time callers raced for one
+  account** — and billing with it, since every payment credits through the
+  ledger. Found by running the ledger, billing, payment and OAuth suites against
+  MySQL, SQL Server and SQLite for the first time; they had only ever run on
+  PostgreSQL. `concurrent_first_use_creates_one_account` failed with
+  `MySQL error 1305: SAVEPOINT account does not exist`, 120 runs in 120 under
+  load; payment and OAuth, and every other database, were clean.
+
+  The ledger created an account *inside* the transaction that would use it:
+  read, insert on a miss inside a savepoint, read again. PostgreSQL aborts the
+  whole transaction on the duplicate-key error a lost race produces, which the
+  savepoint was there to survive. MySQL does something different and worse. A
+  transaction's first read fixes its snapshot, so after losing the insert the
+  re-read cannot see the row the winner just committed — however plainly the
+  unique index says it exists — and InnoDB can deadlock the racing inserts,
+  which rolls the entire transaction back and takes the savepoint with it.
+
+  Every operation now makes sure the account exists *before* its transaction
+  begins, as a statement of its own: a failure there ends one statement and
+  nothing else, a few short retries cover the loser reading before the winner
+  commits, and the transaction takes its snapshot afterwards, when the row is
+  committed and visible. The savepoint is gone. An error from the ledger here
+  was a failed call, never a double credit, so no balance was ever wrong — but
+  a customer's first two simultaneous payments could fail, and a gateway that
+  retries would have hidden it.
+
+  Measured, not argued: the old code failed 120 runs of that test in 120 on
+  MySQL under full CPU load, the new code 0 in 120; it passes 60 runs on
+  PostgreSQL and SQLite and 40 on SQL Server under the same load. Billing's
+  sixteen-concurrent-webhooks test, which exercised it through the ledger, is
+  clean 60 of 60 on MySQL and 30 of 30 on each of the others. All four
+  packages' suites now pass on all four databases.
+
 ### Changed
 
 - **`rustlavel-ws` rejects invalid UTF-8 in a fragmented text message as soon
@@ -31,6 +66,24 @@ workspace shares one number.
   those early means validating a payload while the frame is still arriving,
   which is a deeper change to the read path for a strictness the suite itself
   accepts.
+
+### Development
+
+- **CI runs what it used to skip.** The ledger, payment, OAuth and billing suites
+  were not in CI at all, so each skipped itself there and went green; the queue
+  was run only against PostgreSQL. CI now sets their variables, runs the
+  database-backed packages against MySQL as well, and runs the workspace with
+  `--no-fail-fast` so a red run shows every failure rather than the first.
+  `check-skips.sh` then fails the job if any suite it promised to run printed a
+  skip message — matching whole variable names, and refusing a log with no test
+  results in it, because a detector that read nothing has proved nothing.
+- The queue's integration tests are renamed `live` and `live_chain_progress`
+  from `postgres` and `postgres_chain_progress`: they are database-agnostic and
+  run against all four, and the old name was how nobody thought to point them
+  anywhere else.
+- A guide example used `where_eq`, which does not exist, `order_by` with a
+  string, and `get()` without a database. It could never have compiled; it is
+  fixed, and the guide now says which database a URL selects.
 
 ## 0.8.2 — 2026-10-03
 

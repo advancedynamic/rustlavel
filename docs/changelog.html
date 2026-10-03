@@ -32,9 +32,19 @@
 <code>rustlavel upgrade</code> merges them rather than overwriting what you wrote.</p>
 
 <h2 id="unreleased">Unreleased</h2>
+<h3>Fixed</h3>
+<ul>
+<li><strong>The ledger failed on MySQL when two first-time callers raced for one account</strong>, and billing with it. Found by running the ledger, billing, payment and OAuth suites against MySQL, SQL Server and SQLite for the first time; they had only ever run on PostgreSQL. The ledger created an account inside the transaction that would use it. PostgreSQL aborts the transaction on the duplicate-key error, which a savepoint survived; MySQL fixes a transaction's snapshot at its first read, so after losing the insert the re-read cannot see the winner's committed row, and InnoDB can deadlock the racing inserts and roll everything back, savepoint included. Every operation now creates the account <em>before</em> its transaction begins, as a statement of its own. The old code failed 120 runs in 120 under load on MySQL; the new code 0 in 120. No balance was ever wrong — a failed call, never a double credit.</li>
+</ul>
 <h3>Changed</h3>
 <ul>
 <li><strong><code>rustlavel-ws</code> rejects invalid UTF-8 in a fragmented text message as soon as the bad fragment arrives</strong>, instead of when the message completes. RFC 6455 allows waiting and Autobahn graded it NON-STRICT (6.4.1, 6.4.2), but waiting meant buffering the rest of a message already known to be doomed. Validation is incremental — each byte checked once — and a character cut across fragments is not an error, only bytes that can never become valid. Autobahn, 301 cases: 6.4.1 and 6.4.2 move to OK and nothing regresses. 6.4.3 and 6.4.4 stay NON-STRICT: they send one <em>frame</em> in three TCP packets, which needs validation inside a frame still arriving.</li>
+</ul>
+<h3>Development</h3>
+<ul>
+<li><strong>CI runs what it used to skip.</strong> The ledger, payment, OAuth and billing suites were not in CI at all, so each skipped itself there and went green, and the queue ran only against PostgreSQL. CI now sets their variables, runs the database-backed packages on MySQL too, and runs with <code>--no-fail-fast</code>. <code>check-skips.sh</code> fails the job if a suite it promised to run printed a skip message.</li>
+<li>The queue's integration tests are renamed <code>live</code> and <code>live_chain_progress</code>: they are database-agnostic and run against all four.</li>
+<li>A guide example used <code>where_eq</code>, which does not exist, and could never have compiled. Fixed; the guide now says which database a URL selects.</li>
 </ul>
 <h2 id="0-8-2">0.8.2 — 2026-10-03</h2>
 <p>Five fixes, one of them to a claim 0.8.1 made that was not true. Nothing here changes an API. Anybody running the queue on MySQL should take it now — on 0.8.1 it does not run at all.</p>

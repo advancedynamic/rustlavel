@@ -96,11 +96,39 @@ against an allowlist, and an <code>update</code> or <code>delete</code> with no 
 refused rather than quietly emptying a table.</p>
 
 <pre><code>let posts = db.table("posts")
-    .where_eq("published", true)
-    .order_by("created_at", "desc")
+    .filter("published", true)
+    .order_by("created_at", Direction::Desc)
     .limit(20)
-    .get()
+    .get(&amp;db)
     .await?;</code></pre>
+
+<h3 id="which-database">Which database</h3>
+
+<p>The scheme of the URL chooses the driver, and everything above the driver — the query
+builder, migrations, models, the queue — is written once and does not know which database it
+is talking to.</p>
+
+<pre><code>postgres://user:pass@host/app
+mysql://user:pass@host/app
+sqlserver://user:pass@host/app
+sqlite://data/app.db            relative to where the process runs
+sqlite:///var/lib/app.db        absolute: one more slash
+sqlite://:memory:               a private database that vanishes with the process</code></pre>
+
+<p>PostgreSQL, MySQL and SQL Server each speak their own wire protocol, written here.
+<strong>SQLite is the exception, and an opt-in one.</strong> It is not a server — the library is
+the database, reading a file in your own process — so there is no protocol to write, and it
+links a C library. It is off unless you ask for it, so a build that does not never needs a C
+compiler:</p>
+
+<pre><code>rustlavel = { version = "0.8", features = ["db", "sqlite"] }</code></pre>
+
+<p>It is for tests that need no container and for small tools that want a file. Two things it
+does on purpose, because SQLite's own defaults would make a migration behave differently on a
+server: <strong>foreign keys are switched on</strong> for every connection (SQLite leaves them
+off), and <code>:memory:</code> is one shared database for the whole <code>Database</code>
+rather than a blank one per connection. Writes are serialised by SQLite itself, one writer at
+a time, which is plenty for a file and not a substitute for a server under load.</p>
 
 <h2>Models and relations</h2>
 

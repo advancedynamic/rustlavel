@@ -180,6 +180,135 @@ tx.commit().await?;</code></pre>
 <p>Dropping the transaction without committing rolls it back, so an early <code>?</code>
 leaves nothing half-applied.</p>
 
+<h3 id="credits">Sell credits that cannot be spent twice</h3>
+
+<p>A balance that has to be right <em>now</em>, under load, not after a nightly job.
+<code>rustlavel-ledger</code> is double entry — every movement is a transfer between two
+accounts writing two equal and opposite entries — so the sum of every balance is zero and
+<code>audit()</code> can say whether it still is. Enable the <code>ledger</code> feature and create the
+tables with <code>ledger::create_tables</code>, or register <code>CreateLedgerTables</code> in your migrations.</p>
+
+<pre><code>use rustlavel::ledger::Ledger;
+use std::time::Duration;
+
+async fn credits(db: Database) -&gt; rustlavel::Result&lt;()&gt; {
+    let ledger = Ledger::new(db, "credits");
+
+    // A customer pays. The gateway may deliver the webhook three times.
+    ledger.top_up("user:42", 500, "payment_abc", Some(Duration::from_secs(60 * 86_400))).await?;
+    ledger.top_up("user:42", 500, "payment_abc", None).await?; // same reference: moves nothing
+
+    // A job that costs 50 and takes a while: reserve it, run it, settle it.
+    let hold = ledger.hold("user:42", 50, "render_7", Duration::from_secs(900)).await?;
+    // ... the job runs ...
+    ledger.capture(&amp;hold.id).await?; // or `ledger.release(&amp;hold.id)` if it failed
+
+    let balance = ledger.balance("user:42").await?;
+    println!("{} available of {}", balance.available, balance.total);
+    Ok(())
+}</code></pre>
+
+<p>Top-ups and consumes are <strong>idempotent on their reference</strong>: the second
+<code>top_up</code> above moves nothing, which is what makes a retried payment webhook safe. A
+<code>hold</code> reserves credits for a job that will take a while — <code>available</code> drops,
+<code>total</code> does not — and is captured or released exactly once. Credits can expire by
+batch, oldest spent first, and <code>sweep()</code> releases the holds nobody came back for.</p>
+
+<p>It is tested against PostgreSQL, MySQL, SQL Server and SQLite, including twenty tasks racing to
+spend ten credits each from a balance of a hundred (exactly ten succeed) and sixteen racing to capture one
+hold (one charge).</p>
+
+<h3 id="billing">Bill a subscription when customers pay by transfer or QRIS</h3>
+
+<p>A subscription cannot pull money from a customer who pays by virtual account, QRIS or an
+e-wallet: it can only <em>ask</em>. So each cycle <code>rustlavel-billing</code> raises an invoice and a charge,
+and waits; the access is extended when the gateway says it was paid. Enable the
+<code>billing</code> feature, which brings <code>payment</code> and <code>ledger</code> with it, and create
+the tables of both.</p>
+
+<pre><code>use rustlavel::billing::{Billing, Channel, Money, Paid, Plan, Subscriber};
+use rustlavel::payment::{Bank, FakeGateway};
+use std::sync::Arc;
+
+async fn billing(db: Database, ledger: Ledger) -&gt; rustlavel::Result&lt;()&gt; {
+    let plans = vec![
+        Plan::new("starter", "Starter", Money::idr(49_000), 100),
+        Plan::new("pro", "Pro", Money::idr(149_000), 500).grace(Duration::from_secs(3 * 86_400)),
+    ];
+    // A fake here; a real gateway driver in production.
+    let gateway = Arc::new(FakeGateway::new("webhook-secret"));
+    let billing = Billing::new(db, ledger, gateway, plans);
+
+    // The first invoice, with the charge the customer pays.
+    let invoice = billing
+        .subscribe(Subscriber::new("user:42", "Ada"), "pro", Channel::VirtualAccount(Bank::Bca))
+        .await?;
+    println!("pay to {:?}", invoice.instructions.account_number);
+
+    // When the gateway's webhook says it was paid:
+    if let Paid::Extended { subscription, .. } = billing.on_paid(&amp;invoice.id).await? {
+        println!("served until {}", subscription.period_end);
+    }
+
+    // On a schedule, every few minutes:
+    let tick = billing.tick().await?;
+    for reminder in tick.reminders {
+        println!("tell {} about {:?}", reminder.subscriber.name, reminder.kind);
+    }
+    Ok(())
+}</code></pre>
+
+<p><code>on_paid</code> is idempotent — a retried webhook finds the credits already in the ledger and
+the invoice already paid, and is told <code>Paid::Already</code>. <code>tick</code> raises renewals ahead of the
+period's end, moves an unpaid subscription into <strong>grace</strong>, then suspends it, and
+<strong>returns the reminders that fell due</strong>; the words and the sending are yours. It is safe to run
+from two places at once.</p>
+
+<div class="note">
+<p><strong>No real payment gateway ships yet.</strong> <code>rustlavel-payment</code> defines the
+<code>Gateway</code> trait — charges over virtual account, QRIS, e-wallet and retail, transfers, and a
+webhook receiver that verifies signatures and deduplicates — and a <code>FakeGateway</code> for tests. A driver for
+your provider implements that trait.</p>
+</div>
+
+<h3 id="chart">Draw a chart under a strict Content-Security-Policy</h3>
+
+<p><code>rustlavel-chart</code> builds a Chart.js configuration in Rust and serves Chart.js itself from your
+own origin, so a page under <code>default-src 'self'</code> — which refuses both a CDN and an
+inline <code>&lt;script&gt;</code> — can still draw. Enable the <code>chart</code> feature, register the plugin
+once, and hand the configuration to the template:</p>
+
+<pre><code>App::new()?.plugin(Charts::default()).routes(|r: &amp;mut Router| {
+    r.get("/dashboard", dashboard);
+})</code></pre>
+
+<pre><code>use rustlavel::chart::{Axis, Chart, Charts, Series};
+use rustlavel::prelude::*;
+
+async fn dashboard(req: Request) -&gt; rustlavel::Result&lt;Response&gt; {
+    let revenue = Chart::line("Revenue")
+        .labels(["Jan", "Feb", "Mar"])
+        .series(Series::new("2026", [1200.0, 1800.0, 1500.0]).filled())
+        .y(Axis::new().prefix("Rp "));
+
+    req.view("dashboard", &amp;ViewContext::new().with("revenue", revenue.to_json()))
+}</code></pre>
+
+<pre><code>&lt;script src="/vendor/chart/chart.umd.js" defer&gt;&lt;/script&gt;
+&lt;script src="/vendor/chart/rustlavel-chart.js" defer&gt;&lt;/script&gt;
+
+&lt;canvas data-chart="{{ revenue }}" height="220"&gt;&lt;/canvas&gt;</code></pre>
+
+<p>The configuration travels in an <em>escaped</em> attribute, which is why no inline script is needed: a label
+reading <code>a" onmouseover="alert(1)</code> arrives as that string.</p>
+
+<div class="note">
+<p><strong>Your stylesheet must be a file too.</strong> That policy blocks an inline
+<code>&lt;style&gt;</code> exactly as it blocks an inline script, and a chart follows the page's theme through
+two CSS custom properties, <code>--chart-ink</code> and <code>--chart-grid</code>. Put them in a stylesheet
+the page links; in a <code>&lt;style&gt;</code> block they are silently never applied.</p>
+</div>
+
 <h2>Background work</h2>
 
 <h3>Queue a job</h3>
@@ -329,6 +458,36 @@ async fn a_bad_form_comes_back_with_its_errors() {
     client.post("/posts", &amp;[("title", "")]).await.assert_status(303);
     client.get("/posts/create").await.assert_see("The title field is required.");
 }</code></pre>
+
+<h3 id="sqlite-tests">Test the database with no server</h3>
+
+<p>SQLite is the one database that needs no container. <code>sqlite://:memory:</code> is a private
+database that exists for the length of the test and nothing longer. Turn on the <code>sqlite</code>
+feature for your tests:</p>
+
+<pre><code>#[tokio::test]
+async fn a_post_is_stored_and_found() -&gt; rustlavel::Result&lt;()&gt; {
+    // A private database in memory: no container, no environment variable,
+    // and gone when the test ends.
+    let db = Database::connect("sqlite://:memory:").await?;
+
+    Schema::new(&amp;db)
+        .create("posts", |t| {
+            t.id();
+            t.string("title");
+        })
+        .await?;
+
+    db.table("posts").insert(&amp;db, &amp;[("title", "Hello".into())]).await?;
+
+    let found = db.table("posts").filter("title", "Hello").first(&amp;db).await?;
+    assert!(found.is_some());
+    Ok(())
+}</code></pre>
+
+<p>This proves your queries and migrations. It does not prove how a <em>server</em> behaves: locking
+and concurrency differ between databases, which is why the framework's own concurrency tests run against each
+real one rather than against SQLite alone.</p>
 
 <h3>Test against a real database, or skip cleanly</h3>
 

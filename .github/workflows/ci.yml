@@ -73,9 +73,63 @@ jobs:
           DATABASE_URL: postgres://rustlavel:secret@127.0.0.1:5432/rustlavel_test
           MYSQL_URL: mysql://root:secret@127.0.0.1:3306/rustlavel_test?sslmode=require
           REDIS_URL: redis://127.0.0.1:6379
+          # These four suites were not in CI at all, so every one of them skipped
+          # itself here and went green. One database is enough: cargo runs test
+          # binaries one at a time, each suite drops and creates only its own
+          # tables, and the suites inside a binary take turns on a lock.
+          LEDGER_TEST_DATABASE_URL: postgres://rustlavel:secret@127.0.0.1:5432/rustlavel_test
+          BILLING_TEST_DATABASE_URL: postgres://rustlavel:secret@127.0.0.1:5432/rustlavel_test
+          PAYMENT_TEST_DATABASE_URL: postgres://rustlavel:secret@127.0.0.1:5432/rustlavel_test
+          OAUTH_TEST_DATABASE_URL: postgres://rustlavel:secret@127.0.0.1:5432/rustlavel_test
           # SQL Server is deliberately absent: its image needs more memory than
           # a standard runner has, and those tests skip cleanly without it.
-        run: cargo test --workspace --all-features
+        # --no-fail-fast: without it cargo stops at the first failing test binary
+        # and never runs the crates after it, so a red run reports the first
+        # failure and hides the rest. --nocapture: a skip is a printed line, and
+        # the check below reads it from this log.
+        run: |
+          set -o pipefail
+          cargo test --workspace --all-features --no-fail-fast -- --nocapture 2>&1 | tee "$RUNNER_TEMP/tests.log"
+
+      # The packages that talk to a database, on MySQL. Each was written against
+      # PostgreSQL and found to work there, and for as long as nothing else ran
+      # them that was all anyone knew. Pointing them at MySQL found, in one week,
+      # four independent reasons the queue could not run at all — and then a race
+      # in the ledger's account creation that failed 120 runs in 120 under load:
+      # MySQL fixes a transaction's snapshot at its first read, so after losing an
+      # insert it cannot see the row the winner committed, and InnoDB can deadlock
+      # the racing inserts and roll the whole transaction back. PostgreSQL does
+      # neither, so every PostgreSQL run was green.
+      #
+      # The workspace step above already ran all of these on PostgreSQL and, for
+      # the queue, on SQLite through the `sqlite` feature.
+      - name: The database-backed packages on MySQL
+        working-directory: framework
+        env:
+          DATABASE_URL: mysql://root:secret@127.0.0.1:3306/rustlavel_test?sslmode=require
+          LEDGER_TEST_DATABASE_URL: mysql://root:secret@127.0.0.1:3306/rustlavel_test?sslmode=require
+          BILLING_TEST_DATABASE_URL: mysql://root:secret@127.0.0.1:3306/rustlavel_test?sslmode=require
+          PAYMENT_TEST_DATABASE_URL: mysql://root:secret@127.0.0.1:3306/rustlavel_test?sslmode=require
+          OAUTH_TEST_DATABASE_URL: mysql://root:secret@127.0.0.1:3306/rustlavel_test?sslmode=require
+        run: |
+          set -o pipefail
+          cargo test \
+            -p rustlavel-queue -p rustlavel-ledger -p rustlavel-billing \
+            -p rustlavel-payment -p rustlavel-oauth-provider \
+            --all-features --no-fail-fast -- --nocapture 2>&1 | tee "$RUNNER_TEMP/mysql.log"
+
+      # A green run proves nothing about a suite that skipped itself. Each of
+      # these was promised above; a skip message naming one is a promise broken.
+      - name: No suite skipped itself
+        if: ${{ !cancelled() }}
+        run: |
+          ./check-skips.sh "$RUNNER_TEMP/tests.log" \
+            DATABASE_URL MYSQL_URL REDIS_URL \
+            LEDGER_TEST_DATABASE_URL BILLING_TEST_DATABASE_URL \
+            PAYMENT_TEST_DATABASE_URL OAUTH_TEST_DATABASE_URL
+          ./check-skips.sh "$RUNNER_TEMP/mysql.log" \
+            DATABASE_URL LEDGER_TEST_DATABASE_URL BILLING_TEST_DATABASE_URL \
+            PAYMENT_TEST_DATABASE_URL OAUTH_TEST_DATABASE_URL
 
       - name: Clippy, with warnings as errors
         working-directory: framework

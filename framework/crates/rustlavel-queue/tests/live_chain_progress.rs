@@ -1,4 +1,5 @@
-//! The chain envelope and the progress table, against PostgreSQL.
+//! The chain envelope and the progress table, against a real database — any
+//! the framework supports, chosen by the scheme of `DATABASE_URL`.
 //!
 //! Two claims only a database can check: a chain survives the trip through
 //! the `payload` column of a `jobs` table created without knowing about
