@@ -31,7 +31,8 @@
 <a href="guide.html#upgrading">a separate step</a> from bumping the dependency &mdash;
 <code>rustlavel upgrade</code> merges them rather than overwriting what you wrote.</p>
 
-<h2 id="unreleased">Unreleased</h2>
+<h2 id="0-8-3">0.8.3 — 2026-10-21</h2>
+<p>A fix to the money packages that MySQL users could hit, and a development quality-of-life change. No API changes, so <code>rustlavel = &quot;0.8&quot;</code> picks it up on its own. Verified on this exact tree against live PostgreSQL 16, MySQL 8.4 and Valkey: the whole workspace with <code>--no-fail-fast</code> (111 test binaries, 3,244 passed, 0 failed), then the queue, ledger, billing, payment and OAuth-provider packages again on MySQL (19 binaries, 367 passed, 0 failed), with <code>check-skips.sh</code> finding no suite that skipped itself. SQL Server was not run on this tree; the ledger fix was run against it before this release.</p>
 <h3>Added</h3>
 <ul>
 <li><strong><code>rustlavel serve</code> refreshes the browser.</strong> It already rebuilt and restarted the application on a change; pressing refresh was left to the developer. Now, in development only, a saved template reloads the page, a saved stylesheet is swapped in place (scroll position, form input and open menus survive), and a code change reloads the page once the new process is serving. It lives inside the application with no second port: an event stream, a client script served from the application&#x27;s own origin (so the auth kit&#x27;s <code>script-src &#x27;self&#x27;</code> admits it), and a tag added before <code>&lt;/body&gt;</code>. <code>--no-reload</code> turns it off; production never turns it on. Templates and static files no longer restart the application, since they are read from disk on every request in development; under <code>src/</code> they still do, because they may be compiled in with <code>include_str!</code>. Checked in Chrome against a running application.</li>

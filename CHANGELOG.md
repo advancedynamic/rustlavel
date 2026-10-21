@@ -3,7 +3,16 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
-## Unreleased
+## 0.8.3 — 2026-10-21
+
+A fix to the money packages that MySQL users could hit, and a development
+quality-of-life change. No API changes, so `rustlavel = "0.8"` picks it up on
+its own. Verified on this exact tree against live PostgreSQL 16, MySQL 8.4 and
+Valkey: the whole workspace with `--no-fail-fast` (111 test binaries, 3,244
+passed, 0 failed), then the queue, ledger, billing, payment and OAuth-provider
+packages again on MySQL (19 binaries, 367 passed, 0 failed), with
+`check-skips.sh` finding no suite that skipped itself. SQL Server was not run
+on this tree; the ledger fix was run against it before this release.
 
 ### Added
 
