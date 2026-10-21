@@ -121,7 +121,7 @@ the database, reading a file in your own process — so there is no protocol to 
 links a C library. It is off unless you ask for it, so a build that does not never needs a C
 compiler:</p>
 
-<pre><code>rustlavel = { version = "0.8", features = ["db", "sqlite"] }</code></pre>
+<pre><code>rustlavel = { version = "0.9", features = ["db", "sqlite"] }</code></pre>
 
 <p>It is for tests that need no container and for small tools that want a file. Two things it
 does on purpose, because SQLite's own defaults would make a migration behave differently on a

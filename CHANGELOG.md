@@ -3,7 +3,13 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
-## Unreleased
+## 0.9.0 — 2026-10-22
+
+Log shipping. Application logs can now go to Elasticsearch, OpenSearch or any
+OpenTelemetry collector, and both are off until asked for. A minor version
+because 0.x treats it as one: `rustlavel = "0.8"` does not pick this up, so
+change it to `"0.9"`. No existing API was removed or changed. Verification is
+recorded in the commit that makes this release.
 
 ### Added
 

@@ -13,7 +13,7 @@ versions stay in step:
 
 ```toml
 [dependencies]
-rustlavel = { version = "0.8", features = ["client"] }
+rustlavel = { version = "0.9", features = ["client"] }
 ```
 
 ## Documentation

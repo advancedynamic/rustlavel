@@ -56,7 +56,7 @@ versions stay in step:
 
 ```toml
 [dependencies]
-rustlavel = { version = "0.8", features = ["queue"] }
+rustlavel = { version = "0.9", features = ["queue"] }
 ```
 
 ## Documentation
