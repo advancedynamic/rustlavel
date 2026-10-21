@@ -5,6 +5,29 @@ workspace shares one number.
 
 ## Unreleased
 
+### Added
+
+- **`rustlavel serve` refreshes the browser.** It already rebuilt and restarted
+  the application on a change; switching to the browser and pressing refresh
+  was left to the developer. Now the page follows the code, in development
+  only: a saved template reloads the page, a saved stylesheet is swapped in
+  place — scroll position, form input and open menus survive — and a code
+  change reloads the page once the new process is serving. It lives inside the
+  application, with no second port: a server-sent-events stream, a small client
+  script served from the application's own origin (so the auth kit's
+  `script-src 'self'` policy admits it), and a tag added before `</body>` in
+  HTML responses. `--no-reload` turns it off; production never turns it on,
+  whatever the environment says.
+
+  Restarting for a template or stylesheet was also dropped: views and static
+  files are read from disk on every request in development, so `serve` used to
+  pay a cargo invocation and lose every in-memory session to show a change the
+  running application could already serve. Those files are now watched by the
+  application itself; under `src/` they still restart, because there they may
+  be compiled in with `include_str!`. Checked in Chrome against a running
+  application: a stylesheet edit changed the colour with the document intact, a
+  template edit and a code edit each reloaded it.
+
 ### Fixed
 
 - **The ledger failed on MySQL when two first-time callers raced for one

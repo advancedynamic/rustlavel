@@ -150,6 +150,7 @@ fn help() {
     println!("{}", console::bold("OPTIONS"));
     row("--port <port>", "Port for `serve` (default 8000)");
     row("--no-watch", "Run `serve` without the file watcher");
+    row("--no-reload", "Run `serve` without refreshing the browser");
     println!();
 }
 

@@ -32,6 +32,10 @@
 <code>rustlavel upgrade</code> merges them rather than overwriting what you wrote.</p>
 
 <h2 id="unreleased">Unreleased</h2>
+<h3>Added</h3>
+<ul>
+<li><strong><code>rustlavel serve</code> refreshes the browser.</strong> It already rebuilt and restarted the application on a change; pressing refresh was left to the developer. Now, in development only, a saved template reloads the page, a saved stylesheet is swapped in place (scroll position, form input and open menus survive), and a code change reloads the page once the new process is serving. It lives inside the application with no second port: an event stream, a client script served from the application&#x27;s own origin (so the auth kit&#x27;s <code>script-src &#x27;self&#x27;</code> admits it), and a tag added before <code>&lt;/body&gt;</code>. <code>--no-reload</code> turns it off; production never turns it on. Templates and static files no longer restart the application, since they are read from disk on every request in development; under <code>src/</code> they still do, because they may be compiled in with <code>include_str!</code>. Checked in Chrome against a running application.</li>
+</ul>
 <h3>Fixed</h3>
 <ul>
 <li><strong>The ledger failed on MySQL when two first-time callers raced for one account</strong>, and billing with it. Found by running the ledger, billing, payment and OAuth suites against MySQL, SQL Server and SQLite for the first time; they had only ever run on PostgreSQL. The ledger created an account inside the transaction that would use it. PostgreSQL aborts the transaction on the duplicate-key error, which a savepoint survived; MySQL fixes a transaction's snapshot at its first read, so after losing the insert the re-read cannot see the winner's committed row, and InnoDB can deadlock the racing inserts and roll everything back, savepoint included. Every operation now creates the account <em>before</em> its transaction begins, as a statement of its own. The old code failed 120 runs in 120 under load on MySQL; the new code 0 in 120. No balance was ever wrong — a failed call, never a double credit.</li>

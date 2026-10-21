@@ -15,11 +15,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let project = Project::discover()?;
     let mut forwarded: Vec<String> = Vec::new();
     let mut watch = true;
+    let mut reload = true;
 
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--no-watch" => watch = false,
+            "--no-reload" => reload = false,
             "--port" => {
                 let port = iter.next().ok_or("--port needs a value")?;
                 // SAFETY: set before the child process is spawned, single-threaded.
@@ -36,16 +38,21 @@ pub fn run(args: &[String]) -> Result<(), String> {
     console::heading(&format!("Serving {}", console::accent(&project.crate_name)));
     if watch {
         console::info(&console::dim("watching src/, config/, .env — save to reload"));
+        if reload {
+            console::info(&console::dim(
+                "live reload: the browser follows templates, styles and restarts",
+            ));
+        }
     }
 
-    let mut child = spawn(&project, &forwarded)?;
+    let mut child = spawn(&project, &forwarded, watch && reload)?;
 
     if !watch {
         let status = child.wait().map_err(|e| e.to_string())?;
         return exit_status(status.code());
     }
 
-    let mut fingerprint = snapshot(&project.watched());
+    let mut fingerprint = snapshot(&project.watched(), &project.root);
 
     loop {
         std::thread::sleep(Duration::from_millis(400));
@@ -58,17 +65,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
             console::info(&console::dim("app exited; waiting for a change…"));
             fingerprint = wait_for_change(&project, fingerprint);
-            child = spawn(&project, &forwarded)?;
+            child = spawn(&project, &forwarded, reload)?;
             continue;
         }
 
-        let current = snapshot(&project.watched());
+        let current = snapshot(&project.watched(), &project.root);
         if current != fingerprint {
             fingerprint = current;
             console::info(&console::dim("change detected, restarting…"));
             let _ = child.kill();
             let _ = child.wait();
-            child = spawn(&project, &forwarded)?;
+            child = spawn(&project, &forwarded, reload)?;
         }
     }
 }
@@ -83,7 +90,7 @@ fn exit_status(code: Option<i32>) -> Result<(), String> {
 fn wait_for_change(project: &Project, previous: Fingerprint) -> Fingerprint {
     loop {
         std::thread::sleep(Duration::from_millis(400));
-        let current = snapshot(&project.watched());
+        let current = snapshot(&project.watched(), &project.root);
         if current != previous {
             return current;
         }
@@ -102,7 +109,7 @@ fn wait_for_change(project: &Project, previous: Fingerprint) -> Fingerprint {
 /// Building first and executing the result means the handle is the application.
 /// `kill` kills it, Ctrl-C still reaches it because it stays in this process
 /// group, and there is one less process in the tree on every run.
-fn spawn(project: &Project, args: &[String]) -> Result<Child, String> {
+fn spawn(project: &Project, args: &[String], live_reload: bool) -> Result<Child, String> {
     let status = Command::new("cargo")
         .arg("build")
         .arg("--bin")
@@ -118,9 +125,12 @@ fn spawn(project: &Project, args: &[String]) -> Result<Child, String> {
     }
 
     let binary = built_binary(project)?;
-    Command::new(&binary)
-        .args(args)
-        .current_dir(&project.root)
+    let mut command = Command::new(&binary);
+    command.args(args).current_dir(&project.root);
+    if live_reload {
+        command.env("RUSTLAVEL_LIVE_RELOAD", "1");
+    }
+    command
         .spawn()
         .map_err(|e| format!("cannot run {}: {e}", binary.display()))
 }
@@ -168,19 +178,19 @@ fn field(text: &str, key: &str) -> Option<String> {
 type Fingerprint = BTreeMap<PathBuf, SystemTime>;
 
 /// Modification times of every watched source file.
-fn snapshot(paths: &[PathBuf]) -> Fingerprint {
+fn snapshot(paths: &[PathBuf], root: &Path) -> Fingerprint {
     let mut out = BTreeMap::new();
     for path in paths {
-        collect(path, &mut out);
+        collect(path, root, &mut out);
     }
     out
 }
 
-fn collect(path: &Path, out: &mut Fingerprint) {
+fn collect(path: &Path, root: &Path, out: &mut Fingerprint) {
     let Ok(metadata) = std::fs::metadata(path) else { return };
 
     if metadata.is_file() {
-        if is_watchable(path)
+        if is_watchable(path.strip_prefix(root).unwrap_or(path))
             && let Ok(modified) = metadata.modified() {
                 out.insert(path.to_path_buf(), modified);
             }
@@ -195,13 +205,23 @@ fn collect(path: &Path, out: &mut Fingerprint) {
         if child.file_name().is_some_and(|name| name == "target" || name == ".git") {
             continue;
         }
-        collect(&child, out);
+        collect(&child, root, out);
     }
 }
 
+/// Whether a change to `path` — relative to the project root — restarts the
+/// application.
+///
+/// Templates, stylesheets and scripts outside `src/` do not: views are read
+/// from disk on every request in development, and the running application
+/// watches those files itself and tells the browser. Restarting for them cost a
+/// cargo invocation and dropped every session held in memory, to show a change
+/// that was already visible. Under `src/` they stay watched, because there they
+/// may be compiled in with `include_str!`.
 fn is_watchable(path: &Path) -> bool {
     match path.extension().and_then(|e| e.to_str()) {
-        Some("rs" | "json" | "toml" | "html" | "css" | "js") => true,
+        Some("rs" | "json" | "toml") => true,
+        Some("html" | "css" | "js") => path.starts_with("src"),
         // `.env` has no extension.
         None => path.file_name().is_some_and(|name| name == ".env"),
         _ => false,
@@ -247,7 +267,7 @@ mod tests {
         std::fs::write(dir.join("src/main.rs"), "fn main() {}").unwrap();
         std::fs::write(dir.join("target/debug/app"), "binary").unwrap();
 
-        let taken = snapshot(std::slice::from_ref(&dir));
+        let taken = snapshot(std::slice::from_ref(&dir), &dir);
 
         assert!(taken.keys().any(|p| p.ends_with("src/main.rs")));
         assert!(!taken.keys().any(|p| p.to_string_lossy().contains("target")));
@@ -259,5 +279,18 @@ mod tests {
         assert!(is_watchable(Path::new("config/app.json")));
         assert!(is_watchable(Path::new(".env")));
         assert!(!is_watchable(Path::new("public/logo.png")));
+    }
+
+    /// Restarting for a template threw away a cargo run and every in-memory
+    /// session to show a change the running application already serves.
+    #[test]
+    fn a_template_or_stylesheet_does_not_restart_the_application() {
+        assert!(!is_watchable(Path::new("resources/views/home.html")));
+        assert!(!is_watchable(Path::new("resources/css/app.css")));
+        assert!(!is_watchable(Path::new("public/app.js")));
+        // Compiled in with `include_str!`, so it does.
+        assert!(is_watchable(Path::new("src/templates/mail.html")));
+        // Language files are loaded at boot.
+        assert!(is_watchable(Path::new("resources/lang/en.json")));
     }
 }

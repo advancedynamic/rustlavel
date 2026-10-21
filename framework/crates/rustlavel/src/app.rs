@@ -370,6 +370,13 @@ impl App {
         #[cfg(feature = "db")]
         rustlavel_db::set_log_bindings(!self.config.is_production());
 
+        // Last, so the injector sees the response after every other middleware
+        // has had its say; compression, if on, then applies to the tagged body.
+        if crate::live_reload::requested(self.config.is_production()) {
+            crate::live_reload::install(&mut self.router, &self.root);
+            rustlavel_core::info!("live reload on");
+        }
+
         let on_shutdown = std::mem::take(&mut self.on_shutdown);
         let (router, context) = self.finish();
 

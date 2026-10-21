@@ -14,6 +14,7 @@
 
 mod app;
 mod console;
+mod live_reload;
 #[cfg(feature = "view")]
 mod view;
 
