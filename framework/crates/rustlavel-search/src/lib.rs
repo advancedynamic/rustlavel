@@ -65,6 +65,7 @@ pub mod client;
 pub mod document;
 pub mod error;
 pub mod index;
+pub mod logs;
 pub mod query;
 pub mod response;
 
@@ -72,6 +73,7 @@ pub use client::{ClusterHealth, ClusterInfo, HealthStatus, SearchClient};
 pub use document::{BulkItem, BulkOperation, BulkReport, Document, IndexedDocument, WriteResult};
 pub use error::{Result, SearchError};
 pub use index::{Field, IndexDefinition};
+pub use logs::{LogSettings, LogShipper, LogShipping, LogStats};
 pub use query::{Aggregation, BoolQuery, Match, Order, Query, Range, Search};
 pub use response::{
     Aggregations, Bucket, Hit, SearchResults, Shards, StatsResult, TermsResult, TotalHits,

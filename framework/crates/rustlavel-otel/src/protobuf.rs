@@ -18,6 +18,7 @@
 /// shifted left three, with the wire type in the low bits.
 const VARINT: u32 = 0;
 const FIXED64: u32 = 1;
+const FIXED32: u32 = 5;
 const LENGTH_DELIMITED: u32 = 2;
 
 /// A protobuf message under construction.
@@ -144,6 +145,15 @@ impl Encoder {
     pub fn fixed64(&mut self, field: u32, value: u64) {
         if value != 0 {
             self.tag(field, FIXED64);
+            self.bytes.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+
+    /// A `fixed32` field: four little-endian bytes. `LogRecord.flags` is the one
+    /// user here, carrying the W3C trace flags.
+    pub fn fixed32(&mut self, field: u32, value: u32) {
+        if value != 0 {
+            self.tag(field, FIXED32);
             self.bytes.extend_from_slice(&value.to_le_bytes());
         }
     }

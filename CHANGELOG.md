@@ -3,6 +3,62 @@
 Notable changes, newest first. Versions follow crates.io; every crate in the
 workspace shares one number.
 
+## Unreleased
+
+### Added
+
+- **Logs can be shipped to Elasticsearch and OpenSearch.** `rustlavel-search`
+  gains `LogShipping`, a plugin (and `LogShipper` underneath it) that listens to
+  the framework's event bus — so every `info!`, `warn!` and `error!` is shipped
+  without the code that logs changing — and writes one document per line to a
+  daily index, `logs-2026.10.21`, in `_bulk` batches. The documents use a subset
+  of the Elastic Common Schema's fields (`@timestamp`, `message`, `log.level`,
+  `service.name`, `event.dataset`), so Kibana's and OpenSearch Dashboards' log
+  views find them, and `@timestamp` is read by the cluster as a date with no
+  mapping written beforehand. Off unless `search.logs.enabled` is true.
+
+  Logging must not be able to take down what it observes, so recording is a
+  mutex and a push; the queue is bounded and drops the newest line, counted;
+  lines the cluster rejects for load (`429`) are put back and tried again, and
+  lines it rejects for being wrong are counted and not retried; and the
+  shipper's own trouble goes straight to stderr and is never shipped — without
+  that, a down cluster would produce a warning that was shipped to the down
+  cluster, which would fail, and warn. The application flushes it when the
+  server shuts down.
+
+  Tested against Elasticsearch 8.15 and OpenSearch 2.17, running: a flush, a
+  mapping conflict that must not stop the rest of the batch, a dead cluster, and
+  an ordinary `info!` call all the way through the process-wide bus. The
+  re-entrancy guard was proven by removing it and watching its test fail.
+
+- **OpenTelemetry logs.** `rustlavel-otel` exports a third signal, OTLP logs,
+  to `/v1/logs` (or `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`), in protobuf or JSON.
+  A line written while a request is handled carries that request's trace id,
+  span id and sampled flag, so a collector shows it beside the trace; an
+  incoming `traceparent` is honoured. Off unless asked for — `.logs(true)`,
+  `otel.logs.enabled`, or the specification's own `OTEL_LOGS_EXPORTER=otlp` —
+  because logs can carry anything an application prints. It shares the
+  exporter's bounded queue, retries and backoff, and the same guard against
+  shipping its own complaints: with the guard removed, a collector that refuses
+  logs made the exporter send four requests for one line.
+
+  Checked against a real OpenTelemetry Collector 0.160 rather than only against
+  this crate's own encoder. That found two gaps no unit test had: the observed
+  timestamp was left unset and showed as 1970, and the sampled flag was zero for
+  a sampled trace. Both are fixed.
+
+### Changed
+
+- **`rustlavel new --with search` registers `LogShipping`** in the generated
+  `main.rs`, as `--with otel` does `OpenTelemetry`. It does nothing until
+  `search.logs.enabled` is true. A test that every package shipping a plugin is
+  named in the written `main.rs` caught the omission the moment the plugin
+  existed.
+- **The server flushes the log shipper and the OpenTelemetry exporter on
+  shutdown.** The exporter's last few seconds of spans and metrics used to be
+  lost on a restart unless the application flushed it by hand, which is exactly
+  the moment somebody is watching.
+
 ## 0.8.3 — 2026-10-21
 
 A fix to the money packages that MySQL users could hit, and a development

@@ -87,6 +87,8 @@ pub use rustlavel_otel as otel;
 pub use rustlavel_otel::OpenTelemetry;
 #[cfg(feature = "search")]
 pub use rustlavel_search as search;
+#[cfg(feature = "search")]
+pub use rustlavel_search::LogShipping;
 #[cfg(feature = "webauthn")]
 pub use rustlavel_webauthn as webauthn;
 #[cfg(feature = "openapi")]
@@ -169,6 +171,8 @@ pub mod prelude {
     pub use crate::Metrics;
     #[cfg(feature = "otel")]
     pub use crate::OpenTelemetry;
+    #[cfg(feature = "search")]
+    pub use crate::LogShipping;
     #[cfg(feature = "telescope")]
     pub use crate::Telescope;
     #[cfg(feature = "db")]

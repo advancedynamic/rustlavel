@@ -493,6 +493,10 @@ const REGISTERABLE: &[(&str, &str)] = &[
     ("debugbar", "DebugBar::new()"),
     ("metrics", "Metrics::new()"),
     ("otel", "OpenTelemetry::new()"),
+    // Off until `search.logs.enabled` is true, so it is safe to register and
+    // is what makes the log shipper reachable from a project that asked for
+    // `search`.
+    ("search", "LogShipping::default()"),
 ];
 /// Needs something `main.rs` does not have yet, so it gets a comment.
 const NEEDS_WIRING: &[(&str, &str)] = &[

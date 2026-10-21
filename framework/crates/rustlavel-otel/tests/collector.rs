@@ -32,6 +32,9 @@
 //!     metrics:
 //!       receivers: [otlp]
 //!       exporters: [debug]
+//!     logs:
+//!       receivers: [otlp]
+//!       exporters: [debug]
 //! YAML
 //!
 //! docker run -d --name rustlavel-otel -p 4318:4318 \
@@ -53,6 +56,7 @@ use rustlavel_client::Client;
 use rustlavel_core::{Config, Event};
 use rustlavel_http::{Request, Router, TestClient};
 use rustlavel_otel::exporter::{Protocol, signal_endpoint};
+use rustlavel_otel::logs::LogRecord;
 use rustlavel_otel::metrics::{Meter, instruments};
 use rustlavel_otel::plugin::OpenTelemetry;
 use rustlavel_otel::resource::{Resource, Value};
@@ -438,6 +442,73 @@ async fn a_request_and_the_query_inside_it_arrive_as_one_trace() {
         tail(&output, 40)
     );
 }
+
+/// What a log record has to survive: its severity as both text and number, a
+/// body, an attribute, the ids of the trace it was written inside, the sampled
+/// flag, and a time that is neither zero nor centuries away.
+async fn a_log_record_arrives_intact(protocol: Protocol) {
+    let (endpoint, container) = collector!();
+    let _turn = exclusive().await;
+    let message = marker(match protocol {
+        Protocol::Protobuf => "protobuf-log",
+        Protocol::Json => "json-log",
+    });
+    let service = format!("rustlavel-{}-log-test", message);
+    let context = SpanContext::root();
+
+    let event = Event::new("log")
+        .with("level", "warn")
+        .with("message", message.as_str())
+        .with("user_id", 7);
+    let record = LogRecord::from_event(&event, Some(context)).expect("a log event");
+    let resource = Resource::new(&service);
+    let body = match protocol {
+        Protocol::Protobuf => rustlavel_otel::logs::export_request(&resource, &[record]),
+        Protocol::Json => {
+            rustlavel_otel::logs::export_request_json(&resource, &[record]).to_string().into_bytes()
+        }
+    };
+
+    post(&signal_endpoint(&endpoint, "logs"), protocol, body).await;
+
+    let output = await_logged(
+        &container,
+        &[
+            &message,
+            &service,
+            // Text and number: two fields, and a wrong field number loses one.
+            "SeverityText: WARN",
+            "Warn(13)",
+            // The ids survived as raw bytes (protobuf) or hex (JSON).
+            &context.trace_id.to_hex(),
+            &context.span_id.to_hex(),
+            // The attribute, with the type it was sent as.
+            "user_id",
+            "Int(7)",
+        ],
+    )
+    .await;
+
+    let block = around(&output, &message);
+    assert!(field_says(&block, "Flags", "1"), "the sampled flag was lost:\n{block}");
+    // An unset observed time prints as 1970, and a fixed64 read as a varint
+    // lands centuries away.
+    assert!(
+        !block.contains("1970-") && !block.contains("2554-") && block.contains("Timestamp: 20"),
+        "the timestamps did not decode to a plausible date:\n{block}"
+    );
+}
+
+#[tokio::test]
+async fn the_collector_parses_a_protobuf_log_record_into_the_record_that_was_sent() {
+    a_log_record_arrives_intact(Protocol::Protobuf).await;
+}
+
+#[tokio::test]
+async fn the_collector_parses_a_json_log_record_too() {
+    a_log_record_arrives_intact(Protocol::Json).await;
+}
+
 
 /// The lines around a needle, which is where the debug exporter prints the ids
 /// above a span's name and the attributes below it.

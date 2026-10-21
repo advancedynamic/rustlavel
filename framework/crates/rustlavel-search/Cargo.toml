@@ -1,6 +1,6 @@
 [package]
 name = "rustlavel-search"
-description = "Elasticsearch and OpenSearch for Rustlavel: indexing, search, and bulk operations"
+description = "Elasticsearch and OpenSearch for Rustlavel: indexing, search, bulk operations, and log shipping"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -17,6 +17,7 @@
 //! * Shutdown flushes. Losing the last few seconds of a trace is exactly the
 //!   part someone was watching when they restarted the process.
 
+use crate::logs::{LogRecord, LogSettings};
 use crate::metrics::{Meter, instruments};
 use crate::resource::Resource;
 use crate::trace::Span;
@@ -24,7 +25,7 @@ use rustlavel_client::Client;
 use rustlavel_http::Status;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 
@@ -119,6 +120,11 @@ struct Inner {
     client: Client,
     meter: Meter,
     spans: Mutex<VecDeque<Span>>,
+    /// Present only when the log signal is switched on.
+    log_settings: OnceLock<LogSettings>,
+    logs: Mutex<VecDeque<LogRecord>>,
+    logs_dropped: AtomicU64,
+    logs_reported: AtomicU64,
     dropped: AtomicU64,
     /// How many drops have already been reported, so the warning is one line
     /// per flush rather than one per lost span — a collector outage must not
@@ -161,6 +167,10 @@ impl Exporter {
                 client,
                 meter: Meter::new(),
                 spans: Mutex::new(VecDeque::new()),
+                log_settings: OnceLock::new(),
+                logs: Mutex::new(VecDeque::new()),
+                logs_dropped: AtomicU64::new(0),
+                logs_reported: AtomicU64::new(0),
                 dropped: AtomicU64::new(0),
                 reported: AtomicU64::new(0),
                 started: AtomicBool::new(false),
@@ -199,6 +209,47 @@ impl Exporter {
             return;
         }
         queue.push_back(span);
+    }
+
+
+    /// Switch the log signal on. Returns false if it already was; the first
+    /// settings stand.
+    pub fn enable_logs(&self, settings: LogSettings) -> bool {
+        self.inner.log_settings.set(settings).is_ok()
+    }
+
+    /// Whether log records are being collected.
+    pub fn logs_enabled(&self) -> bool {
+        self.inner.log_settings.get().is_some()
+    }
+
+    /// Queue a log record, if the signal is on and the level is high enough.
+    ///
+    /// Like [`Exporter::record_span`], a mutex and a push: it runs on whichever
+    /// task logged and must never wait on the collector.
+    pub fn record_log(&self, record: LogRecord) {
+        let Some(settings) = self.inner.log_settings.get() else { return };
+        if record.level < settings.min_level {
+            return;
+        }
+
+        let mut queue = self.inner.logs.lock().expect("log queue poisoned");
+        if queue.len() >= settings.max_queue {
+            self.inner.logs_dropped.fetch_add(1, Ordering::Relaxed);
+            return;
+        }
+        queue.push_back(record);
+    }
+
+    /// How many log records are waiting.
+    pub fn pending_logs(&self) -> usize {
+        self.inner.logs.lock().expect("log queue poisoned").len()
+    }
+
+    /// How many log records were dropped for want of queue space or because the
+    /// collector would not take them.
+    pub fn dropped_logs(&self) -> u64 {
+        self.inner.logs_dropped.load(Ordering::Relaxed)
     }
 
     /// How many spans are waiting.
@@ -275,6 +326,47 @@ impl Exporter {
         self.report_drops();
         self.flush_spans().await;
         self.flush_metrics().await;
+        // Inside the exporting scope: whatever this logs about a collector that
+        // is down must not become the next record to send.
+        EXPORTING.scope((), self.flush_logs()).await;
+    }
+
+    async fn flush_logs(&self) {
+        let Some(settings) = self.inner.log_settings.get() else { return };
+
+        let dropped = self.inner.logs_dropped.load(Ordering::Relaxed);
+        let reported = self.inner.logs_reported.swap(dropped, Ordering::Relaxed);
+        if dropped > reported {
+            rustlavel_core::warn!(
+                "otel: dropped {} log record(s); the queue holds {} and the collector is not \
+                 keeping up. Raise `otel.logs.queue` or fix the collector.",
+                dropped - reported,
+                settings.max_queue
+            );
+        }
+
+        loop {
+            let batch: Vec<LogRecord> = {
+                let mut queue = self.inner.logs.lock().expect("log queue poisoned");
+                let take = queue.len().min(self.inner.settings.max_batch);
+                queue.drain(..take).collect()
+            };
+            if batch.is_empty() {
+                return;
+            }
+
+            let body = match self.inner.settings.protocol {
+                Protocol::Protobuf => crate::logs::export_request(&self.inner.resource, &batch),
+                Protocol::Json => crate::logs::export_request_json(&self.inner.resource, &batch)
+                    .to_string()
+                    .into_bytes(),
+            };
+
+            if !self.post(&settings.endpoint, body).await {
+                self.inner.logs_dropped.fetch_add(batch.len() as u64, Ordering::Relaxed);
+                return;
+            }
+        }
     }
 
     /// Turn accumulated drops into a warning and a counter, once per flush.

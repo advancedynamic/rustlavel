@@ -16,6 +16,26 @@ versions stay in step:
 rustlavel = { version = "0.8", features = ["search"] }
 ```
 
+## Shipping logs
+
+Every `info!`, `warn!` and `error!` is an event on the framework's bus, so shipping
+logs to the cluster is a subscriber. It writes one document per line to a daily index
+(`logs-2026.10.21`), shaped after the Elastic Common Schema's common fields, in
+batches, with a bounded queue that drops the newest line and counts it rather than
+slowing a request.
+
+```toml
+# config/search.json
+{ "url": "http://localhost:9200", "logs": { "enabled": true, "index": "logs" } }
+```
+
+```rust
+App::new()?.plugin(rustlavel::search::LogShipping::default()).run().await
+```
+
+Off unless `search.logs.enabled` is true. Flushed when the server shuts down.
+Verified against Elasticsearch 8.15 and OpenSearch 2.17.
+
 ## Documentation
 
 - [API documentation](https://docs.rs/rustlavel-search)

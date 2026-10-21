@@ -101,7 +101,7 @@ impl Value {
     /// type's default. Skipping `false`, `0` or `""` the way proto3 skips a
     /// plain scalar leaves the `oneof` unset, and the attribute arrives empty
     /// behind a 200 — which is how this was found, against a real collector.
-    fn encode(&self) -> Encoder {
+    pub(crate) fn encode(&self) -> Encoder {
         let mut any = Encoder::new();
         match self {
             Value::String(text) => any.string_present(1, text),
@@ -124,7 +124,7 @@ impl Value {
     /// `int64` becomes a *string*: JSON numbers are doubles, and a 64-bit
     /// integer past 2^53 would come back changed. The mapping requires it, and
     /// a collector that reads `intValue` as a number is being lenient.
-    fn to_json(&self) -> Json {
+    pub(crate) fn to_json(&self) -> Json {
         match self {
             Value::String(text) => Json::object([("stringValue", Json::from(text.clone()))]),
             Value::Bool(flag) => Json::object([("boolValue", Json::from(*flag))]),

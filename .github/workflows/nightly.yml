@@ -167,7 +167,8 @@ jobs:
   search:
     name: Search — Elasticsearch
     runs-on: ubuntu-latest
-    # Covers rustlavel-search/tests/elasticsearch.rs.
+    # Covers rustlavel-search/tests/elasticsearch.rs, and the log shipper's
+    # logs_live.rs and logs_bus.rs against the same cluster.
     #
     # Security is left on with TLS off, so ELASTICSEARCH_USER and
     # ELASTICSEARCH_PASSWORD are actually read and the client's basic-auth path
@@ -198,9 +199,9 @@ jobs:
       - name: Variables
         run: ./docker/env.sh --bare search >> "$GITHUB_ENV"
 
-      - name: Index, search and delete against a live cluster
+      - name: Index, search, delete and ship logs against a live cluster
         working-directory: framework
-        run: cargo test -p rustlavel-search --all-features --test elasticsearch -- --nocapture
+        run: cargo test -p rustlavel-search --all-features --test elasticsearch --test logs_live --test logs_bus -- --nocapture
 
       - name: Server logs
         if: failure()
@@ -237,7 +238,7 @@ jobs:
       - name: Variables
         run: ./docker/env.sh --bare otel >> "$GITHUB_ENV"
 
-      - name: Export spans and metrics to a live collector
+      - name: Export spans, metrics and logs to a live collector
         working-directory: framework
         run: cargo test -p rustlavel-otel --all-features --test collector -- --nocapture
 

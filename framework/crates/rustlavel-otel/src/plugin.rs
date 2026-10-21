@@ -17,8 +17,10 @@
 use crate::exporter::{Exporter, Protocol, Settings, signal_endpoint};
 use crate::metrics;
 use crate::resource::{Resource, Value, percent_decode};
+use crate::logs::{LogRecord, LogSettings};
 use crate::trace::{Span, SpanContext, SpanKind, SpanStatus};
 use rustlavel_core::events::{Event, Subscriber, subscribe};
+use rustlavel_core::log::Level;
 use rustlavel_core::{Config, env};
 use rustlavel_http::plugin::{Plugin, Setup};
 use rustlavel_http::{Next, Request, Response, Router};
@@ -47,6 +49,12 @@ pub const DEFAULT_ENDPOINT: &str = "http://localhost:4318";
 /// | `otel.batch`         |                                  | Spans per request (512).                  |
 /// | `otel.queue`         |                                  | Spans held before dropping (2048).        |
 /// | `otel.retries`       |                                  | Retries per batch (3).                    |
+/// | `otel.logs.enabled`  | `OTEL_LOGS_EXPORTER=otlp`        | Export logs too. Off by default.          |
+/// | `otel.logs.level`    |                                  | Lowest level exported (`info`).           |
+/// | `otel.logs.queue`    |                                  | Log records held before dropping (2048).  |
+///
+/// `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` points the log signal at a full URL of
+/// its own; without it logs go to `<endpoint>/v1/logs`.
 #[derive(Default)]
 pub struct OpenTelemetry {
     endpoint: Option<String>,
@@ -58,6 +66,8 @@ pub struct OpenTelemetry {
     max_batch: Option<usize>,
     max_queue: Option<usize>,
     max_retries: Option<u32>,
+    logs: Option<bool>,
+    log_level: Option<Level>,
     enabled: Option<bool>,
     client: Option<rustlavel_client::Client>,
 }
@@ -119,6 +129,19 @@ impl OpenTelemetry {
         self
     }
 
+    /// Export logs as well as traces and metrics. Off unless asked for: logs
+    /// can carry anything an application prints.
+    pub fn logs(mut self, enabled: bool) -> Self {
+        self.logs = Some(enabled);
+        self
+    }
+
+    /// The lowest level exported as a log record. `info` by default.
+    pub fn log_level(mut self, level: Level) -> Self {
+        self.log_level = Some(level);
+        self
+    }
+
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = Some(enabled);
         self
@@ -131,9 +154,8 @@ impl OpenTelemetry {
         self
     }
 
-    fn resolve(&self, config: &Config) -> (Settings, Resource) {
-        let endpoint = self
-            .endpoint
+    fn base_endpoint(&self, config: &Config) -> String {
+        self.endpoint
             .clone()
             .unwrap_or_else(|| {
                 config.string(
@@ -142,7 +164,37 @@ impl OpenTelemetry {
                 )
             })
             .trim_end_matches('/')
-            .to_string();
+            .to_string()
+    }
+
+    /// Where logs go: the signal's own URL if the environment names one, which
+    /// the specification says is used as given, else `<endpoint>/v1/logs`.
+    fn logs_settings(&self, config: &Config) -> Option<LogSettings> {
+        let on = self.logs.unwrap_or_else(|| {
+            config.bool(
+                "otel.logs.enabled",
+                env::env_or("OTEL_LOGS_EXPORTER", "none").eq_ignore_ascii_case("otlp"),
+            )
+        });
+        if !on {
+            return None;
+        }
+
+        let endpoint = match env::env_or("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", "") {
+            full if !full.is_empty() => full,
+            _ => signal_endpoint(&self.base_endpoint(config), "logs"),
+        };
+        let min_level = self
+            .log_level
+            .or_else(|| Level::parse(&config.string("otel.logs.level", "info")))
+            .unwrap_or(Level::Info);
+        let max_queue = config.int("otel.logs.queue", 2_048).clamp(1, 1_000_000) as usize;
+
+        Some(LogSettings { endpoint, min_level, max_queue })
+    }
+
+    fn resolve(&self, config: &Config) -> (Settings, Resource) {
+        let endpoint = self.base_endpoint(config);
 
         let protocol = self.protocol.unwrap_or_else(|| {
             Protocol::parse(&config.string(
@@ -233,6 +285,12 @@ impl OpenTelemetry {
             Some(client) => Exporter::with_client(settings, resource, client),
             None => Exporter::new(settings, resource),
         };
+
+        if let Some(logs) = self.logs_settings(config) {
+            let target = logs.endpoint.clone();
+            exporter.enable_logs(logs);
+            rustlavel_core::info!("otel: exporting logs to {target}");
+        }
 
         router.middleware(trace_requests(exporter.clone()));
         subscribe(Collector { exporter: exporter.clone() });
@@ -355,6 +413,9 @@ struct Collector {
 
 impl Subscriber for Collector {
     fn interested_in(&self, kind: &str) -> bool {
+        if kind == "log" {
+            return self.exporter.logs_enabled();
+        }
         matches!(
             kind,
             "http.request"
@@ -372,6 +433,16 @@ impl Subscriber for Collector {
         // this same bus. Measuring it would make every flush generate the data
         // the next flush reports.
         if crate::exporter::is_exporting() {
+            return;
+        }
+
+        // A log line is not work that took time, so it is neither a span nor a
+        // metric. It is a record, stamped with the span in scope so a collector
+        // can show it beside the request that wrote it.
+        if event.kind == "log" {
+            if let Some(record) = LogRecord::from_event(event, crate::trace::current()) {
+                self.exporter.record_log(record);
+            }
             return;
         }
 
@@ -429,6 +500,9 @@ mod tests {
         config.set("otel.protocol", "http/protobuf");
         config.set("otel.headers", "");
         config.set("otel.service", "checkout");
+        // Logs are pinned off whatever OTEL_LOGS_EXPORTER says on this machine;
+        // a test that wants them says so with `.logs(true)`.
+        config.set("otel.logs.enabled", "false");
         config
     }
 
@@ -749,5 +823,127 @@ mod tests {
         // Reaching into the queue rather than flushing: these tests are about
         // what was recorded, and a flush would only prove the fake was called.
         exporter.drain_for_test()
+    }
+
+    #[tokio::test]
+    async fn logs_are_not_collected_unless_asked_for() {
+        let _guard = BUS.lock().await;
+        clear_subscribers();
+
+        let mut router = Router::new();
+        let (plugin, fake) = faking();
+        let exporter = mounted(plugin, &mut router).await;
+
+        rustlavel_core::info!("nobody asked for this to leave the machine");
+        exporter.shutdown().await;
+        clear_subscribers();
+
+        assert!(!exporter.logs_enabled());
+        assert_eq!(exporter.pending_logs(), 0);
+        assert!(
+            fake.recorded().iter().all(|r| !r.url.ends_with("/v1/logs")),
+            "nothing may be sent to the log endpoint when the signal is off"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_log_line_is_exported_to_v1_logs_with_the_level_and_the_message() {
+        let _guard = BUS.lock().await;
+        clear_subscribers();
+
+        let mut router = Router::new();
+        let (plugin, fake) = faking();
+        let exporter = mounted(plugin.logs(true), &mut router).await;
+
+        rustlavel_core::warn!("the disk is nearly full");
+        rustlavel_core::debug!("below the default level");
+        exporter.shutdown().await;
+        clear_subscribers();
+
+        let sent = fake.recorded().into_iter().find(|r| r.url.ends_with("/v1/logs")).expect("logs sent");
+        assert_eq!(sent.url, "http://collector.test/v1/logs");
+        assert_eq!(sent.headers.get("content-type"), Some("application/x-protobuf"));
+        assert!(contains(&sent.body, b"the disk is nearly full"));
+        assert!(!contains(&sent.body, b"below the default level"));
+        assert!(contains(&sent.body, b"WARN"));
+    }
+
+    #[tokio::test]
+    async fn a_line_logged_inside_a_request_carries_that_requests_trace_id() {
+        let _guard = BUS.lock().await;
+        clear_subscribers();
+
+        let mut router = Router::new();
+        router.get("/work", |_req: Request| async {
+            rustlavel_core::info!("working on it");
+            "done"
+        });
+        let (plugin, fake) = faking();
+        let exporter = mounted(plugin.logs(true).protocol(Protocol::Json), &mut router).await;
+
+        TestClient::new(router)
+            .send(
+                Request::new(rustlavel_http::Method::Get, "/work").with_header(
+                    "traceparent",
+                    "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+                ),
+            )
+            .await
+            .assert_ok();
+        exporter.shutdown().await;
+        clear_subscribers();
+
+        let body = fake
+            .recorded()
+            .into_iter()
+            .find(|r| r.url.ends_with("/v1/logs"))
+            .map(|r| r.body_text())
+            .expect("logs sent");
+        assert!(body.contains("working on it"), "{body}");
+        assert!(
+            body.contains("4bf92f3577b34da6a3ce929d0e0e4736"),
+            "the log record must carry the trace the request continued: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_collector_that_refuses_logs_does_not_feed_on_its_own_complaints() {
+        let _guard = BUS.lock().await;
+        clear_subscribers();
+
+        let client = Client::new().faking(
+            Fake::new()
+                .on("/v1/logs", FakeResponse::text("no logs pipeline here").status(400))
+                .fallback(FakeResponse::text("")),
+        );
+        let fake = client.fake().expect("faked").clone();
+        let mut router = Router::new();
+        let exporter = mounted(OpenTelemetry::new().with_client(client).logs(true), &mut router).await;
+
+        rustlavel_core::info!("one line");
+        for _ in 0..4 {
+            exporter.flush().await;
+        }
+        clear_subscribers();
+
+        // The claim is that the exporter's own complaints never become records.
+        // Counting requests or records would also count whatever other tests log
+        // through the same process-wide bus while this one runs, so it looks for
+        // the complaints themselves in everything that was sent.
+        let sent: Vec<Vec<u8>> = fake
+            .recorded()
+            .into_iter()
+            .filter(|r| r.url.ends_with("/v1/logs"))
+            .map(|r| r.body)
+            .collect();
+        assert!(!sent.is_empty(), "the line was exported at least once");
+        for body in &sent {
+            assert!(
+                !contains(body, b"rejected the payload") && !contains(body, b"log record(s)"),
+                "the exporter shipped its own complaint about the collector"
+            );
+        }
+        assert_eq!(exporter.pending_logs(), 0);
+        assert!(exporter.dropped_logs() >= 1, "the refused batch is counted, not retried for ever");
     }
 }

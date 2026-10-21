@@ -380,8 +380,24 @@ impl App {
         let on_shutdown = std::mem::take(&mut self.on_shutdown);
         let (router, context) = self.finish();
 
+        // Telemetry that is only sent on a timer loses its last few seconds at
+        // exactly the moment somebody was watching — a restart. Flushed after
+        // the requests have drained, so the lines about the drain go too.
+        #[allow(unused_mut)]
+        let mut flushes: Vec<rustlavel_http::OnShutdown> = Vec::new();
+        #[cfg(feature = "search")]
+        if let Some(shipper) = context.state::<rustlavel_search::LogShipper>() {
+            let shipper = shipper.clone();
+            flushes.push(Box::new(move || Box::pin(async move { shipper.shutdown().await })));
+        }
+        #[cfg(feature = "otel")]
+        if let Some(exporter) = context.state::<rustlavel_otel::Exporter>() {
+            let exporter = exporter.clone();
+            flushes.push(Box::new(move || Box::pin(async move { exporter.shutdown().await })));
+        }
+
         let mut server = Server::new(router, context);
-        for work in on_shutdown {
+        for work in on_shutdown.into_iter().chain(flushes) {
             server = server.on_shutdown(work);
         }
         server.listen(format!("{host}:{port}")).await

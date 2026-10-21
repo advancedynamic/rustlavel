@@ -16,6 +16,15 @@ versions stay in step:
 rustlavel = { version = "0.8", features = ["otel"] }
 ```
 
+## Logs
+
+Traces and metrics are on by default; logs are opt-in, because they can carry anything
+an application prints. Enable them with `OpenTelemetry::new().logs(true)`,
+`otel.logs.enabled`, or `OTEL_LOGS_EXPORTER=otlp`. A line written while a request is
+being handled carries that request's trace and span id, so a collector can show it
+beside the trace. Verified against the OpenTelemetry Collector 0.160, in both protobuf
+and JSON.
+
 ## Documentation
 
 - [API documentation](https://docs.rs/rustlavel-otel)
